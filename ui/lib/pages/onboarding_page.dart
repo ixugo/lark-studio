@@ -316,16 +316,18 @@ class _StepCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         boxShadow: const [BoxShadow(color: Color(0x0A000000), blurRadius: 12, offset: Offset(0, 4))],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Color(0xFF1D1D1F))),
-          const SizedBox(height: 4),
-          Text(desc, style: const TextStyle(fontSize: 13, color: Color(0xFF8E8E93))),
-          const SizedBox(height: 16),
-          child,
-        ],
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Color(0xFF1D1D1F))),
+            const SizedBox(height: 4),
+            Text(desc, style: const TextStyle(fontSize: 13, color: Color(0xFF8E8E93))),
+            const SizedBox(height: 16),
+            child,
+          ],
+        ),
       ),
     );
   }

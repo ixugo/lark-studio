@@ -42,6 +42,7 @@ func DefaultConfig() Bootstrap {
 			WhisperMode:       "ffmpeg",
 			WhisperBin:        "whisper-cpp",
 			DefaultTargetLang: "zh-CN",
+			MaxSpeedFactor:    1.2,
 		},
 		LLM: LLM{
 			BaseURL: "http://localhost:11434/v1",

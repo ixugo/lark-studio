@@ -22,10 +22,12 @@ class BackendService extends ChangeNotifier {
   String get wsUrl => 'ws://localhost:$_port/ws';
 
   /// 启动引擎：找空闲端口 → 拉起子进程 → 健康检查
+  /// 若二进制未找到，回退到 connectOnly 模式（开发者可手动启动引擎）
   Future<bool> start({String? binaryPath}) async {
     final bin = binaryPath ?? _findBinary();
     if (bin == null) {
-      debugPrint('engine binary not found');
+      debugPrint('engine binary not found, falling back to connectOnly');
+      connectOnly();
       return false;
     }
 
