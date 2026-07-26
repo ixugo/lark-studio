@@ -47,13 +47,17 @@
 - [x] 后端连接状态指示器 (侧边栏 + 设置页)
 - [x] Go 后端自动启动 + 存活监控
 
+### 断点恢复 / 暂停 / 批量提交
+
+- [x] 断点恢复: 失败/暂停任务从 CurrentStep 恢复（POST /tasks/:id/resume）
+- [x] 暂停/恢复: Scheduler per-task context cancel + WasPaused 判定 + WebSocket task_paused 事件
+- [x] 批量提交: POST /tasks/batch 扫描目录视频文件自动建 Task + Flutter 批量导入弹窗
+- [x] 修复 status 零值覆盖 bug: SetTaskStatus 替代 copier 全量覆盖
+- [x] Flutter status 映射修正: 0=等待/1=处理中/2=已暂停/3=已完成/4=失败
+- [x] Flutter 任务卡片暂停/恢复/重试按钮
+- [x] Flutter 任务详情暂停/恢复操作栏 + 错误信息展示
+
 ## 待实现
-
-### 核心功能
-
-- [ ] 断点恢复: Task 状态持久化到 SQLite，恢复时从 CurrentStep 继续
-- [ ] 暂停/恢复: context cancel + 重新 Submit
-- [ ] 批量提交: 用户指定目录，自动扫描视频文件建立多个 Task
 
 ### 质量提升
 

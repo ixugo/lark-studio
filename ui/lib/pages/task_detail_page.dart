@@ -38,6 +38,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         case 'task_step_done':
         case 'task_done':
         case 'task_failed':
+        case 'task_paused':
           _loadTask();
           break;
       }
@@ -89,7 +90,12 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           _row('状态', t.statusName),
           if (t.currentStep.isNotEmpty) _row('当前步骤', t.currentStep),
           _row('目标语言', t.targetLang),
+          if (t.error.isNotEmpty) _row('错误', t.error),
         ]),
+        if (t.canPause || t.canResume) ...[
+          const SizedBox(height: 12),
+          _buildActions(t),
+        ],
         const SizedBox(height: 16),
         _infoCard([
           _row('输入路径', t.inputPath),
@@ -132,6 +138,72 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     );
   }
 
+  Widget _buildActions(Task t) {
+    return Row(
+      children: [
+        if (t.canPause)
+          Expanded(
+            child: CupertinoButton(
+              color: CupertinoColors.systemOrange,
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              borderRadius: BorderRadius.circular(10),
+              onPressed: _pausing ? null : _doPause,
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(CupertinoIcons.pause_circle, size: 18, color: CupertinoColors.white),
+                  SizedBox(width: 6),
+                  Text('暂停', style: TextStyle(fontSize: 14, color: CupertinoColors.white)),
+                ],
+              ),
+            ),
+          ),
+        if (t.canResume)
+          Expanded(
+            child: CupertinoButton(
+              color: CupertinoColors.systemGreen,
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              borderRadius: BorderRadius.circular(10),
+              onPressed: _resuming ? null : _doResume,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(CupertinoIcons.play_circle, size: 18, color: CupertinoColors.white),
+                  const SizedBox(width: 6),
+                  Text(t.status == 4 ? '重试' : '恢复', style: const TextStyle(fontSize: 14, color: CupertinoColors.white)),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  bool _pausing = false;
+  bool _resuming = false;
+
+  Future<void> _doPause() async {
+    setState(() => _pausing = true);
+    try {
+      await context.read<ApiClient>().pauseTask(widget.taskId);
+      await _loadTask();
+    } catch (e) {
+      if (mounted) setState(() => _logs.add('暂停失败: $e'));
+    }
+    if (mounted) setState(() => _pausing = false);
+  }
+
+  Future<void> _doResume() async {
+    setState(() => _resuming = true);
+    try {
+      await context.read<ApiClient>().resumeTask(widget.taskId);
+      await _loadTask();
+    } catch (e) {
+      if (mounted) setState(() => _logs.add('恢复失败: $e'));
+    }
+    if (mounted) setState(() => _resuming = false);
+  }
+
   Widget _buildProgress(Task t) {
     final steps = t.mode == 3
         ? ['whisper', 'split', 'translate', 'tts', 'merge', 'burn']
@@ -155,7 +227,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           ...steps.asMap().entries.map((e) {
             final idx = e.key;
             final name = e.value;
-            final isDone = (t.status >= 2) || idx < currentIdx;
+            final isDone = (t.status == 3) || idx < currentIdx;
             final isActive = t.status == 1 && idx == currentIdx;
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),

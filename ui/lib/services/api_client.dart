@@ -69,6 +69,39 @@ class ApiClient {
     _checkStatus(resp);
   }
 
+  Future<void> pauseTask(String id) async {
+    final resp = await _client.post(Uri.parse('$baseUrl/tasks/$id/pause'));
+    _checkStatus(resp);
+  }
+
+  Future<Task> resumeTask(String id) async {
+    final resp = await _client.post(Uri.parse('$baseUrl/tasks/$id/resume'));
+    _checkStatus(resp);
+    final body = jsonDecode(resp.body) as Map<String, dynamic>;
+    return Task.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  Future<List<Task>> batchCreateTasks({
+    required String directory,
+    required int mode,
+    String targetLang = '',
+  }) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/tasks/batch'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'directory': directory,
+        'mode': mode,
+        if (targetLang.isNotEmpty) 'target_lang': targetLang,
+      }),
+    );
+    _checkStatus(resp);
+    final body = jsonDecode(resp.body) as Map<String, dynamic>;
+    final data = body['data'] as Map<String, dynamic>? ?? {};
+    final items = data['items'] as List<dynamic>? ?? [];
+    return items.map((e) => Task.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
   // ---- Config API ----
 
   Future<AppConfig> getConfig() async {
@@ -150,5 +183,25 @@ class TaskListNotifier extends ChangeNotifier {
   Future<void> deleteTask(String id) async {
     await _api.deleteTask(id);
     await refresh();
+  }
+
+  Future<void> pauseTask(String id) async {
+    await _api.pauseTask(id);
+    await refresh();
+  }
+
+  Future<void> resumeTask(String id) async {
+    await _api.resumeTask(id);
+    await refresh();
+  }
+
+  Future<int> batchCreateTasks({
+    required String directory,
+    required int mode,
+    String targetLang = '',
+  }) async {
+    final tasks = await _api.batchCreateTasks(directory: directory, mode: mode, targetLang: targetLang);
+    await refresh();
+    return tasks.length;
   }
 }

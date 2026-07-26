@@ -49,8 +49,20 @@ func NewPipelineScheduler(bc *conf.Bootstrap, taskCore task.Core, hub ws.Huber) 
 	notifier := &dbNotifier{taskCore: taskCore, hub: hub}
 	pipeCore := NewPipelineCore(bc, pipeline.WithNotifier(notifier))
 
+	var sched *pipeline.Scheduler
 	onDone := func(taskID string, err error) {
 		ctx := context.Background()
+		if sched.WasPaused(taskID) {
+			if e := taskCore.SetTaskStatus(ctx, taskID, func(t *task.Task) {
+				t.Status = 2
+				t.Error = ""
+			}); e != nil {
+				slog.Error("set paused status failed", "task_id", taskID, "err", e)
+			}
+			notifier.broadcast("task_paused", map[string]any{"task_id": taskID})
+			return
+		}
+
 		status := 3
 		errMsg := ""
 		if err != nil {
@@ -58,14 +70,15 @@ func NewPipelineScheduler(bc *conf.Bootstrap, taskCore task.Core, hub ws.Huber) 
 			errMsg = err.Error()
 			slog.Error("task failed", "task_id", taskID, "err", err)
 		}
-		if _, e := taskCore.UpdateTask(ctx, &task.UpdateTaskInput{
-			ID: taskID, Status: status, Error: errMsg,
-		}, taskID); e != nil {
+		if e := taskCore.SetTaskStatus(ctx, taskID, func(t *task.Task) {
+			t.Status = status
+			t.Error = errMsg
+		}); e != nil {
 			slog.Error("update task status failed", "task_id", taskID, "err", e)
 		}
 	}
 
-	sched := pipeline.NewScheduler(pipeCore, onDone)
+	sched = pipeline.NewScheduler(pipeCore, onDone)
 	sched.Start()
 	return sched, sched.Stop
 }
@@ -78,9 +91,11 @@ type dbNotifier struct {
 
 func (n *dbNotifier) OnProgress(taskID, step string, progress int) {
 	ctx := context.Background()
-	if _, err := n.taskCore.UpdateTask(ctx, &task.UpdateTaskInput{
-		ID: taskID, CurrentStep: step, Progress: progress, Status: 1,
-	}, taskID); err != nil {
+	if err := n.taskCore.SetTaskStatus(ctx, taskID, func(t *task.Task) {
+		t.Status = 1
+		t.CurrentStep = step
+		t.Progress = progress
+	}); err != nil {
 		slog.Debug("update progress failed", "task_id", taskID, "err", err)
 	}
 	n.broadcast("task_progress", map[string]any{

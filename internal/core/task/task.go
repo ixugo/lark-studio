@@ -83,3 +83,14 @@ func (c Core) DeleteTask(ctx context.Context, id string) (*Task, error) {
 	}
 	return &out, nil
 }
+
+// SetTaskStatus 精确更新任务的指定字段，避免 copier 零值覆盖问题
+func (c Core) SetTaskStatus(ctx context.Context, id string, fn func(*Task)) error {
+	var out Task
+	if err := c.store.Task().Update(ctx, &out, func(b *Task) {
+		fn(b)
+	}, orm.Where("id=?", id)); err != nil {
+		return reason.ErrDB.Withf("SetTaskStatus id[%v] err[%s]", id, err.Error())
+	}
+	return nil
+}

@@ -45,10 +45,13 @@ func RegisterTask(g gin.IRouter, api TaskAPI, handler ...gin.HandlerFunc) {
 	{
 		group := g.Group("/tasks", handler...)
 		group.GET("", web.WrapH(api.listTasks))
+		group.POST("", web.WrapH(api.createTask))
+		group.POST("/batch", web.WrapH(api.batchCreateTasks))
 		group.GET("/:id", web.WrapH(api.getTask))
 		group.PUT("/:id", web.WrapH(api.updateTask))
-		group.POST("", web.WrapH(api.createTask))
 		group.DELETE("/:id", web.WrapH(api.deleteTask))
+		group.POST("/:id/pause", web.WrapH(api.pauseTask))
+		group.POST("/:id/resume", web.WrapH(api.resumeTask))
 	}
 
 	{
@@ -115,6 +118,110 @@ func (a TaskAPI) createTask(c *gin.Context, in *task.CreateTaskInput) (*task.Tas
 
 func (a TaskAPI) deleteTask(c *gin.Context, in *task.DeleteTaskInput) (*task.Task, error) {
 	return a.taskCore.DeleteTask(c.Request.Context(), in.ID)
+}
+
+// pauseTask 暂停正在运行的任务
+func (a TaskAPI) pauseTask(_ *gin.Context, in *task.GetTaskInput) (any, error) {
+	if !a.scheduler.Pause(in.ID) {
+		return nil, reason.ErrBadRequest.SetMsg("任务未在运行中")
+	}
+	return gin.H{"ok": true}, nil
+}
+
+// resumeTask 恢复已暂停或已失败的任务，从上次中断步骤继续
+func (a TaskAPI) resumeTask(c *gin.Context, in *task.GetTaskInput) (*task.Task, error) {
+	t, err := a.taskCore.GetTask(c.Request.Context(), in.ID)
+	if err != nil {
+		return nil, err
+	}
+	if t.Status != 2 && t.Status != 4 {
+		return nil, reason.ErrBadRequest.SetMsg("只能恢复已暂停或已失败的任务")
+	}
+	if a.scheduler.IsRunning(t.ID) {
+		return nil, reason.ErrBadRequest.SetMsg("任务已在运行中")
+	}
+
+	resumeFrom := t.CurrentStep
+	if err := a.taskCore.SetTaskStatus(c.Request.Context(), t.ID, func(b *task.Task) {
+		b.Status = 1
+		b.Error = ""
+	}); err != nil {
+		return nil, err
+	}
+
+	if err := a.scheduler.Submit(pipeline.Job{
+		TaskID:     t.ID,
+		InputPath:  t.InputPath,
+		OutputDir:  t.OutputDir,
+		Mode:       t.Mode,
+		TargetLang: t.TargetLang,
+		ResumeFrom: resumeFrom,
+	}); err != nil {
+		return nil, reason.ErrServer.Withf("提交流水线失败: %s", err)
+	}
+
+	return a.taskCore.GetTask(c.Request.Context(), t.ID)
+}
+
+var videoExts = map[string]bool{
+	".mp4": true, ".mkv": true, ".avi": true,
+	".mov": true, ".webm": true, ".flv": true, ".wmv": true,
+}
+
+type batchCreateInput struct {
+	Directory  string `json:"directory" binding:"required"`
+	Mode       int    `json:"mode" binding:"required,min=1,max=3"`
+	TargetLang string `json:"target_lang"`
+}
+
+// batchCreateTasks 扫描目录中的视频文件并批量创建任务
+func (a TaskAPI) batchCreateTasks(c *gin.Context, in *batchCreateInput) (any, error) {
+	entries, err := os.ReadDir(in.Directory)
+	if err != nil {
+		return nil, reason.ErrBadRequest.SetMsg("无法读取目录")
+	}
+	if in.TargetLang == "" {
+		in.TargetLang = a.conf.Pipeline.DefaultTargetLang
+	}
+
+	var tasks []*task.Task
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(entry.Name()))
+		if !videoExts[ext] {
+			continue
+		}
+
+		inputPath := filepath.Join(in.Directory, entry.Name())
+		baseName := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
+		outputDir := filepath.Join(in.Directory, baseName+"_vdub")
+		if err := os.MkdirAll(outputDir, 0o755); err != nil {
+			continue
+		}
+
+		t, err := a.taskCore.CreateTask(c.Request.Context(), &task.CreateTaskInput{
+			InputPath:  inputPath,
+			OutputDir:  outputDir,
+			Mode:       in.Mode,
+			TargetLang: in.TargetLang,
+		})
+		if err != nil {
+			continue
+		}
+
+		_ = a.scheduler.Submit(pipeline.Job{
+			TaskID:     t.ID,
+			InputPath:  t.InputPath,
+			OutputDir:  t.OutputDir,
+			Mode:       t.Mode,
+			TargetLang: t.TargetLang,
+		})
+		tasks = append(tasks, t)
+	}
+
+	return gin.H{"items": tasks, "total": len(tasks)}, nil
 }
 
 // >>> step >>>>>>>>>>>>>>>>>>>>
