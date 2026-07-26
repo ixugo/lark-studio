@@ -6,9 +6,9 @@ import (
 
 	"github.com/glebarez/sqlite"
 	"github.com/google/wire"
-	"github.com/ixugo/vdub/internal/conf"
 	"github.com/ixugo/goddd/pkg/orm"
 	"github.com/ixugo/goddd/pkg/system"
+	"github.com/ixugo/vdub/internal/conf"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )

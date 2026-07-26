@@ -8,9 +8,9 @@ import (
 	"github.com/ixugo/goddd/domain/uniqueid"
 	"github.com/ixugo/goddd/domain/uniqueid/store/uniqueiddb"
 	"github.com/ixugo/goddd/domain/version/versionapi"
-	"github.com/ixugo/vdub/internal/conf"
 	"github.com/ixugo/goddd/pkg/orm"
 	"github.com/ixugo/goddd/pkg/web"
+	"github.com/ixugo/vdub/internal/conf"
 	"gorm.io/gorm"
 )
 
@@ -20,6 +20,7 @@ var (
 		wire.Struct(new(Usecase), "*"),
 		NewHTTPHandler,
 		versionapi.New,
+		NewTaskCore, NewTaskAPI,
 	)
 )
 
@@ -27,6 +28,8 @@ type Usecase struct {
 	Conf    *conf.Bootstrap
 	DB      *gorm.DB
 	Version versionapi.API
+
+	TaskAPI TaskAPI
 }
 
 // NewHTTPHandler 生成Gin框架路由内容

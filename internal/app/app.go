@@ -10,11 +10,11 @@ import (
 	"strconv"
 	"syscall"
 
-	"github.com/ixugo/vdub/internal/conf"
 	"github.com/ixugo/goddd/pkg/logger"
 	"github.com/ixugo/goddd/pkg/orm"
 	"github.com/ixugo/goddd/pkg/server"
 	"github.com/ixugo/goddd/pkg/system"
+	"github.com/ixugo/vdub/internal/conf"
 )
 
 func Run(bc *conf.Bootstrap) {

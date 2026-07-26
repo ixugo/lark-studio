@@ -24,10 +24,13 @@ func WireApp(bc *conf.Bootstrap, log *slog.Logger) (http.Handler, func(), error)
 	}
 	core := versionapi.NewVersionCore(db)
 	versionapiAPI := versionapi.New(core)
+	taskCore := api.NewTaskCore(db)
+	taskAPI := api.NewTaskAPI(taskCore)
 	usecase := &api.Usecase{
 		Conf:    bc,
 		DB:      db,
 		Version: versionapiAPI,
+		TaskAPI: taskAPI,
 	}
 	handler := api.NewHTTPHandler(usecase)
 	return handler, func() {

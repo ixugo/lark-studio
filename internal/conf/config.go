@@ -1,12 +1,45 @@
 package conf
 
-import "time"
+import (
+	"os"
+	"time"
+)
 
 type Bootstrap struct {
-	Runtime Runtime // 运行时
-	Server  Server  // 服务器
-	Data    Data    // 数据
-	Log     Log     // 日志
+	Runtime  Runtime  // 运行时
+	Server   Server   // 服务器
+	Data     Data     // 数据
+	Log      Log      // 日志
+	Pipeline Pipeline // 流水线配置
+	LLM      LLM      // LLM 翻译配置
+	TTS      TTS      // TTS 配音配置
+}
+
+// Pipeline 流水线处理配置
+type Pipeline struct {
+	Workers           int    `comment:"并行 worker 数量"`
+	WhisperMode       string `comment:"whisper 模式: whisper-cpp / ffmpeg"`
+	WhisperBin        string `comment:"whisper.cpp 可执行文件路径（WhisperMode=whisper-cpp 时生效）"`
+	WhisperModel      string `comment:"whisper ggml 模型文件路径"`
+	FFmpegBin         string `comment:"ffmpeg 路径（空则使用 PATH 中的）"`
+	DefaultOutputDir  string `comment:"默认输出目录"`
+	DefaultTargetLang string `comment:"默认目标语言"`
+}
+
+// LLM 大模型配置
+type LLM struct {
+	BaseURL string `comment:"OpenAI 兼容 API 地址"`
+	APIKey  string `comment:"API 密钥"`
+	Model   string `comment:"模型名称"`
+}
+
+// TTS 语音合成配置
+type TTS struct {
+	Type    string `comment:"TTS 类型: edge / openai"`
+	Voice   string `comment:"默认语音"`
+	BaseURL string `comment:"OpenAI TTS API 地址（Type=openai 时生效）"`
+	APIKey  string `comment:"OpenAI TTS API 密钥"`
+	Model   string `comment:"OpenAI TTS 模型名"`
 }
 
 type Runtime struct {
@@ -79,4 +112,26 @@ func (d Duration) MarshalText() ([]byte, error) {
 
 func (d *Duration) Duration() time.Duration {
 	return time.Duration(*d)
+}
+
+// ApplyEnvOverrides 从环境变量覆盖敏感配置，避免将密钥提交到代码
+//
+// LLM:      VDUB_LLM_BASE_URL, VDUB_LLM_API_KEY, VDUB_LLM_MODEL
+// Whisper:  VDUB_WHISPER_MODEL, VDUB_WHISPER_MODE
+func (bc *Bootstrap) ApplyEnvOverrides() {
+	if v := os.Getenv("VDUB_LLM_BASE_URL"); v != "" {
+		bc.LLM.BaseURL = v
+	}
+	if v := os.Getenv("VDUB_LLM_API_KEY"); v != "" {
+		bc.LLM.APIKey = v
+	}
+	if v := os.Getenv("VDUB_LLM_MODEL"); v != "" {
+		bc.LLM.Model = v
+	}
+	if v := os.Getenv("VDUB_WHISPER_MODEL"); v != "" {
+		bc.Pipeline.WhisperModel = v
+	}
+	if v := os.Getenv("VDUB_WHISPER_MODE"); v != "" {
+		bc.Pipeline.WhisperMode = v
+	}
 }

@@ -10,8 +10,8 @@ func DefaultConfig() Bootstrap {
 	return Bootstrap{
 		Server: Server{
 			HTTP: ServerHTTP{
-				Port:      8080,
-				Timeout:   Duration(30 * time.Second),
+				Port:      9523,
+				Timeout:   Duration(120 * time.Second),
 				JwtSecret: orm.GenerateRandomString(32),
 				PProf: ServerPPROF{
 					Enabled:   true,
@@ -21,21 +21,36 @@ func DefaultConfig() Bootstrap {
 		},
 		Data: Data{
 			Database: Database{
-				Dsn:             "./data.db",
-				MaxIdleConns:    10,
-				MaxOpenConns:    50,
+				Dsn:             "vdub.db",
+				MaxIdleConns:    1,
+				MaxOpenConns:    1,
 				ConnMaxLifetime: Duration(6 * time.Hour),
 				SlowThreshold:   Duration(200 * time.Millisecond),
 			},
 		},
 		Log: Log{
 			Dir:          "./logs",
-			Level:        "info",
+			Level:        "debug",
 			MaxAge:       7,
 			RotationTime: Duration(8 * time.Hour),
 			MaxSize:      50,
 			Compress:     false,
 			MaxBackups:   0,
+		},
+		Pipeline: Pipeline{
+			Workers:           2,
+			WhisperMode:       "ffmpeg",
+			WhisperBin:        "whisper-cpp",
+			DefaultTargetLang: "zh-CN",
+		},
+		LLM: LLM{
+			BaseURL: "http://localhost:11434/v1",
+			Model:   "qwen2.5:7b",
+		},
+		TTS: TTS{
+			Type:  "edge",
+			Voice: "zh-CN-YunjianNeural",
+			Model: "tts-1",
 		},
 	}
 }

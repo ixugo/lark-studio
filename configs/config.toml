@@ -1,34 +1,60 @@
 [Server]
   [Server.HTTP]
-    Port = 8080
+    Port = 9523
     JwtSecret = ""
-    Timeout = "30s"
+    Timeout = "120s"
 
     [Server.HTTP.Pprof]
       Enabled = true
-      # pprof 访问 IP 白名单
       AccessIps = ['::1', '127.0.0.1']
 
 [Data]
   [Data.Database]
-    Dsn = './data.db'
+    # 相对路径基于 DataDir，DataDir 默认 ~/dsub
+    Dsn = 'vdub.db'
     MaxIdleConns = 1
     MaxOpenConns = 1
     ConnMaxLifetime = '6h0m0s'
     SlowThreshold = '200ms'
 
 [Log]
-  # 日志存储目录，不能使用特殊符号
   Dir = './logs'
-  # 记录级别 debug/info/warn/error
   Level = 'debug'
-  # 保留日志多久，超过时间自动删除
   MaxAge = 7
-  # 多久时间，分割一个新的日志文件
   RotationTime = '8h0m0s'
-  # 多大文件，分割一个新的日志文件(MB)
   MaxSize = 50
-  # 是否压缩日志
   Compress = false
-  # 保留的旧日志归档文件最大数量，超出的自动删除
   MaxBackups = 0
+
+# 流水线配置
+[Pipeline]
+  # 并行 worker 数量
+  Workers = 2
+  # whisper 模式: whisper-cpp / ffmpeg（ffmpeg 需编译时启用 --enable-whisper）
+  WhisperMode = "ffmpeg"
+  # whisper.cpp 可执行文件路径（WhisperMode=whisper-cpp 时生效）
+  WhisperBin = "whisper-cpp"
+  # whisper ggml 模型文件路径
+  WhisperModel = ""
+  # ffmpeg 路径（空则使用 PATH 中的）
+  FFmpegBin = ""
+  # 默认输出目录（空则与输入同目录加 _final 后缀）
+  DefaultOutputDir = ""
+  # 默认目标语言
+  DefaultTargetLang = "zh-CN"
+
+# LLM 翻译配置
+[LLM]
+  BaseURL = "http://localhost:11434/v1"
+  APIKey = ""
+  Model = "qwen2.5:7b"
+
+# TTS 配置
+[TTS]
+  # 类型: edge / openai
+  Type = "edge"
+  Voice = "zh-CN-YunjianNeural"
+  # OpenAI TTS 配置（Type=openai 时生效）
+  BaseURL = ""
+  APIKey = ""
+  Model = "tts-1"
