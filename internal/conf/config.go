@@ -2,6 +2,7 @@ package conf
 
 import (
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -112,6 +113,34 @@ func (d Duration) MarshalText() ([]byte, error) {
 
 func (d *Duration) Duration() time.Duration {
 	return time.Duration(*d)
+}
+
+// DataDir 返回应用数据根目录 ~/dsub，自动创建
+func DataDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "."
+	}
+	return filepath.Join(home, "dsub")
+}
+
+// EnsureDataDirs 确保数据目录结构存在
+func EnsureDataDirs() error {
+	base := DataDir()
+	for _, sub := range []string{"configs", "backup", "logs"} {
+		if err := os.MkdirAll(filepath.Join(base, sub), 0o755); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ResolveDSN 将相对路径 DSN 解析为基于 DataDir 的绝对路径
+func ResolveDSN(dsn string) string {
+	if filepath.IsAbs(dsn) || len(dsn) > 10 {
+		return dsn
+	}
+	return filepath.Join(DataDir(), dsn)
 }
 
 // ApplyEnvOverrides 从环境变量覆盖敏感配置，避免将密钥提交到代码

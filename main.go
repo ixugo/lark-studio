@@ -29,7 +29,7 @@ var (
 )
 
 var (
-	configDir = flag.String("conf", "./configs", "config directory, eg: -conf /configs/")
+	configDir = flag.String("conf", "", "config directory (default: ~/dsub/configs/)")
 	runFile   = flag.String("run", "", "directly run pipeline on a video file, skip HTTP server")
 	runMode   = flag.Int("mode", 2, "processing mode: 1=subtitle, 2=translate, 3=dub")
 	runLang   = flag.String("lang", "", "target language (default from config)")
@@ -46,9 +46,19 @@ func getBuildRelease() bool {
 func main() {
 	flag.Parse()
 
+	// 初始化数据目录 ~/dsub/
+	if err := conf.EnsureDataDirs(); err != nil {
+		fmt.Fprintf(os.Stderr, "初始化数据目录失败: %s\n", err)
+		os.Exit(1)
+	}
+
 	// 初始化配置
 	var bc conf.Bootstrap
-	fileDir, _ := system.Abs(*configDir)
+	cfgDir := *configDir
+	if cfgDir == "" {
+		cfgDir = filepath.Join(conf.DataDir(), "configs")
+	}
+	fileDir, _ := system.Abs(cfgDir)
 	_ = os.MkdirAll(fileDir, 0o755)
 	filePath := filepath.Join(fileDir, "config.toml")
 	configIsNotExistWrite(filePath)

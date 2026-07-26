@@ -5,14 +5,24 @@
 - [x] goddd 初始化项目 + Task/Step 领域 CRUD 生成
 - [x] 流水线核心 6 步骤 (whisper/split/translate/tts/merge/burn)
 - [x] 调度器 (2 worker goroutine + 翻译/TTS 互斥锁)
-- [x] 适配器层 (whisper.cpp / OpenAI LLM / edge-tts / OpenAI TTS)
-- [x] 配置结构体 (Pipeline/LLM/TTS)
-- [x] SRT 解析工具
+- [x] 适配器层 (whisper.cpp / ffmpeg whisper / OpenAI LLM / edge-tts / OpenAI TTS)
+- [x] 配置结构体 (Pipeline/LLM/TTS) + 环境变量覆盖
+- [x] SRT 解析工具 + 单元测试
+- [x] DefaultConfig 补全 Pipeline/LLM/TTS 默认值
+- [x] CLI `-run` 模式（含 ffmpeg 裁剪 `-ss`/`-to`）
+- [x] Wire 接线：Usecase 持有 Scheduler，createTask 自动提交流水线
+- [x] 翻译直接读取 src.srt 条目，保证时间轴 1:1 对齐（移除 split 中间步骤）
+- [x] 单元测试: SRT 解析、分句规则、步骤构建、parseSRTTime
+- [x] 集成测试: 裁剪视频 10~30s + 跑 ModeTranslate 流水线（build tag: integration）
+- [x] dbNotifier 将流水线进度回写 Task DB
 
-## 进行中
-
-- [ ] Wire 接线 + main.go 串联所有组件
-- [ ] 数据目录管理 (`~/dsub/configs/`, `~/dsub/backup/`)，跨平台 `os.UserHomeDir()`
+- [x] 数据目录管理 (`~/dsub/configs/`, `~/dsub/backup/`, `~/dsub/logs/`)，跨平台 `os.UserHomeDir()`
+- [x] LLM 翻译鲁棒性：数量不符时自动重试（3 次 + 指数退避）
+- [x] TTS 错误重试：指数退避 (3s/6s/12s)
+- [x] 字幕样式修复：BorderStyle=1 + OutlineWidth=1，纯白字透明底
+- [x] 字幕间距优化：中英文 MarginV 调整 (36/12)
+- [x] 跳过已存在的 src.srt（输出目录 / 同名 .srt）
+- [x] 字幕-音频同步单元测试 (sync_test.go)
 
 ## 待实现
 
@@ -20,7 +30,6 @@
 
 - [ ] 断点恢复: Task 状态持久化到 SQLite，恢复时从 CurrentStep 继续
 - [ ] 暂停/恢复: context cancel + 重新 Submit
-- [ ] 智能字幕检测: 输入文件同名 .srt 存在时跳过 whisper
 - [ ] 批量提交: 用户指定目录，自动扫描视频文件建立多个 Task
 
 ### Web UI (HTMX + WebSocket)
@@ -48,5 +57,3 @@
 - [ ] 日志系统: 每个 Task 独立日志文件
 - [ ] 资源清理: 处理完成后可选删除中间产物
 - [ ] ffmpeg 进度回调: 解析 ffmpeg stderr 获取编码进度
-- [ ] 单元测试: SRT 解析、分句规则、时间轴对齐
-- [ ] 集成测试: 端到端处理一个短视频

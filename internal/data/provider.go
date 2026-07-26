@@ -1,13 +1,11 @@
 package data
 
 import (
-	"path/filepath"
 	"strings"
 
 	"github.com/glebarez/sqlite"
 	"github.com/google/wire"
 	"github.com/ixugo/goddd/pkg/orm"
-	"github.com/ixugo/goddd/pkg/system"
 	"github.com/ixugo/vdub/internal/conf"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -41,5 +39,6 @@ func getDialector(dsn string) (gorm.Dialector, bool) {
 			DSN:        dsn,
 		}), false
 	}
-	return sqlite.Open(filepath.Join(system.Getwd(), dsn)), true
+	resolved := conf.ResolveDSN(dsn)
+	return sqlite.Open(resolved), true
 }
