@@ -21,6 +21,7 @@ func NewPipelineCore(bc *conf.Bootstrap, opts ...pipeline.Option) *pipeline.Core
 		WhisperModel:    bc.Pipeline.WhisperModel,
 		FFmpegBin:       bc.Pipeline.FFmpegBin,
 		TranslatePrompt: bc.Pipeline.TranslatePrompt,
+		MaxSpeedFactor:  bc.Pipeline.MaxSpeedFactor,
 	}
 
 	var wr pipeline.WhisperRunner

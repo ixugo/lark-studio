@@ -131,7 +131,11 @@ func (c *Core) translateAndTTS(ctx context.Context, job Job, entries []srtEntry,
 	return c.writeTranslationOutputs(entries, translated, job.OutputDir)
 }
 
+// 上下文窗口大小：每次翻译时携带前后各 3 句供 LLM 参考语境
+const contextWindow = 3
+
 // translateAllChunks 分块翻译全部句子（调用方须持有 llmMu 锁）
+// 每个 chunk 额外携带前后各 contextWindow 句作为上下文，提升跨块连贯性
 func (c *Core) translateAllChunks(ctx context.Context, job Job, sentences []string) ([]string, error) {
 	var translated []string
 	total := len(sentences)
@@ -144,7 +148,12 @@ func (c *Core) translateAllChunks(ctx context.Context, job Job, sentences []stri
 		end := min(i+translateChunkSize, total)
 		chunk := sentences[i:end]
 
-		result, err := c.llm.Translate(ctx, chunk, job.TargetLang, c.cfg.TranslatePrompt)
+		ctxStart := max(0, i-contextWindow)
+		ctxEnd := min(total, end+contextWindow)
+		before := sentences[ctxStart:i]
+		after := sentences[end:ctxEnd]
+
+		result, err := c.llm.Translate(ctx, chunk, job.TargetLang, c.cfg.TranslatePrompt, before, after)
 		if err != nil {
 			return nil, fmt.Errorf("翻译第 %d-%d 句失败: %w", i+1, end, err)
 		}

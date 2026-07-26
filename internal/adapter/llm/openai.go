@@ -144,23 +144,29 @@ const (
 
 // Translate 翻译句子列表，数量不符时自动重试
 // systemPrompt 为空时使用内置默认提示词
-func (c *Client) Translate(ctx context.Context, sentences []string, targetLang, systemPrompt string) ([]string, error) {
+// contextBefore/contextAfter 作为上下文帮助 LLM 理解语境，不计入翻译输出
+func (c *Client) Translate(ctx context.Context, sentences []string, targetLang, systemPrompt string, contextBefore, contextAfter []string) ([]string, error) {
 	numbered := make([]string, len(sentences))
 	for i, s := range sentences {
 		numbered[i] = fmt.Sprintf("%d. %s", i+1, s)
 	}
 
+	hasContext := len(contextBefore) > 0 || len(contextAfter) > 0
 	system := systemPrompt
 	if system == "" {
+		contextRule := ""
+		if hasContext {
+			contextRule = "\n- Lines marked [CTX] are context for reference only — do NOT translate them"
+		}
 		system = fmt.Sprintf(`You are a professional subtitle translator. Translate the following numbered sentences to %s.
 Rules:
 - You MUST output exactly %d lines, one translation per input line
-- Each translated line should start with its number (e.g., "1. 翻译内容")
+- Each translated line should start with its number (e.g., "1. 翻译内容")%s
 - Keep translations concise: each translated line should be short enough to read naturally at normal speaking speed within the original subtitle's display duration
 - Maintain the meaning and tone of the original
 - Use natural, fluent, colloquial expressions suitable for subtitles
 - For technical terms, keep the English original in parentheses when first mentioned
-- Avoid overly literal or stiff translations`, targetLang, len(sentences))
+- Avoid overly literal or stiff translations`, targetLang, len(sentences), contextRule)
 	} else {
 		system = strings.NewReplacer(
 			"{{target_lang}}", targetLang,
@@ -168,7 +174,15 @@ Rules:
 		).Replace(system)
 	}
 
-	input := strings.Join(numbered, "\n")
+	var inputParts []string
+	for _, s := range contextBefore {
+		inputParts = append(inputParts, "[CTX] "+s)
+	}
+	inputParts = append(inputParts, numbered...)
+	for _, s := range contextAfter {
+		inputParts = append(inputParts, "[CTX] "+s)
+	}
+	input := strings.Join(inputParts, "\n")
 	expected := len(sentences)
 
 	var lastTranslated []string

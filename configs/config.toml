@@ -42,6 +42,10 @@
   DefaultOutputDir = ""
   # 默认目标语言
   DefaultTargetLang = "zh-CN"
+  # 自定义翻译系统提示词（留空使用内置默认模板，可用变量: {{target_lang}} {{count}}）
+  TranslatePrompt = ""
+  # TTS 调速上限（0 或 ≤1 不调速，推荐 1.2~1.3）
+  MaxSpeedFactor = 1.2
 
 # LLM 翻译配置
 [LLM]

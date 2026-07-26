@@ -57,6 +57,16 @@
 - [x] Flutter 任务卡片暂停/恢复/重试按钮
 - [x] Flutter 任务详情暂停/恢复操作栏 + 错误信息展示
 
+### 翻译/调速/批量优化
+
+- [x] 翻译上下文窗口: 每个 chunk 携带前后各 3 句上下文提升连贯性
+- [x] TTS 温和调速: 超时音频段 atempo 加速，上限可配置（MaxSpeedFactor）
+- [x] 批量提交改为视频路径数组: POST /tasks/batch 接受 videos[] 替代目录
+- [x] Flutter 批量导入弹窗改为多文件选择器
+- [x] Flutter 配置页新增 TTS 调速上限滑块
+- [x] 新增单元测试: semanticBreak / 翻译上下文窗口 / 调速因子逻辑
+- [x] 生成 CHANGELOG.md
+
 ## 待实现
 
 ### 质量提升

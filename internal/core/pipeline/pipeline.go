@@ -48,11 +48,12 @@ type Notifier interface {
 
 // Config 流水线依赖配置
 type Config struct {
-	WhisperBin      string // whisper.cpp 可执行文件路径
-	WhisperModel    string // whisper 模型路径
-	FFmpegBin       string // ffmpeg 路径，空则使用 PATH 中的
-	WorkDir         string // 临时工作目录
-	TranslatePrompt string // 自定义翻译提示词，空串则使用内置默认
+	WhisperBin      string  // whisper.cpp 可执行文件路径
+	WhisperModel    string  // whisper 模型路径
+	FFmpegBin       string  // ffmpeg 路径，空则使用 PATH 中的
+	WorkDir         string  // 临时工作目录
+	TranslatePrompt string  // 自定义翻译提示词，空串则使用内置默认
+	MaxSpeedFactor  float64 // TTS 调速上限，≤1 时不调速（推荐 1.2~1.3）
 }
 
 // Core 流水线调度核心

@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 )
 
 // runMerge 合并音频段到时间轴
+// 先对超时段做温和调速（上限 MaxSpeedFactor），再按字幕时间轴拼接
 func (c *Core) runMerge(ctx context.Context, job Job) error {
 	audioDir := filepath.Join(job.OutputDir, "audio_segs")
 	srcSRT := filepath.Join(job.OutputDir, "src.srt")
@@ -38,6 +40,8 @@ func (c *Core) runMerge(ctx context.Context, job Job) error {
 	}
 	srtEntries := parseSRT(string(srtData))
 
+	c.adjustAudioSpeeds(ctx, audioFiles, srtEntries, job)
+
 	dubAudio := filepath.Join(job.OutputDir, "dub.mp3")
 	if err := c.concatWithTimeline(ctx, audioFiles, srtEntries, dubAudio); err != nil {
 		return fmt.Errorf("合并音频失败: %w", err)
@@ -45,6 +49,60 @@ func (c *Core) runMerge(ctx context.Context, job Job) error {
 
 	c.notifier.OnProgress(job.TaskID, StepMerge, 100)
 	return nil
+}
+
+// adjustAudioSpeeds 温和调速：TTS 音频超过原始字幕时长时，用 atempo 适度加速
+// maxFactor ≤1 时跳过调速；差异 <2% 时不处理
+func (c *Core) adjustAudioSpeeds(ctx context.Context, audioFiles []string, entries []srtEntry, job Job) {
+	maxFactor := c.cfg.MaxSpeedFactor
+	if maxFactor <= 1 {
+		return
+	}
+
+	ffmpeg := c.cfg.FFmpegBin
+	if ffmpeg == "" {
+		ffmpeg = "ffmpeg"
+	}
+
+	adjusted := 0
+	for i, af := range audioFiles {
+		if i >= len(entries) || ctx.Err() != nil {
+			break
+		}
+
+		audioDur := probeMediaDuration(ffmpeg, af)
+		segDur := entries[i].EndSec - entries[i].StartSec
+		if audioDur <= 0 || segDur <= 0 || audioDur <= segDur {
+			continue
+		}
+
+		factor := audioDur / segDur
+		if factor < 1.02 {
+			continue
+		}
+		if factor > maxFactor {
+			factor = maxFactor
+		}
+
+		adjPath := af + ".adj.wav"
+		cmd := exec.CommandContext(ctx, ffmpeg,
+			"-y", "-i", af,
+			"-filter:a", fmt.Sprintf("atempo=%.3f", factor),
+			adjPath,
+		)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			slog.Debug("audio speed adjust failed", "file", af, "err", err, "output", string(out))
+			continue
+		}
+
+		os.Remove(af)
+		os.Rename(adjPath, af)
+		adjusted++
+	}
+
+	if adjusted > 0 {
+		c.notifier.OnLog(job.TaskID, fmt.Sprintf("调速 %d 段音频 (上限 %.1fx)", adjusted, maxFactor))
+	}
 }
 
 // concatWithTimeline 按字幕时间轴拼接音频段（中间插入静音）

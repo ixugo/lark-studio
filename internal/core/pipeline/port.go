@@ -21,8 +21,9 @@ type LLMClient interface {
 	// sentences: 待翻译句子列表
 	// targetLang: 目标语言
 	// systemPrompt: 自定义系统提示词，空串则使用内置默认
-	// 返回翻译后的句子列表（与输入一一对应）
-	Translate(ctx context.Context, sentences []string, targetLang, systemPrompt string) ([]string, error)
+	// contextBefore/contextAfter: 上下文句子（仅供 LLM 参考，不翻译）
+	// 返回翻译后的句子列表（与 sentences 一一对应）
+	Translate(ctx context.Context, sentences []string, targetLang, systemPrompt string, contextBefore, contextAfter []string) ([]string, error)
 }
 
 // TTSClient 文本转语音接口

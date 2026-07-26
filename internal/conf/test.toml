@@ -1,0 +1,83 @@
+[Runtime]
+[Server]
+  # 对外提供的服务，建议由 nginx 代理
+  [Server.HTTP]
+    # http 端口
+    Port = 8081
+    # 请求超时时间
+    Timeout = '0s'
+    # jwt 秘钥，空串时，每次启动程序将随机赋值
+    JwtSecret = ''
+
+    [Server.HTTP.PProf]
+      # 是否启用 pprof, 建议设置为 true
+      Enabled = false
+      # 访问白名单
+      AccessIps = []
+
+[Data]
+  # 数据库支持 sqlite 和 postgres 两种，使用 sqlite 时 dsn 应当填写文件存储路径
+  [Data.Database]
+    Dsn = ''
+    MaxIdleConns = 0
+    MaxOpenConns = 0
+    ConnMaxLifetime = '0s'
+    SlowThreshold = '0s'
+
+[Log]
+  # 日志文件名(选填)
+  Name = ''
+  # 日志存储目录，不能使用特殊符号
+  Dir = ''
+  # 记录级别 debug/info/warn/error
+  Level = ''
+  # 保留日志多久，超过时间自动删除
+  MaxAge = 0
+  # 多久时间，分割一个新的日志文件
+  RotationTime = '0s'
+  # 多大文件，分割一个新的日志文件(MB)
+  MaxSize = 0
+  # 是否压缩日志
+  Compress = false
+  # 保留的旧日志归档文件最大数量，超出的自动删除
+  MaxBackups = 0
+
+[Pipeline]
+  # 并行 worker 数量
+  Workers = 0
+  # whisper 模式: whisper-cpp / ffmpeg
+  WhisperMode = ''
+  # whisper.cpp 可执行文件路径（WhisperMode=whisper-cpp 时生效）
+  WhisperBin = ''
+  # whisper ggml 模型文件路径
+  WhisperModel = ''
+  # ffmpeg 路径（空则使用 PATH 中的）
+  FFmpegBin = ''
+  # 默认输出目录
+  DefaultOutputDir = ''
+  # 默认目标语言
+  DefaultTargetLang = ''
+  # 自定义翻译系统提示词（留空使用内置默认）
+  TranslatePrompt = ''
+  # TTS 调速上限（0 或 ≤1 不调速，推荐 1.2~1.3）
+  MaxSpeedFactor = 0.0
+
+[LLM]
+  # OpenAI 兼容 API 地址
+  BaseURL = ''
+  # API 密钥
+  APIKey = ''
+  # 模型名称
+  Model = ''
+
+[TTS]
+  # TTS 类型: edge / openai
+  Type = ''
+  # 默认语音
+  Voice = ''
+  # OpenAI TTS API 地址（Type=openai 时生效）
+  BaseURL = ''
+  # OpenAI TTS API 密钥
+  APIKey = ''
+  # OpenAI TTS 模型名
+  Model = ''

@@ -163,40 +163,26 @@ func (a TaskAPI) resumeTask(c *gin.Context, in *task.GetTaskInput) (*task.Task, 
 	return a.taskCore.GetTask(c.Request.Context(), t.ID)
 }
 
-var videoExts = map[string]bool{
-	".mp4": true, ".mkv": true, ".avi": true,
-	".mov": true, ".webm": true, ".flv": true, ".wmv": true,
-}
-
 type batchCreateInput struct {
-	Directory  string `json:"directory" binding:"required"`
-	Mode       int    `json:"mode" binding:"required,min=1,max=3"`
-	TargetLang string `json:"target_lang"`
+	Videos     []string `json:"videos" binding:"required,min=1"`
+	Mode       int      `json:"mode" binding:"required,min=1,max=3"`
+	TargetLang string   `json:"target_lang"`
 }
 
-// batchCreateTasks 扫描目录中的视频文件并批量创建任务
+// batchCreateTasks 接收视频路径数组，为每个视频创建独立任务
 func (a TaskAPI) batchCreateTasks(c *gin.Context, in *batchCreateInput) (any, error) {
-	entries, err := os.ReadDir(in.Directory)
-	if err != nil {
-		return nil, reason.ErrBadRequest.SetMsg("无法读取目录")
-	}
 	if in.TargetLang == "" {
 		in.TargetLang = a.conf.Pipeline.DefaultTargetLang
 	}
 
 	var tasks []*task.Task
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		ext := strings.ToLower(filepath.Ext(entry.Name()))
-		if !videoExts[ext] {
+	for _, inputPath := range in.Videos {
+		if _, err := os.Stat(inputPath); err != nil {
 			continue
 		}
 
-		inputPath := filepath.Join(in.Directory, entry.Name())
-		baseName := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
-		outputDir := filepath.Join(in.Directory, baseName+"_vdub")
+		baseName := strings.TrimSuffix(filepath.Base(inputPath), filepath.Ext(inputPath))
+		outputDir := filepath.Join(filepath.Dir(inputPath), baseName+"_vdub")
 		if err := os.MkdirAll(outputDir, 0o755); err != nil {
 			continue
 		}
