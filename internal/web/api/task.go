@@ -2,9 +2,16 @@
 package api
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"github.com/ixugo/goddd/pkg/orm"
+	"github.com/ixugo/goddd/pkg/reason"
 	"github.com/ixugo/goddd/pkg/web"
+	"github.com/ixugo/vdub/internal/conf"
+	"github.com/ixugo/vdub/internal/core/pipeline"
 	"github.com/ixugo/vdub/internal/core/task"
 	"github.com/ixugo/vdub/internal/core/task/store/taskdb"
 	"gorm.io/gorm"
@@ -12,7 +19,9 @@ import (
 
 // TaskAPI 为 http 提供业务方法
 type TaskAPI struct {
-	taskCore task.Core
+	taskCore  task.Core
+	scheduler *pipeline.Scheduler
+	conf      *conf.Bootstrap
 }
 
 func NewTaskCore(db *gorm.DB) task.Core {
@@ -23,8 +32,8 @@ func NewTaskCore(db *gorm.DB) task.Core {
 	return task.NewCore(store)
 }
 
-func NewTaskAPI(core task.Core) TaskAPI {
-	return TaskAPI{taskCore: core}
+func NewTaskAPI(core task.Core, sched *pipeline.Scheduler, bc *conf.Bootstrap) TaskAPI {
+	return TaskAPI{taskCore: core, scheduler: sched, conf: bc}
 }
 
 // NewTaskAPIFromDB 如果已经初始化，可以考虑 NewTaskAPI
@@ -68,7 +77,40 @@ func (a TaskAPI) updateTask(c *gin.Context, in *task.UpdateTaskInput) (*task.Tas
 }
 
 func (a TaskAPI) createTask(c *gin.Context, in *task.CreateTaskInput) (*task.Task, error) {
-	return a.taskCore.CreateTask(c.Request.Context(), in)
+	if _, err := os.Stat(in.InputPath); err != nil {
+		return nil, reason.ErrBadRequest.SetMsg("视频文件不存在")
+	}
+	if in.Mode < pipeline.ModeSubtitle || in.Mode > pipeline.ModeDub {
+		return nil, reason.ErrBadRequest.SetMsg("无效的处理模式")
+	}
+
+	if in.OutputDir == "" {
+		baseName := strings.TrimSuffix(filepath.Base(in.InputPath), filepath.Ext(in.InputPath))
+		in.OutputDir = filepath.Join(filepath.Dir(in.InputPath), baseName+"_vdub")
+	}
+	if err := os.MkdirAll(in.OutputDir, 0o755); err != nil {
+		return nil, reason.ErrServer.Withf("创建输出目录失败: %s", err)
+	}
+	if in.TargetLang == "" {
+		in.TargetLang = a.conf.Pipeline.DefaultTargetLang
+	}
+
+	t, err := a.taskCore.CreateTask(c.Request.Context(), in)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := a.scheduler.Submit(pipeline.Job{
+		TaskID:     t.ID,
+		InputPath:  t.InputPath,
+		OutputDir:  t.OutputDir,
+		Mode:       t.Mode,
+		TargetLang: t.TargetLang,
+	}); err != nil {
+		return nil, reason.ErrServer.Withf("提交流水线失败: %s", err)
+	}
+
+	return t, nil
 }
 
 func (a TaskAPI) deleteTask(c *gin.Context, in *task.DeleteTaskInput) (*task.Task, error) {

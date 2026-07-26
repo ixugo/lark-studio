@@ -10,17 +10,23 @@ import (
 )
 
 // runWhisper 执行语音识别步骤
-// 若同名 .srt 已存在则跳过 whisper，直接使用已有字幕
+// 优先级：输出目录 src.srt > 输入目录同名 .srt > 执行 whisper
 func (c *Core) runWhisper(ctx context.Context, job Job) error {
+	workSRT := filepath.Join(job.OutputDir, "src.srt")
+
+	// 输出目录已有 src.srt（断点恢复 / 重跑场景）
+	if info, err := os.Stat(workSRT); err == nil && info.Size() > 0 {
+		c.notifier.OnLog(job.TaskID, "输出目录已有 src.srt，跳过 whisper")
+		c.notifier.OnProgress(job.TaskID, StepWhisper, 100)
+		return nil
+	}
+
+	// 输入目录同名 SRT（用户手动提供）
 	inputDir := filepath.Dir(job.InputPath)
 	baseName := strings.TrimSuffix(filepath.Base(job.InputPath), filepath.Ext(job.InputPath))
-
-	// 检查同名 SRT 是否已存在（用户手动提供的字幕）
 	existingSRT := filepath.Join(inputDir, baseName+".srt")
 	if _, err := os.Stat(existingSRT); err == nil {
 		c.notifier.OnLog(job.TaskID, fmt.Sprintf("发现已有字幕: %s，跳过 whisper", existingSRT))
-		// 复制到工作目录
-		workSRT := filepath.Join(job.OutputDir, "src.srt")
 		data, err := os.ReadFile(existingSRT)
 		if err != nil {
 			return fmt.Errorf("读取已有字幕失败: %w", err)
@@ -35,10 +41,8 @@ func (c *Core) runWhisper(ctx context.Context, job Job) error {
 	}
 
 	// whisper 转写
-	outputSRT := filepath.Join(job.OutputDir, "src.srt")
 	c.notifier.OnProgress(job.TaskID, StepWhisper, 30)
-
-	if err := c.whisper.Transcribe(ctx, audioPath, outputSRT, "auto"); err != nil {
+	if err := c.whisper.Transcribe(ctx, audioPath, workSRT, "auto"); err != nil {
 		return fmt.Errorf("whisper 转写失败: %w", err)
 	}
 

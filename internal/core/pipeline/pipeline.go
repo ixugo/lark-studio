@@ -149,14 +149,15 @@ func (c *Core) Run(ctx context.Context, job Job) error {
 }
 
 // buildSteps 根据模式构建步骤列表
+// split 步骤暂不启用：当前直接翻译 SRT 条目以保证时间轴 1:1 对齐
 func (c *Core) buildSteps(mode int) []string {
 	switch mode {
 	case ModeSubtitle:
 		return []string{StepWhisper, StepBurn}
 	case ModeTranslate:
-		return []string{StepWhisper, StepSplit, StepTranslate, StepBurn}
+		return []string{StepWhisper, StepTranslate, StepBurn}
 	case ModeDub:
-		return []string{StepWhisper, StepSplit, StepTranslate, StepTTS, StepMerge, StepBurn}
+		return []string{StepWhisper, StepTranslate, StepTTS, StepMerge, StepBurn}
 	default:
 		return []string{StepWhisper, StepBurn}
 	}

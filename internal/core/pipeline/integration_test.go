@@ -86,8 +86,8 @@ func TestIntegration_TranslatePipeline(t *testing.T) {
 		t.Fatalf("流水线执行失败: %v", err)
 	}
 
-	// 验证产物
-	expectFiles := []string{"src.srt", "split.txt", "trans.txt", "trans.srt"}
+	// 验证产物（split 步骤已从流水线摘除，翻译直接读取 src.srt）
+	expectFiles := []string{"src.srt", "trans.txt", "trans.srt"}
 	for _, f := range expectFiles {
 		path := filepath.Join(workDir, f)
 		info, err := os.Stat(path)

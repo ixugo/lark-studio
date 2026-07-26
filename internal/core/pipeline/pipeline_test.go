@@ -12,8 +12,8 @@ func TestBuildSteps(t *testing.T) {
 		want []string
 	}{
 		{ModeSubtitle, []string{StepWhisper, StepBurn}},
-		{ModeTranslate, []string{StepWhisper, StepSplit, StepTranslate, StepBurn}},
-		{ModeDub, []string{StepWhisper, StepSplit, StepTranslate, StepTTS, StepMerge, StepBurn}},
+		{ModeTranslate, []string{StepWhisper, StepTranslate, StepBurn}},
+		{ModeDub, []string{StepWhisper, StepTranslate, StepTTS, StepMerge, StepBurn}},
 		{0, []string{StepWhisper, StepBurn}},  // 未知模式退化为 subtitle
 		{99, []string{StepWhisper, StepBurn}}, // 未知模式退化为 subtitle
 	}

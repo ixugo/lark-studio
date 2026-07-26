@@ -6,8 +6,33 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
+
+// 字幕样式常量（对齐 VideoLingo _7_sub_into_vid.py / _12_dub_to_vid.py）
+const (
+	subTransFontSize = 18
+	subSrcFontSize   = 14
+	subTransColor    = "&HFFFFFF"
+	subSrcColor      = "&HCCCCCC"
+	subOutlineColor  = "&H000000"
+	subOutlineWidth  = 1
+	subTransMarginV  = 36 // 翻译字幕距底部（缩小间距，VideoLingo 用 50）
+	subSrcMarginV    = 12 // 原文字幕距底部（缩小间距，VideoLingo 用 20）
+)
+
+// subFontName 根据平台选择字体名（对齐 VideoLingo）
+var subFontName = func() string {
+	switch runtime.GOOS {
+	case "linux":
+		return "NotoSansCJK-Regular"
+	case "darwin":
+		return "Arial Unicode MS"
+	default:
+		return "Arial"
+	}
+}()
 
 // runBurn 烧录字幕到视频 / 合并配音
 func (c *Core) runBurn(ctx context.Context, job Job) error {
@@ -50,27 +75,32 @@ func (c *Core) runBurn(ctx context.Context, job Job) error {
 
 // burnSubtitle 烧录字幕（双语或单语）
 // transSRT: 翻译字幕（中文），srcSRT: 原文字幕（英文），srcSRT 为空则仅烧录 transSRT
+// 样式对齐 VideoLingo: BorderStyle=1（描边无色块），OutlineWidth=1（1像素黑色描边）
 func (c *Core) burnSubtitle(ctx context.Context, ffmpeg, videoPath, transSRT, srcSRT, outputPath string) error {
 	var filterParts []string
 
-	// 翻译字幕（中文/主语言，在上方，纯白无描边）
 	if _, err := os.Stat(transSRT); err == nil {
 		filterParts = append(filterParts, fmt.Sprintf(
-			"subtitles=%s:force_style='FontSize=18,FontName=Arial Unicode MS,"+
-				"PrimaryColour=&HFFFFFF,OutlineWidth=0,"+
-				"Alignment=2,MarginV=50,BorderStyle=3'",
+			"subtitles=%s:force_style='FontSize=%d,FontName=%s,"+
+				"PrimaryColour=%s,OutlineColour=%s,OutlineWidth=%d,"+
+				"Alignment=2,MarginV=%d,BorderStyle=1'",
 			transSRT,
+			subTransFontSize, subFontName,
+			subTransColor, subOutlineColor, subOutlineWidth,
+			subTransMarginV,
 		))
 	}
 
-	// 原文字幕（英文，在下方，浅灰无描边）
 	if srcSRT != "" {
 		if _, err := os.Stat(srcSRT); err == nil {
 			filterParts = append(filterParts, fmt.Sprintf(
-				"subtitles=%s:force_style='FontSize=14,FontName=Arial Unicode MS,"+
-					"PrimaryColour=&HCCCCCC,OutlineWidth=0,"+
-					"Alignment=2,MarginV=20,BorderStyle=3'",
+				"subtitles=%s:force_style='FontSize=%d,FontName=%s,"+
+					"PrimaryColour=%s,OutlineColour=%s,OutlineWidth=%d,"+
+					"Alignment=2,MarginV=%d,BorderStyle=1'",
 				srcSRT,
+				subSrcFontSize, subFontName,
+				subSrcColor, subOutlineColor, subOutlineWidth,
+				subSrcMarginV,
 			))
 		}
 	}
@@ -97,22 +127,26 @@ func (c *Core) burnSubtitle(ctx context.Context, ffmpeg, videoPath, transSRT, sr
 func (c *Core) burnWithDub(ctx context.Context, ffmpeg, videoPath, transSRT, srcSRT, dubAudio, outputPath string) error {
 	var filterParts []string
 
-	// 翻译字幕（中文，上方，纯白无描边）
 	filterParts = append(filterParts, fmt.Sprintf(
-		"subtitles=%s:force_style='FontSize=18,FontName=Arial Unicode MS,"+
-			"PrimaryColour=&HFFFFFF,OutlineWidth=0,"+
-			"Alignment=2,MarginV=50,BorderStyle=3'",
+		"subtitles=%s:force_style='FontSize=%d,FontName=%s,"+
+			"PrimaryColour=%s,OutlineColour=%s,OutlineWidth=%d,"+
+			"Alignment=2,MarginV=%d,BorderStyle=1'",
 		transSRT,
+		subTransFontSize, subFontName,
+		subTransColor, subOutlineColor, subOutlineWidth,
+		subTransMarginV,
 	))
 
-	// 原文字幕（英文，下方，浅灰无描边）
 	if srcSRT != "" {
 		if _, err := os.Stat(srcSRT); err == nil {
 			filterParts = append(filterParts, fmt.Sprintf(
-				"subtitles=%s:force_style='FontSize=14,FontName=Arial Unicode MS,"+
-					"PrimaryColour=&HCCCCCC,OutlineWidth=0,"+
-					"Alignment=2,MarginV=20,BorderStyle=3'",
+				"subtitles=%s:force_style='FontSize=%d,FontName=%s,"+
+					"PrimaryColour=%s,OutlineColour=%s,OutlineWidth=%d,"+
+					"Alignment=2,MarginV=%d,BorderStyle=1'",
 				srcSRT,
+				subSrcFontSize, subFontName,
+				subSrcColor, subOutlineColor, subOutlineWidth,
+				subSrcMarginV,
 			))
 		}
 	}

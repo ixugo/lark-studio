@@ -7,12 +7,13 @@
 package app
 
 import (
+	"log/slog"
+	"net/http"
+
 	"github.com/ixugo/goddd/domain/version/versionapi"
 	"github.com/ixugo/vdub/internal/conf"
 	"github.com/ixugo/vdub/internal/data"
 	"github.com/ixugo/vdub/internal/web/api"
-	"log/slog"
-	"net/http"
 )
 
 // Injectors from wire.go:
@@ -25,14 +26,18 @@ func WireApp(bc *conf.Bootstrap, log *slog.Logger) (http.Handler, func(), error)
 	core := versionapi.NewVersionCore(db)
 	versionapiAPI := versionapi.New(core)
 	taskCore := api.NewTaskCore(db)
-	taskAPI := api.NewTaskAPI(taskCore)
+	scheduler, schedulerCleanup := NewPipelineScheduler(bc, taskCore)
+	taskAPI := api.NewTaskAPI(taskCore, scheduler, bc)
+
 	usecase := &api.Usecase{
-		Conf:    bc,
-		DB:      db,
-		Version: versionapiAPI,
-		TaskAPI: taskAPI,
+		Conf:      bc,
+		DB:        db,
+		Version:   versionapiAPI,
+		TaskAPI:   taskAPI,
+		Scheduler: scheduler,
 	}
 	handler := api.NewHTTPHandler(usecase)
 	return handler, func() {
+		schedulerCleanup()
 	}, nil
 }
