@@ -20,7 +20,6 @@ func (c *Core) runMerge(ctx context.Context, job Job) error {
 		return fmt.Errorf("读取音频目录失败: %w", err)
 	}
 
-	// 收集音频文件
 	var audioFiles []string
 	for _, e := range entries {
 		if !e.IsDir() && strings.HasSuffix(e.Name(), ".wav") {
@@ -33,14 +32,12 @@ func (c *Core) runMerge(ctx context.Context, job Job) error {
 		return fmt.Errorf("无音频段文件")
 	}
 
-	// 读取 SRT 获取时间轴
 	srtData, err := os.ReadFile(srcSRT)
 	if err != nil {
 		return fmt.Errorf("读取字幕时间轴失败: %w", err)
 	}
 	srtEntries := parseSRT(string(srtData))
 
-	// 生成 ffmpeg concat 列表（按时间轴插入静音）
 	dubAudio := filepath.Join(job.OutputDir, "dub.mp3")
 	if err := c.concatWithTimeline(ctx, audioFiles, srtEntries, dubAudio); err != nil {
 		return fmt.Errorf("合并音频失败: %w", err)

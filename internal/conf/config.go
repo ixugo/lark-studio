@@ -25,6 +25,7 @@ type Pipeline struct {
 	FFmpegBin         string `comment:"ffmpeg 路径（空则使用 PATH 中的）"`
 	DefaultOutputDir  string `comment:"默认输出目录"`
 	DefaultTargetLang string `comment:"默认目标语言"`
+	TranslatePrompt   string `comment:"自定义翻译系统提示词（留空使用内置默认）"`
 }
 
 // LLM 大模型配置

@@ -9,7 +9,26 @@ import (
 )
 
 // runTTS 文本转语音步骤
+// ModeDub 模式下，若翻译步骤已通过流水线完成 TTS，则自动跳过
 func (c *Core) runTTS(ctx context.Context, job Job) error {
+	if job.Mode == ModeDub {
+		audioDir := filepath.Join(job.OutputDir, "audio_segs")
+		if info, err := os.Stat(audioDir); err == nil && info.IsDir() {
+			entries, _ := os.ReadDir(audioDir)
+			wavCount := 0
+			for _, e := range entries {
+				if !e.IsDir() && strings.HasSuffix(e.Name(), ".wav") {
+					wavCount++
+				}
+			}
+			if wavCount > 0 {
+				c.notifier.OnLog(job.TaskID, fmt.Sprintf("TTS 已在流水线中完成 (%d 段)，跳过", wavCount))
+				c.notifier.OnProgress(job.TaskID, StepTTS, 100)
+				return nil
+			}
+		}
+	}
+
 	transFile := filepath.Join(job.OutputDir, "trans.txt")
 	data, err := os.ReadFile(transFile)
 	if err != nil {
@@ -21,7 +40,6 @@ func (c *Core) runTTS(ctx context.Context, job Job) error {
 		return fmt.Errorf("翻译结果为空")
 	}
 
-	// 获取 TTS 锁（独占 TTS 资源）
 	c.ttsMu.Lock()
 	defer c.ttsMu.Unlock()
 
@@ -43,6 +61,14 @@ func (c *Core) runTTS(ctx context.Context, job Job) error {
 		}
 
 		outputPath := filepath.Join(audioDir, fmt.Sprintf("%d.wav", i))
+
+		// 断点恢复：已存在的音频跳过
+		if info, e := os.Stat(outputPath); e == nil && info.Size() > 0 {
+			progress := ((i + 1) * 100) / len(sentences)
+			c.notifier.OnProgress(job.TaskID, StepTTS, progress)
+			continue
+		}
+
 		if err := c.tts.Synthesize(ctx, text, outputPath, ""); err != nil {
 			return fmt.Errorf("TTS 第 %d 句失败: %w", i+1, err)
 		}

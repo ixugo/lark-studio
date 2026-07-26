@@ -143,19 +143,30 @@ const (
 )
 
 // Translate 翻译句子列表，数量不符时自动重试
-func (c *Client) Translate(ctx context.Context, sentences []string, targetLang string) ([]string, error) {
+// systemPrompt 为空时使用内置默认提示词
+func (c *Client) Translate(ctx context.Context, sentences []string, targetLang, systemPrompt string) ([]string, error) {
 	numbered := make([]string, len(sentences))
 	for i, s := range sentences {
 		numbered[i] = fmt.Sprintf("%d. %s", i+1, s)
 	}
 
-	system := fmt.Sprintf(`You are a professional translator. Translate the following numbered sentences to %s.
+	system := systemPrompt
+	if system == "" {
+		system = fmt.Sprintf(`You are a professional subtitle translator. Translate the following numbered sentences to %s.
 Rules:
 - You MUST output exactly %d lines, one translation per input line
 - Each translated line should start with its number (e.g., "1. 翻译内容")
-- Maintain the meaning and tone
-- Use natural, fluent expressions
-- For technical terms, keep the English original in parentheses when first mentioned`, targetLang, len(sentences))
+- Keep translations concise: each translated line should be short enough to read naturally at normal speaking speed within the original subtitle's display duration
+- Maintain the meaning and tone of the original
+- Use natural, fluent, colloquial expressions suitable for subtitles
+- For technical terms, keep the English original in parentheses when first mentioned
+- Avoid overly literal or stiff translations`, targetLang, len(sentences))
+	} else {
+		system = strings.NewReplacer(
+			"{{target_lang}}", targetLang,
+			"{{count}}", fmt.Sprintf("%d", len(sentences)),
+		).Replace(system)
+	}
 
 	input := strings.Join(numbered, "\n")
 	expected := len(sentences)

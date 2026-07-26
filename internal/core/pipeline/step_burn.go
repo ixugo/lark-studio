@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -48,23 +47,20 @@ func (c *Core) runBurn(ctx context.Context, job Job) error {
 
 	switch job.Mode {
 	case ModeSubtitle:
-		// 仅烧录原文字幕
 		outputVideo := filepath.Join(job.OutputDir, baseName+".sub.mp4")
-		if err := c.burnSubtitle(ctx, ffmpeg, job.InputPath, srcSRT, "", outputVideo); err != nil {
+		if err := c.burnSubtitle(ctx, ffmpeg, job.InputPath, srcSRT, "", outputVideo, job.TaskID); err != nil {
 			return err
 		}
 
 	case ModeTranslate:
-		// 烧录双语字幕（中上英下）
 		outputVideo := filepath.Join(job.OutputDir, baseName+".trans.mp4")
-		if err := c.burnSubtitle(ctx, ffmpeg, job.InputPath, transSRT, srcSRT, outputVideo); err != nil {
+		if err := c.burnSubtitle(ctx, ffmpeg, job.InputPath, transSRT, srcSRT, outputVideo, job.TaskID); err != nil {
 			return err
 		}
 
 	case ModeDub:
-		// 烧录双语字幕 + 混合配音
 		outputVideo := filepath.Join(job.OutputDir, baseName+".final.mp4")
-		if err := c.burnWithDub(ctx, ffmpeg, job.InputPath, transSRT, srcSRT, dubAudio, outputVideo); err != nil {
+		if err := c.burnWithDub(ctx, ffmpeg, job.InputPath, transSRT, srcSRT, dubAudio, outputVideo, job.TaskID); err != nil {
 			return err
 		}
 	}
@@ -73,10 +69,8 @@ func (c *Core) runBurn(ctx context.Context, job Job) error {
 	return nil
 }
 
-// burnSubtitle 烧录字幕（双语或单语）
-// transSRT: 翻译字幕（中文），srcSRT: 原文字幕（英文），srcSRT 为空则仅烧录 transSRT
-// 样式对齐 VideoLingo: BorderStyle=1（描边无色块），OutlineWidth=1（1像素黑色描边）
-func (c *Core) burnSubtitle(ctx context.Context, ffmpeg, videoPath, transSRT, srcSRT, outputPath string) error {
+// burnSubtitle 烧录字幕（双语或单语），带 ffmpeg 进度回调
+func (c *Core) burnSubtitle(ctx context.Context, ffmpeg, videoPath, transSRT, srcSRT, outputPath string, taskID string) error {
 	var filterParts []string
 
 	if _, err := os.Stat(transSRT); err == nil {
@@ -84,7 +78,7 @@ func (c *Core) burnSubtitle(ctx context.Context, ffmpeg, videoPath, transSRT, sr
 			"subtitles=%s:force_style='FontSize=%d,FontName=%s,"+
 				"PrimaryColour=%s,OutlineColour=%s,OutlineWidth=%d,"+
 				"Alignment=2,MarginV=%d,BorderStyle=1'",
-			transSRT,
+			escapeFFmpegPath(transSRT),
 			subTransFontSize, subFontName,
 			subTransColor, subOutlineColor, subOutlineWidth,
 			subTransMarginV,
@@ -97,7 +91,7 @@ func (c *Core) burnSubtitle(ctx context.Context, ffmpeg, videoPath, transSRT, sr
 				"subtitles=%s:force_style='FontSize=%d,FontName=%s,"+
 					"PrimaryColour=%s,OutlineColour=%s,OutlineWidth=%d,"+
 					"Alignment=2,MarginV=%d,BorderStyle=1'",
-				srcSRT,
+				escapeFFmpegPath(srcSRT),
 				subSrcFontSize, subFontName,
 				subSrcColor, subOutlineColor, subOutlineWidth,
 				subSrcMarginV,
@@ -110,28 +104,33 @@ func (c *Core) burnSubtitle(ctx context.Context, ffmpeg, videoPath, transSRT, sr
 	}
 
 	vf := strings.Join(filterParts, ",")
-	cmd := exec.CommandContext(ctx, ffmpeg,
-		"-y", "-i", videoPath,
-		"-vf", vf,
-		"-c:a", "copy",
-		outputPath,
-	)
-	output, err := cmd.CombinedOutput()
+	totalDur := probeMediaDuration(ffmpeg, videoPath)
+
+	args := []string{ffmpeg, "-y", "-i", videoPath, "-vf", vf, "-c:a", "copy", outputPath}
+	err := runFFmpegWithProgress(ctx, totalDur, func(pct int) {
+		c.notifier.OnProgress(taskID, StepBurn, pct)
+	}, args...)
 	if err != nil {
-		return fmt.Errorf("烧录字幕失败: %s, output: %s", err, string(output))
+		return fmt.Errorf("烧录字幕失败: %w", err)
 	}
 	return nil
 }
 
-// burnWithDub 烧录字幕 + 混合配音音频
-func (c *Core) burnWithDub(ctx context.Context, ffmpeg, videoPath, transSRT, srcSRT, dubAudio, outputPath string) error {
+// escapeFFmpegPath 转义 ffmpeg subtitles 滤镜中路径的特殊字符
+func escapeFFmpegPath(path string) string {
+	r := strings.NewReplacer(":", "\\:", "'", "\\'", "[", "\\[", "]", "\\]")
+	return r.Replace(path)
+}
+
+// burnWithDub 烧录字幕 + 混合配音音频，带 ffmpeg 进度回调
+func (c *Core) burnWithDub(ctx context.Context, ffmpeg, videoPath, transSRT, srcSRT, dubAudio, outputPath, taskID string) error {
 	var filterParts []string
 
 	filterParts = append(filterParts, fmt.Sprintf(
 		"subtitles=%s:force_style='FontSize=%d,FontName=%s,"+
 			"PrimaryColour=%s,OutlineColour=%s,OutlineWidth=%d,"+
 			"Alignment=2,MarginV=%d,BorderStyle=1'",
-		transSRT,
+		escapeFFmpegPath(transSRT),
 		subTransFontSize, subFontName,
 		subTransColor, subOutlineColor, subOutlineWidth,
 		subTransMarginV,
@@ -143,7 +142,7 @@ func (c *Core) burnWithDub(ctx context.Context, ffmpeg, videoPath, transSRT, src
 				"subtitles=%s:force_style='FontSize=%d,FontName=%s,"+
 					"PrimaryColour=%s,OutlineColour=%s,OutlineWidth=%d,"+
 					"Alignment=2,MarginV=%d,BorderStyle=1'",
-				srcSRT,
+				escapeFFmpegPath(srcSRT),
 				subSrcFontSize, subFontName,
 				subSrcColor, subOutlineColor, subOutlineWidth,
 				subSrcMarginV,
@@ -152,19 +151,21 @@ func (c *Core) burnWithDub(ctx context.Context, ffmpeg, videoPath, transSRT, src
 	}
 
 	vf := strings.Join(filterParts, ",")
+	totalDur := probeMediaDuration(ffmpeg, videoPath)
 
-	// 混合原视频音频(降到15%) + 配音音频
-	cmd := exec.CommandContext(ctx, ffmpeg,
-		"-y", "-i", videoPath, "-i", dubAudio,
+	args := []string{
+		ffmpeg, "-y", "-i", videoPath, "-i", dubAudio,
 		"-filter_complex",
 		fmt.Sprintf("[0:v]%s[v];[0:a]volume=0.15[bg];[bg][1:a]amix=inputs=2:duration=first:dropout_transition=3[a]", vf),
 		"-map", "[v]", "-map", "[a]",
 		"-c:a", "aac", "-b:a", "128k",
 		outputPath,
-	)
-	output, err := cmd.CombinedOutput()
+	}
+	err := runFFmpegWithProgress(ctx, totalDur, func(pct int) {
+		c.notifier.OnProgress(taskID, StepBurn, pct)
+	}, args...)
 	if err != nil {
-		return fmt.Errorf("合成配音视频失败: %s, output: %s", err, string(output))
+		return fmt.Errorf("合成配音视频失败: %w", err)
 	}
 	return nil
 }

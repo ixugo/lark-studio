@@ -1,10 +1,14 @@
 package pipeline
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"log/slog"
+	"os/exec"
+	"regexp"
 	"sync"
+	"time"
 )
 
 // StepName 步骤名称常量
@@ -44,10 +48,11 @@ type Notifier interface {
 
 // Config 流水线依赖配置
 type Config struct {
-	WhisperBin   string // whisper.cpp 可执行文件路径
-	WhisperModel string // whisper 模型路径
-	FFmpegBin    string // ffmpeg 路径，空则使用 PATH 中的
-	WorkDir      string // 临时工作目录
+	WhisperBin      string // whisper.cpp 可执行文件路径
+	WhisperModel    string // whisper 模型路径
+	FFmpegBin       string // ffmpeg 路径，空则使用 PATH 中的
+	WorkDir         string // 临时工作目录
+	TranslatePrompt string // 自定义翻译提示词，空串则使用内置默认
 }
 
 // Core 流水线调度核心
@@ -97,7 +102,12 @@ type Job struct {
 	ResumeFrom string // 断点恢复：从此步骤开始（空=从头）
 }
 
-// Run 执行单个任务的流水线
+const (
+	stepMaxRetries = 3
+	stepBaseDelay  = 3 * time.Second
+)
+
+// Run 执行单个任务的流水线，每个步骤失败时自动指数退避重试
 func (c *Core) Run(ctx context.Context, job Job) error {
 	slog.InfoContext(ctx, "pipeline.Run", "task_id", job.TaskID, "mode", job.Mode, "resume", job.ResumeFrom)
 
@@ -120,22 +130,8 @@ func (c *Core) Run(ctx context.Context, job Job) error {
 
 		c.notifier.OnLog(job.TaskID, fmt.Sprintf("开始步骤: %s", step))
 
-		var err error
-		switch step {
-		case StepWhisper:
-			err = c.runWhisper(ctx, job)
-		case StepSplit:
-			err = c.runSplit(ctx, job)
-		case StepTranslate:
-			err = c.runTranslate(ctx, job)
-		case StepTTS:
-			err = c.runTTS(ctx, job)
-		case StepMerge:
-			err = c.runMerge(ctx, job)
-		case StepBurn:
-			err = c.runBurn(ctx, job)
-		}
-
+		stepFn := c.stepFunc(step)
+		err := c.runStepWithRetry(ctx, job, step, stepFn)
 		if err != nil {
 			c.notifier.OnTaskFailed(job.TaskID, err)
 			return fmt.Errorf("步骤 %s 失败: %w", step, err)
@@ -148,16 +144,67 @@ func (c *Core) Run(ctx context.Context, job Job) error {
 	return nil
 }
 
+// stepFunc 根据步骤名返回对应的执行函数
+func (c *Core) stepFunc(step string) func(context.Context, Job) error {
+	switch step {
+	case StepWhisper:
+		return c.runWhisper
+	case StepSplit:
+		return c.runSplit
+	case StepTranslate:
+		return c.runTranslate
+	case StepTTS:
+		return c.runTTS
+	case StepMerge:
+		return c.runMerge
+	case StepBurn:
+		return c.runBurn
+	default:
+		return func(context.Context, Job) error { return nil }
+	}
+}
+
+// runStepWithRetry 带指数退避重试的步骤执行
+// context 取消视为主动中止，不重试
+func (c *Core) runStepWithRetry(ctx context.Context, job Job, step string, fn func(context.Context, Job) error) error {
+	var lastErr error
+	for attempt := range stepMaxRetries {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		lastErr = fn(ctx, job)
+		if lastErr == nil {
+			return nil
+		}
+
+		if ctx.Err() != nil {
+			return lastErr
+		}
+
+		if attempt < stepMaxRetries-1 {
+			delay := stepBaseDelay * time.Duration(1<<uint(attempt))
+			c.notifier.OnLog(job.TaskID, fmt.Sprintf("步骤 %s 失败 (第%d次): %v, %v 后重试",
+				step, attempt+1, lastErr, delay))
+			select {
+			case <-ctx.Done():
+				return lastErr
+			case <-time.After(delay):
+			}
+		}
+	}
+	return lastErr
+}
+
 // buildSteps 根据模式构建步骤列表
-// split 步骤暂不启用：当前直接翻译 SRT 条目以保证时间轴 1:1 对齐
 func (c *Core) buildSteps(mode int) []string {
 	switch mode {
 	case ModeSubtitle:
 		return []string{StepWhisper, StepBurn}
 	case ModeTranslate:
-		return []string{StepWhisper, StepTranslate, StepBurn}
+		return []string{StepWhisper, StepSplit, StepTranslate, StepBurn}
 	case ModeDub:
-		return []string{StepWhisper, StepTranslate, StepTTS, StepMerge, StepBurn}
+		return []string{StepWhisper, StepSplit, StepTranslate, StepTTS, StepMerge, StepBurn}
 	default:
 		return []string{StepWhisper, StepBurn}
 	}
@@ -171,3 +218,97 @@ func (*noopNotifier) OnStepDone(string, string)      {}
 func (*noopNotifier) OnTaskDone(string)              {}
 func (*noopNotifier) OnTaskFailed(string, error)     {}
 func (*noopNotifier) OnLog(string, string)           {}
+
+var ffmpegTimeRe = regexp.MustCompile(`time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})`)
+
+// runFFmpegWithProgress 运行 ffmpeg 命令并通过解析 stderr 中的 time= 字段实时回报进度
+// totalDuration 为总时长（秒），用于计算百分比；progressFn 在每次解析到进度时被调用
+func runFFmpegWithProgress(ctx context.Context, totalDuration float64, progressFn func(pct int), args ...string) error {
+	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("获取 stderr 管道失败: %w", err)
+	}
+	cmd.Stdout = nil
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("启动 ffmpeg 失败: %w", err)
+	}
+
+	scanner := bufio.NewScanner(stderr)
+	scanner.Split(scanFFmpegOutput)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if totalDuration <= 0 || progressFn == nil {
+			continue
+		}
+		matches := ffmpegTimeRe.FindStringSubmatch(line)
+		if len(matches) < 5 {
+			continue
+		}
+		h := parseIntSafe(matches[1])
+		m := parseIntSafe(matches[2])
+		s := parseIntSafe(matches[3])
+		cs := parseIntSafe(matches[4])
+		current := float64(h)*3600 + float64(m)*60 + float64(s) + float64(cs)/100.0
+		pct := int(current / totalDuration * 100)
+		if pct > 99 {
+			pct = 99
+		}
+		progressFn(pct)
+	}
+
+	if err := cmd.Wait(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// scanFFmpegOutput 自定义 bufio.SplitFunc，按 \r 或 \n 分割 ffmpeg 输出
+func scanFFmpegOutput(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+	for i, b := range data {
+		if b == '\r' || b == '\n' {
+			return i + 1, data[:i], nil
+		}
+	}
+	if atEOF {
+		return len(data), data, nil
+	}
+	return 0, nil, nil
+}
+
+func parseIntSafe(s string) int {
+	var v int
+	fmt.Sscanf(s, "%d", &v)
+	return v
+}
+
+// probeMediaDuration 用 ffprobe 获取媒体文件时长（秒）
+func probeMediaDuration(ffmpegBin, mediaPath string) float64 {
+	ffprobe := "ffprobe"
+	if ffmpegBin != "" {
+		// 尝试从 ffmpeg 路径推断 ffprobe 路径
+		if idx := len(ffmpegBin) - len("ffmpeg"); idx >= 0 && ffmpegBin[idx:] == "ffmpeg" {
+			ffprobe = ffmpegBin[:idx] + "ffprobe"
+		}
+	}
+
+	cmd := exec.Command(ffprobe,
+		"-v", "error",
+		"-show_entries", "format=duration",
+		"-of", "default=noprint_wrappers=1:nokey=1",
+		mediaPath,
+	)
+	output, err := cmd.Output()
+	if err != nil {
+		return 0
+	}
+	var dur float64
+	fmt.Sscanf(string(output), "%f", &dur)
+	return dur
+}
