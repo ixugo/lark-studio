@@ -14,6 +14,10 @@ void main() {
   final wsService = WebSocketService();
 
   backend.addListener(() {
+    if (backend.port > 0) {
+      api.updateBaseUrl('http://localhost:${backend.port}');
+      wsService.updateWsUrl('ws://localhost:${backend.port}/ws');
+    }
     if (backend.online && !wsService.connected) {
       wsService.connect();
     }

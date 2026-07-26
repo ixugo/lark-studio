@@ -23,11 +23,13 @@ class _TaskListPageState extends State<TaskListPage> {
   @override
   void initState() {
     super.initState();
+    final notifier = context.read<TaskListNotifier>();
+    final ws = context.read<WebSocketService>();
     Future.microtask(() {
-      context.read<TaskListNotifier>().refresh();
-      _wsSub = context.read<WebSocketService>().events.listen((event) {
+      notifier.refresh();
+      _wsSub = ws.events.listen((event) {
         if (event.type.startsWith('task_') && mounted) {
-          context.read<TaskListNotifier>().refresh();
+          notifier.refresh();
         }
       });
     });
@@ -137,7 +139,7 @@ class _TaskListPageState extends State<TaskListPage> {
     return ListView.separated(
       padding: const EdgeInsets.all(20),
       itemCount: notifier.tasks.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      separatorBuilder: (_, _) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
         final t = notifier.tasks[index];
         return _TaskCard(
@@ -301,14 +303,13 @@ class _BatchImportSheet extends StatefulWidget {
 }
 
 class _BatchImportSheetState extends State<_BatchImportSheet> {
-  final _dirController = TextEditingController();
   final _langController = TextEditingController(text: 'zh');
+  final List<String> _selectedFiles = [];
   int _mode = 3;
   bool _submitting = false;
 
   @override
   void dispose() {
-    _dirController.dispose();
     _langController.dispose();
     super.dispose();
   }
@@ -316,7 +317,7 @@ class _BatchImportSheetState extends State<_BatchImportSheet> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: MediaQuery.of(context).size.height * 0.55,
+      height: MediaQuery.of(context).size.height * 0.65,
       decoration: const BoxDecoration(
         color: CupertinoColors.systemGroupedBackground,
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
@@ -334,9 +335,10 @@ class _BatchImportSheetState extends State<_BatchImportSheet> {
                   child: const Text('取消', style: TextStyle(fontSize: 15))),
                 const Expanded(child: Text('批量导入', textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Color(0xFF1D1D1F)))),
-                CupertinoButton(padding: EdgeInsets.zero, onPressed: _submitting ? null : _submit,
-                  child: Text('导入', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600,
-                    color: _submitting ? const Color(0xFFC7C7CC) : CupertinoColors.systemBlue))),
+                CupertinoButton(padding: EdgeInsets.zero,
+                  onPressed: (_submitting || _selectedFiles.isEmpty) ? null : _submit,
+                  child: Text('导入 (${_selectedFiles.length})', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600,
+                    color: (_submitting || _selectedFiles.isEmpty) ? const Color(0xFFC7C7CC) : CupertinoColors.systemBlue))),
               ],
             ),
           ),
@@ -344,23 +346,49 @@ class _BatchImportSheetState extends State<_BatchImportSheet> {
             child: ListView(
               padding: const EdgeInsets.all(20),
               children: [
-                const Padding(padding: EdgeInsets.only(bottom: 8),
-                  child: Text('视频目录', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Color(0xFF8E8E93)))),
                 Row(
                   children: [
-                    Expanded(
-                      child: CupertinoTextField(controller: _dirController, placeholder: '输入包含视频文件的目录路径',
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(color: CupertinoColors.white, borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0xFFE5E5EA)))),
-                    ),
-                    const SizedBox(width: 8),
-                    CupertinoButton(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      color: const Color(0xFFE5E5EA), borderRadius: BorderRadius.circular(8),
-                      onPressed: _pickDir,
-                      child: const Text('浏览', style: TextStyle(color: Color(0xFF3A3A3C), fontSize: 13))),
+                    const Text('已选视频', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Color(0xFF8E8E93))),
+                    const Spacer(),
+                    CupertinoButton(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      color: CupertinoColors.systemBlue, borderRadius: BorderRadius.circular(8),
+                      onPressed: _pickFiles,
+                      child: const Text('选择视频文件', style: TextStyle(color: CupertinoColors.white, fontSize: 13))),
                   ],
                 ),
+                const SizedBox(height: 8),
+                if (_selectedFiles.isEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(color: CupertinoColors.white, borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFE5E5EA))),
+                    child: const Center(child: Text('点击右上角选择视频文件', style: TextStyle(fontSize: 13, color: Color(0xFFC7C7CC)))),
+                  )
+                else
+                  Container(
+                    constraints: const BoxConstraints(maxHeight: 150),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: CupertinoColors.white, borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFE5E5EA))),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: _selectedFiles.length,
+                      itemBuilder: (_, i) {
+                        final name = _selectedFiles[i].split('/').last;
+                        return Padding(padding: const EdgeInsets.symmetric(vertical: 3),
+                          child: Row(children: [
+                            const Icon(CupertinoIcons.film, size: 14, color: Color(0xFF8E8E93)),
+                            const SizedBox(width: 6),
+                            Expanded(child: Text(name, style: const TextStyle(fontSize: 12, color: Color(0xFF3A3A3C)),
+                              maxLines: 1, overflow: TextOverflow.ellipsis)),
+                            GestureDetector(
+                              onTap: () => setState(() => _selectedFiles.removeAt(i)),
+                              child: const Icon(CupertinoIcons.xmark_circle_fill, size: 16, color: Color(0xFFC7C7CC)),
+                            ),
+                          ]));
+                      },
+                    ),
+                  ),
                 const SizedBox(height: 20),
                 const Padding(padding: EdgeInsets.only(bottom: 8),
                   child: Text('处理模式', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Color(0xFF8E8E93)))),
@@ -376,9 +404,6 @@ class _BatchImportSheetState extends State<_BatchImportSheet> {
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(color: CupertinoColors.white, borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: const Color(0xFFE5E5EA)))),
-                const SizedBox(height: 16),
-                const Text('将自动扫描目录下的视频文件（.mp4 .mkv .avi .mov .webm .flv .wmv），为每个文件创建独立任务。',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF8E8E93))),
               ],
             ),
           ),
@@ -387,17 +412,25 @@ class _BatchImportSheetState extends State<_BatchImportSheet> {
     );
   }
 
-  Future<void> _pickDir() async {
-    final result = await FilePicker.platform.getDirectoryPath(dialogTitle: '选择视频目录');
-    if (result != null) _dirController.text = result;
+  Future<void> _pickFiles() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.video, allowMultiple: true, dialogTitle: '选择视频文件');
+    if (result != null) {
+      setState(() {
+        for (final f in result.files) {
+          if (f.path != null && !_selectedFiles.contains(f.path)) {
+            _selectedFiles.add(f.path!);
+          }
+        }
+      });
+    }
   }
 
   Future<void> _submit() async {
-    if (_dirController.text.trim().isEmpty) return;
     setState(() => _submitting = true);
     try {
       final count = await context.read<TaskListNotifier>().batchCreateTasks(
-        directory: _dirController.text.trim(), mode: _mode, targetLang: _langController.text.trim());
+        videos: List.from(_selectedFiles), mode: _mode, targetLang: _langController.text.trim());
       if (mounted) {
         Navigator.pop(context);
         _showInfo('已创建 $count 个任务');

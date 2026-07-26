@@ -6,12 +6,14 @@ import 'package:http/http.dart' as http;
 import '../models/config.dart';
 import '../models/task.dart';
 
-/// Go 后端 HTTP 客户端
+/// Go 引擎 HTTP 客户端
 class ApiClient {
-  final String baseUrl;
+  String baseUrl;
   final http.Client _client;
 
   ApiClient({required this.baseUrl}) : _client = http.Client();
+
+  void updateBaseUrl(String url) => baseUrl = url;
 
   Future<bool> healthCheck() async {
     try {
@@ -82,7 +84,7 @@ class ApiClient {
   }
 
   Future<List<Task>> batchCreateTasks({
-    required String directory,
+    required List<String> videos,
     required int mode,
     String targetLang = '',
   }) async {
@@ -90,7 +92,7 @@ class ApiClient {
       Uri.parse('$baseUrl/tasks/batch'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
-        'directory': directory,
+        'videos': videos,
         'mode': mode,
         if (targetLang.isNotEmpty) 'target_lang': targetLang,
       }),
@@ -196,11 +198,11 @@ class TaskListNotifier extends ChangeNotifier {
   }
 
   Future<int> batchCreateTasks({
-    required String directory,
+    required List<String> videos,
     required int mode,
     String targetLang = '',
   }) async {
-    final tasks = await _api.batchCreateTasks(directory: directory, mode: mode, targetLang: targetLang);
+    final tasks = await _api.batchCreateTasks(videos: videos, mode: mode, targetLang: targetLang);
     await refresh();
     return tasks.length;
   }

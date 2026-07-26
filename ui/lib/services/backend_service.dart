@@ -1,40 +1,60 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
-/// 管理 Go 后端进程的生命周期 + 存活监控
+/// 管理 Go 引擎进程的生命周期 + 存活监控
+/// 启动时自动选择可用端口，关闭时杀死引擎进程
 class BackendService extends ChangeNotifier {
   Process? _process;
   bool _online = false;
   Timer? _healthTimer;
-  final String _baseUrl;
+  int _port = 0;
 
-  BackendService({String baseUrl = 'http://localhost:9523'}) : _baseUrl = baseUrl;
+  BackendService();
 
   bool get online => _online;
   bool get processRunning => _process != null;
+  int get port => _port;
+  String get baseUrl => 'http://localhost:$_port';
+  String get wsUrl => 'ws://localhost:$_port/ws';
 
-  /// 启动 Go 后端并开启健康检查
-  Future<void> start({String? binaryPath}) async {
+  /// 启动引擎：找空闲端口 → 拉起子进程 → 健康检查
+  Future<bool> start({String? binaryPath}) async {
     final bin = binaryPath ?? _findBinary();
-    if (bin != null && _process == null) {
-      try {
-        _process = await Process.start(bin, []);
-        _process!.exitCode.then((_) {
-          _process = null;
-          _setOnline(false);
-        });
-      } catch (e) {
-        debugPrint('backend start failed: $e');
-      }
+    if (bin == null) {
+      debugPrint('engine binary not found');
+      return false;
+    }
+
+    _port = await _findFreePort();
+    try {
+      _process = await Process.start(bin, ['-port', '$_port']);
+      _process!.stdout.listen((data) {
+        debugPrint('engine: ${String.fromCharCodes(data).trim()}');
+      });
+      _process!.stderr.listen((data) {
+        debugPrint('engine err: ${String.fromCharCodes(data).trim()}');
+      });
+      _process!.exitCode.then((_) {
+        _process = null;
+        _setOnline(false);
+      });
+    } catch (e) {
+      debugPrint('engine start failed: $e');
+      return false;
     }
     _startHealthCheck();
+    return true;
   }
 
-  /// 仅连接已运行的后端（不启动进程）
-  void connectOnly() => _startHealthCheck();
+  /// 仅连接已运行的引擎（调试时用 -port 手动启动）
+  void connectOnly({int port = 9523}) {
+    _port = port;
+    _startHealthCheck();
+  }
 
   void _startHealthCheck() {
     _healthTimer?.cancel();
@@ -44,7 +64,7 @@ class BackendService extends ChangeNotifier {
 
   Future<void> _check() async {
     try {
-      final resp = await http.get(Uri.parse('$_baseUrl/health')).timeout(const Duration(seconds: 2));
+      final resp = await http.get(Uri.parse('$baseUrl/health')).timeout(const Duration(seconds: 2));
       _setOnline(resp.statusCode == 200);
     } catch (_) {
       _setOnline(false);
@@ -58,11 +78,32 @@ class BackendService extends ChangeNotifier {
     }
   }
 
+  /// 在 9523~9623 范围内找一个可用端口
+  Future<int> _findFreePort() async {
+    final rng = Random();
+    for (var i = 0; i < 20; i++) {
+      final candidate = 9523 + rng.nextInt(100);
+      try {
+        final socket = await ServerSocket.bind(InternetAddress.loopbackIPv4, candidate);
+        await socket.close();
+        return candidate;
+      } catch (_) {
+        continue;
+      }
+    }
+    // fallback: 让 OS 分配
+    final socket = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    final port = socket.port;
+    await socket.close();
+    return port;
+  }
+
   /// 在常见位置查找 vdub 可执行文件
   String? _findBinary() {
     final candidates = [
       '${Directory.current.path}/vdub',
       '${Directory.current.path}/build/darwin_arm64/bin',
+      '${Directory.current.path}/../vdub',
       '${Directory.current.path}/../build/darwin_arm64/bin',
       '${Directory.current.path}/../tmp/vdub',
     ];
@@ -74,8 +115,10 @@ class BackendService extends ChangeNotifier {
 
   void stop() {
     _healthTimer?.cancel();
-    _process?.kill(ProcessSignal.sigterm);
-    _process = null;
+    if (_process != null) {
+      _process!.kill(ProcessSignal.sigterm);
+      _process = null;
+    }
     _setOnline(false);
   }
 

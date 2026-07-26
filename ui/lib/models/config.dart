@@ -21,6 +21,7 @@ class PipelineConfig {
   final String ffmpegBin;
   final String defaultTargetLang;
   final String translatePrompt;
+  final double maxSpeedFactor;
 
   const PipelineConfig({
     this.workers = 2,
@@ -29,6 +30,7 @@ class PipelineConfig {
     this.ffmpegBin = '',
     this.defaultTargetLang = 'zh-CN',
     this.translatePrompt = '',
+    this.maxSpeedFactor = 0,
   });
 
   factory PipelineConfig.fromJson(Map<String, dynamic> json) {
@@ -39,6 +41,7 @@ class PipelineConfig {
       ffmpegBin: json['FFmpegBin'] as String? ?? '',
       defaultTargetLang: json['DefaultTargetLang'] as String? ?? 'zh-CN',
       translatePrompt: json['TranslatePrompt'] as String? ?? '',
+      maxSpeedFactor: (json['MaxSpeedFactor'] as num?)?.toDouble() ?? 0,
     );
   }
 }

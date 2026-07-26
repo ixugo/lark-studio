@@ -6,7 +6,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 /// WebSocket 客户端：心跳保活 + 接收任务事件
 class WebSocketService extends ChangeNotifier {
-  final String _wsUrl;
+  String _wsUrl;
   WebSocketChannel? _channel;
   Timer? _heartbeatTimer;
   Timer? _reconnectTimer;
@@ -14,10 +14,13 @@ class WebSocketService extends ChangeNotifier {
 
   final _eventController = StreamController<WsEvent>.broadcast();
 
+  // ignore: prefer_initializing_formals
   WebSocketService({String wsUrl = 'ws://localhost:9523/ws'}) : _wsUrl = wsUrl;
 
   bool get connected => _connected;
   Stream<WsEvent> get events => _eventController.stream;
+
+  void updateWsUrl(String url) => _wsUrl = url;
 
   void connect() {
     _doConnect();

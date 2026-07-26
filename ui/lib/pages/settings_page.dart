@@ -35,6 +35,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final _translatePrompt = TextEditingController();
   String _whisperMode = 'ffmpeg';
   int _workers = 2;
+  double _maxSpeedFactor = 0;
 
   @override
   void initState() {
@@ -84,6 +85,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _targetLang.text = cfg.pipeline.defaultTargetLang;
     _translatePrompt.text = cfg.pipeline.translatePrompt;
     _workers = cfg.pipeline.workers;
+    _maxSpeedFactor = cfg.pipeline.maxSpeedFactor;
   }
 
   Future<void> _saveConfig() async {
@@ -109,6 +111,7 @@ class _SettingsPageState extends State<SettingsPage> {
           'ffmpeg_bin': _ffmpegBin.text.trim(),
           'default_target_lang': _targetLang.text.trim(),
           'translate_prompt': _translatePrompt.text.trim(),
+          'max_speed_factor': _maxSpeedFactor,
         },
       };
       final cfg = await context.read<ApiClient>().updateConfig(updates);
@@ -171,7 +174,7 @@ class _SettingsPageState extends State<SettingsPage> {
       padding: const EdgeInsets.all(20),
       children: [
         _section('连接状态', [
-          _statusRow('后端服务', backend.online),
+          _statusRow('引擎', backend.online),
           _statusRow('WebSocket', wsService.connected),
         ]),
         const SizedBox(height: 20),
@@ -197,6 +200,8 @@ class _SettingsPageState extends State<SettingsPage> {
           _field('FFmpeg 路径', _ffmpegBin, placeholder: '留空使用 PATH'),
           _field('默认目标语言', _targetLang, placeholder: 'zh-CN'),
           _sliderRow('Worker 数量', _workers, 1, 4, (v) => setState(() => _workers = v)),
+          _doubleSliderRow('TTS 调速上限', _maxSpeedFactor, 0, 1.5, '≤1 不调速',
+            (v) => setState(() => _maxSpeedFactor = double.parse(v.toStringAsFixed(1)))),
         ]),
         const SizedBox(height: 20),
         _section('翻译提示词', [
@@ -316,6 +321,28 @@ class _SettingsPageState extends State<SettingsPage> {
               onValueChanged: (v) { if (v != null) onChanged(v); },
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _doubleSliderRow(String label, double value, double min, double max, String hint, ValueChanged<double> onChanged) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: [
+          SizedBox(width: 120, child: Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF3A3A3C)))),
+          Expanded(
+            child: CupertinoSlider(
+              value: value,
+              min: min,
+              max: max,
+              divisions: ((max - min) * 10).round(),
+              onChanged: onChanged,
+            ),
+          ),
+          SizedBox(width: 60, child: Text(value <= 1 ? hint : '${value.toStringAsFixed(1)}x',
+            style: const TextStyle(fontSize: 12, color: Color(0xFF3A3A3C)))),
         ],
       ),
     );

@@ -1,11 +1,12 @@
+import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 
 import '../services/backend_service.dart';
+import 'dashboard_page.dart';
 import 'task_list_page.dart';
 import 'settings_page.dart';
 
-/// macOS 风格侧边栏主页
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -17,6 +18,7 @@ class _HomePageState extends State<HomePage> {
   int _selectedIndex = 0;
 
   static const _pages = <Widget>[
+    DashboardPage(),
     TaskListPage(),
     SettingsPage(),
   ];
@@ -31,7 +33,7 @@ class _HomePageState extends State<HomePage> {
         ),
         Expanded(
           child: CupertinoPageScaffold(
-            backgroundColor: CupertinoColors.systemGroupedBackground,
+            backgroundColor: const Color(0xFFF5F5F7),
             child: _pages[_selectedIndex],
           ),
         ),
@@ -46,94 +48,120 @@ class _Sidebar extends StatelessWidget {
 
   const _Sidebar({required this.selectedIndex, required this.onSelect});
 
+  static const _items = [
+    (CupertinoIcons.house_fill, '首页'),
+    (CupertinoIcons.play_rectangle_fill, '任务'),
+    (CupertinoIcons.gear_alt_fill, '设置'),
+  ];
+
   @override
   Widget build(BuildContext context) {
     final backend = context.watch<BackendService>();
 
-    return Container(
-      width: 220,
-      decoration: const BoxDecoration(
-        color: Color(0xFFF5F5F7),
-        border: Border(right: BorderSide(color: Color(0xFFD1D1D6), width: 0.5)),
-      ),
-      child: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
-              child: Row(
-                children: [
-                  const Text(
-                    'vdub',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Color(0xFF1D1D1F), letterSpacing: -0.5),
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+        child: Container(
+          width: 72,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF2F2F7).withValues(alpha: 0.85),
+            border: const Border(right: BorderSide(color: Color(0xFFD1D1D6), width: 0.5)),
+          ),
+          child: SafeArea(
+            child: Column(
+              children: [
+                const SizedBox(height: 12),
+                // 引擎状态指示灯
+                Container(
+                  width: 8, height: 8,
+                  margin: const EdgeInsets.only(bottom: 4),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: backend.online ? CupertinoColors.systemGreen : CupertinoColors.systemRed,
+                    boxShadow: [
+                      BoxShadow(
+                        color: (backend.online ? CupertinoColors.systemGreen : CupertinoColors.systemRed).withValues(alpha: 0.5),
+                        blurRadius: 6,
+                      ),
+                    ],
                   ),
-                  const Spacer(),
-                  Container(
-                    width: 8, height: 8,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: backend.online ? CupertinoColors.systemGreen : CupertinoColors.systemRed,
-                    ),
+                ),
+                Text(
+                  backend.online ? '就绪' : '异常',
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w500,
+                    color: backend.online ? const Color(0xFF8E8E93) : CupertinoColors.systemRed,
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 20),
+                ..._items.asMap().entries.map((e) {
+                  final idx = e.key;
+                  final (icon, label) = e.value;
+                  return _NavItem(
+                    icon: icon,
+                    label: label,
+                    selected: selectedIndex == idx,
+                    onTap: () => onSelect(idx),
+                  );
+                }),
+                const Spacer(),
+              ],
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-              child: Text(
-                backend.online ? '后端已连接' : '后端未连接',
-                style: TextStyle(fontSize: 11, color: backend.online ? const Color(0xFF8E8E93) : CupertinoColors.systemRed),
-              ),
-            ),
-            _SidebarItem(
-              icon: CupertinoIcons.play_rectangle,
-              label: '任务',
-              selected: selectedIndex == 0,
-              onTap: () => onSelect(0),
-            ),
-            _SidebarItem(
-              icon: CupertinoIcons.gear,
-              label: '设置',
-              selected: selectedIndex == 1,
-              onTap: () => onSelect(1),
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _SidebarItem extends StatelessWidget {
+class _NavItem extends StatefulWidget {
   final IconData icon;
   final String label;
   final bool selected;
   final VoidCallback onTap;
 
-  const _SidebarItem({required this.icon, required this.label, required this.selected, required this.onTap});
+  const _NavItem({required this.icon, required this.label, required this.selected, required this.onTap});
+
+  @override
+  State<_NavItem> createState() => _NavItemState();
+}
+
+class _NavItemState extends State<_NavItem> {
+  bool _hovering = false;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? CupertinoColors.systemBlue.withValues(alpha: 0.12) : null,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 18, color: selected ? CupertinoColors.systemBlue : const Color(0xFF8E8E93)),
-            const SizedBox(width: 10),
-            Text(label, style: TextStyle(
-              fontSize: 14,
-              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-              color: selected ? CupertinoColors.systemBlue : const Color(0xFF3A3A3C),
-            )),
-          ],
+    final active = widget.selected;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: active
+                ? CupertinoColors.systemBlue.withValues(alpha: 0.15)
+                : _hovering
+                    ? const Color(0xFF8E8E93).withValues(alpha: 0.08)
+                    : null,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(widget.icon, size: 22, color: active ? CupertinoColors.systemBlue : const Color(0xFF8E8E93)),
+              const SizedBox(height: 3),
+              Text(widget.label, style: TextStyle(
+                fontSize: 10,
+                fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+                color: active ? CupertinoColors.systemBlue : const Color(0xFF8E8E93),
+              )),
+            ],
+          ),
         ),
       ),
     );
