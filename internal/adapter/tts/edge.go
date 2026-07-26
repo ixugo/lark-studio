@@ -9,12 +9,15 @@ import (
 	"time"
 )
 
+const (
+	edgeTTSMaxRetries = 3
+	edgeTTSBaseDelay  = 3 * time.Second
+)
+
 // EdgeTTS 通过 edge-tts 命令行工具合成语音
 // 需要系统安装 edge-tts: pip install edge-tts
 type EdgeTTS struct {
-	voice      string
-	retryDelay time.Duration
-	maxRetries int
+	voice string
 }
 
 // NewEdgeTTS 创建 edge-tts 适配器
@@ -22,21 +25,17 @@ func NewEdgeTTS(voice string) *EdgeTTS {
 	if voice == "" {
 		voice = "zh-CN-YunjianNeural"
 	}
-	return &EdgeTTS{
-		voice:      voice,
-		retryDelay: 30 * time.Second,
-		maxRetries: 3,
-	}
+	return &EdgeTTS{voice: voice}
 }
 
-// Synthesize 合成语音
+// Synthesize 合成语音，失败时指数退避重试
 func (e *EdgeTTS) Synthesize(ctx context.Context, text, outputPath, voice string) error {
 	if voice == "" {
 		voice = e.voice
 	}
 
 	var lastErr error
-	for attempt := 0; attempt <= e.maxRetries; attempt++ {
+	for attempt := range edgeTTSMaxRetries {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -53,12 +52,12 @@ func (e *EdgeTTS) Synthesize(ctx context.Context, text, outputPath, voice string
 
 		lastErr = fmt.Errorf("edge-tts 失败 (attempt %d): %s, output: %s", attempt+1, err, string(output))
 
-		// 限流重试
-		if attempt < e.maxRetries {
+		if attempt < edgeTTSMaxRetries-1 {
+			delay := edgeTTSBaseDelay * time.Duration(1<<uint(attempt))
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
-			case <-time.After(e.retryDelay):
+			case <-time.After(delay):
 			}
 		}
 	}

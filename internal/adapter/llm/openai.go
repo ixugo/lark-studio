@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -136,7 +137,12 @@ Rules:
 	return sentences, nil
 }
 
-// Translate 翻译句子列表
+const (
+	translateMaxRetries = 3
+	translateBaseDelay  = 2 * time.Second
+)
+
+// Translate 翻译句子列表，数量不符时自动重试
 func (c *Client) Translate(ctx context.Context, sentences []string, targetLang string) ([]string, error) {
 	numbered := make([]string, len(sentences))
 	for i, s := range sentences {
@@ -145,39 +151,69 @@ func (c *Client) Translate(ctx context.Context, sentences []string, targetLang s
 
 	system := fmt.Sprintf(`You are a professional translator. Translate the following numbered sentences to %s.
 Rules:
-- Keep the same number of lines as input
+- You MUST output exactly %d lines, one translation per input line
 - Each translated line should start with its number (e.g., "1. 翻译内容")
 - Maintain the meaning and tone
 - Use natural, fluent expressions
-- For technical terms, keep the English original in parentheses when first mentioned`, targetLang)
+- For technical terms, keep the English original in parentheses when first mentioned`, targetLang, len(sentences))
 
-	result, err := c.chat(ctx, system, strings.Join(numbered, "\n"))
-	if err != nil {
-		return nil, err
+	input := strings.Join(numbered, "\n")
+	expected := len(sentences)
+
+	var lastTranslated []string
+	for attempt := range translateMaxRetries {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
+		result, err := c.chat(ctx, system, input)
+		if err != nil {
+			if attempt < translateMaxRetries-1 {
+				delay := translateBaseDelay * time.Duration(1<<uint(attempt))
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(delay):
+				}
+				continue
+			}
+			return nil, err
+		}
+
+		translated := parseNumberedLines(result)
+		lastTranslated = translated
+
+		if len(translated) == expected {
+			return translated, nil
+		}
+
+		slog.Debug("LLM 翻译数量不符，重试",
+			"expected", expected, "got", len(translated), "attempt", attempt+1)
 	}
 
-	// 解析编号输出
-	lines := strings.Split(result, "\n")
-	var translated []string
+	// 重试耗尽仍数量不符，做防御性对齐
+	for len(lastTranslated) < expected {
+		lastTranslated = append(lastTranslated, sentences[len(lastTranslated)])
+	}
+	if len(lastTranslated) > expected {
+		lastTranslated = lastTranslated[:expected]
+	}
+	return lastTranslated, nil
+}
+
+// parseNumberedLines 解析 LLM 返回的编号行
+func parseNumberedLines(text string) []string {
+	lines := strings.Split(text, "\n")
+	var result []string
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
-		// 去除编号前缀 "1. "
 		if idx := strings.Index(line, ". "); idx > 0 && idx < 5 {
 			line = line[idx+2:]
 		}
-		translated = append(translated, line)
+		result = append(result, line)
 	}
-
-	// 数量对齐
-	for len(translated) < len(sentences) {
-		translated = append(translated, sentences[len(translated)])
-	}
-	if len(translated) > len(sentences) {
-		translated = translated[:len(sentences)]
-	}
-
-	return translated, nil
+	return result
 }
