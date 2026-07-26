@@ -211,3 +211,46 @@ PRODUCTION_HOST = remoteHost
 release/push:
 	@scp build/linux_amd64/bin $(PRODUCTION_HOST):/home/app/$(MODULE_NAME)
 	@echo "push Successed"
+
+
+# ==================================================================================== #
+# FLUTTER UI
+# ==================================================================================== #
+
+FLUTTER_DIR := ./ui
+
+## flutter/get: 安装 Flutter 依赖
+.PHONY: flutter/get
+flutter/get:
+	@cd $(FLUTTER_DIR) && flutter pub get
+
+## flutter/run: 运行 Flutter 桌面应用 (macOS)
+.PHONY: flutter/run
+flutter/run:
+	@cd $(FLUTTER_DIR) && flutter run -d macos
+
+## flutter/build/macos: 构建 macOS 应用
+.PHONY: flutter/build/macos
+flutter/build/macos: build/local
+	@make title content='Building Flutter macOS app...'
+	@cd $(FLUTTER_DIR) && flutter build macos --release
+	@echo '>>> OK'
+
+## flutter/build/windows: 构建 Windows 应用
+.PHONY: flutter/build/windows
+flutter/build/windows:
+	@make title content='Building Flutter Windows app...'
+	@cd $(FLUTTER_DIR) && flutter build windows --release
+	@echo '>>> OK'
+
+## flutter/build/linux: 构建 Linux 应用
+.PHONY: flutter/build/linux
+flutter/build/linux:
+	@make title content='Building Flutter Linux app...'
+	@cd $(FLUTTER_DIR) && flutter build linux --release
+	@echo '>>> OK'
+
+## build/all: 构建 Go 后端 + Flutter 前端 (macOS)
+.PHONY: build/all
+build/all: build/local flutter/build/macos
+	@echo '>>> All builds complete'

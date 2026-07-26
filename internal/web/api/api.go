@@ -41,8 +41,11 @@ func setupRouter(r *gin.Engine, uc *Usecase) {
 	r.GET("/app/metrics/api", web.WrapH(uc.getMetricsAPI))
 
 	versionapi.Register(r, uc.Version, auth)
-	// TODO: 待补充中间件
 	RegisterTask(r, uc.TaskAPI)
+
+	r.GET("/config", web.WrapH(uc.getConfig))
+	r.PUT("/config", web.WrapH(uc.updateConfig))
+	r.GET("/ws", gin.WrapF(uc.Hub.ServeHTTP))
 }
 
 type getHealthOutput struct {

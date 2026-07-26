@@ -14,6 +14,7 @@ import (
 	"github.com/ixugo/vdub/internal/conf"
 	"github.com/ixugo/vdub/internal/data"
 	"github.com/ixugo/vdub/internal/web/api"
+	"github.com/ixugo/vdub/pkg/ws"
 )
 
 // Injectors from wire.go:
@@ -26,7 +27,15 @@ func WireApp(bc *conf.Bootstrap, log *slog.Logger) (http.Handler, func(), error)
 	core := versionapi.NewVersionCore(db)
 	versionapiAPI := versionapi.New(core)
 	taskCore := api.NewTaskCore(db)
-	scheduler, schedulerCleanup := NewPipelineScheduler(bc, taskCore)
+
+	hub := ws.NewHub(func(c *ws.Config) {
+		c.MaxConnections = 10
+	})
+	hub.Handle("heartbeat", ws.HandlerFunc(func(client *ws.Client, message ws.Message) error {
+		return nil
+	}))
+
+	scheduler, schedulerCleanup := NewPipelineScheduler(bc, taskCore, hub)
 	taskAPI := api.NewTaskAPI(taskCore, scheduler, bc)
 
 	usecase := &api.Usecase{
@@ -35,9 +44,11 @@ func WireApp(bc *conf.Bootstrap, log *slog.Logger) (http.Handler, func(), error)
 		Version:   versionapiAPI,
 		TaskAPI:   taskAPI,
 		Scheduler: scheduler,
+		Hub:       hub,
 	}
 	handler := api.NewHTTPHandler(usecase)
 	return handler, func() {
 		schedulerCleanup()
+		hub.Close()
 	}, nil
 }

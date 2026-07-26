@@ -12,6 +12,7 @@ import (
 	"github.com/ixugo/goddd/pkg/web"
 	"github.com/ixugo/vdub/internal/conf"
 	"github.com/ixugo/vdub/internal/core/pipeline"
+	"github.com/ixugo/vdub/pkg/ws"
 	"gorm.io/gorm"
 )
 
@@ -32,6 +33,7 @@ type Usecase struct {
 
 	TaskAPI   TaskAPI
 	Scheduler *pipeline.Scheduler
+	Hub       ws.Huber
 }
 
 // NewHTTPHandler 生成Gin框架路由内容

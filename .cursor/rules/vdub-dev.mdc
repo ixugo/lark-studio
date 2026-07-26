@@ -13,7 +13,7 @@ globs:
 vdub 是一个本地桌面端视频翻译配音工具，纯 Go 实现。
 - 架构：goddd 六边形架构（API → Core ← Store/Adapter）
 - 存储：SQLite（~/dsub/vdub.db）
-- UI：HTMX + WebSocket（浏览器访问 localhost:9523）
+- UI：Flutter Desktop (Cupertino 风格) + Go HTTP API (localhost:9523)
 - 并发：2 worker goroutine 并行处理，翻译/TTS 资源互斥
 
 ## 目录结构
@@ -30,7 +30,15 @@ internal/
 │   ├── task/         # 任务领域（CRUD + 状态管理）
 │   └── pipeline/     # 流水线编排（调度器 + 6 步骤）
 ├── data/             # 数据库初始化
-└── web/api/          # HTTP 路由 + WebSocket
+└── web/api/          # HTTP 路由
+ui/                   # Flutter Desktop 应用 (Cupertino 风格)
+├── lib/
+│   ├── services/     # API 客户端、后端进程管理
+│   ├── models/       # 数据模型
+│   └── pages/        # 页面组件
+├── macos/            # macOS 平台配置
+├── linux/            # Linux 平台配置
+└── windows/          # Windows 平台配置
 ```
 
 ## 关键设计决策
@@ -61,5 +69,5 @@ internal/
 - 函数不超过 40 行
 - 错误处理用 `reason.Error`
 - 配置变更同步 config.toml + 结构体
-- WebSocket 消息用 JSON: `{"type":"progress","task_id":"...","step":"...","value":50}`
-- HTMX 页面用 embed.FS 嵌入，不依赖外部文件
+- Flutter UI 通过 HTTP 调用 Go 后端 API (localhost:9523)
+- Go 后端作为独立进程运行，Flutter 负责进程管理
