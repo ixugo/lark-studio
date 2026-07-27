@@ -67,6 +67,30 @@
 - [x] 新增单元测试: semanticBreak / 翻译上下文窗口 / 调速因子逻辑
 - [x] 生成 CHANGELOG.md
 
+### 引擎管理 & UI (macOS 26 液态玻璃)
+
+- [x] Go -port flag: 命令行参数覆盖 HTTP 端口
+- [x] Flutter 随机端口 + 引擎自动拉起/关闭同杀
+- [x] Flutter 引擎健康检查失败 3 次自动重启
+- [x] Go UI 看门狗: 所有 WS 断连 75s 自动退出
+- [x] Flutter WS 连接后即发 auth 消息（修复 AuthTimeout 断连）
+- [x] Onboarding 引导: 仅 Whisper 模式选择 + SharedPreferences 存储
+- [x] Makefile: build/test/run/dev/bundle 一键操作 + macOS .app 内嵌 Go 二进制
+- [x] 引擎命名统一: "后端"→"引擎"（侧边栏/设置/Dashboard）
+- [x] macOS 26 液态玻璃 UI: 窄化侧边栏 + BackdropFilter 毛玻璃 + 渐变背景
+- [x] Dashboard 首页: 快捷操作卡片 + 最近任务 + 环境状态面板
+- [x] 设置页液态玻璃化: GlassSection 分组 + 状态指示灯
+- [x] 任务列表液态玻璃卡片 + 毛玻璃工具栏
+- [x] Onboarding 液态玻璃化 + 品牌 Logo 渐变
+
+### 翻译+TTS 真流水线并行
+
+- [x] 翻译逐块产出立即推入 channel，TTS 多 worker 并发消费
+- [x] 可配置: TranslateChunkSize (5~20) + TTSWorkers (1~4)
+- [x] channel 缓冲 300，不会朗读两遍（文件名索引去重 + stat 跳过）
+- [x] Flutter 设置页新增翻译分块/TTS 并发滑块
+- [x] 修复 Flutter _findBinary Platform.operatingSystem→GOOS 映射
+
 ## 待实现
 
 ### 质量提升
@@ -76,5 +100,5 @@
 
 ### 工程优化
 
-- [ ] 日志系统: 每个 Task 独立日志文件
-- [ ] 资源清理: 处理完成后可选删除中间产物
+- [x] 日志系统: 每个 Task 独立日志文件 (task.log)，记录步骤开始/完成/耗时/失败
+- [x] 资源清理: CleanIntermediate 可配置，成功后删除中间产物 (raw.mp3/audio_segs 等)，保留 *.mp4/src.srt/trans.srt/task.log

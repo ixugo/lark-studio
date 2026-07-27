@@ -54,13 +54,10 @@ ui/                   # Flutter Desktop 应用 (Cupertino 风格)
 - `LLMClient`: SplitSentences / Translate
 - `TTSClient`: Synthesize(ctx, text, outputPath, voice) error
 
-## 待完成任务（按优先级）
+## 待完成任务
 
-1. Wire 接线 + main.go 串联组件
-2. 数据目录初始化（~/dsub/）
-3. Web UI（HTMX + WebSocket 推送进度）
-4. 断点恢复逻辑
-5. 翻译质量提升（三轮校对/术语锁定/长度约束）
+1. 术语锁定：视频摘要提取术语表，翻译时强制使用（暂缓）
+2. 停顿节奏保留：原视频 VAD 检测 → 配音插入停顿（暂缓，Large 级别）
 
 ## 编码要求
 

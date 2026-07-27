@@ -3,15 +3,28 @@
 ## Unreleased
 
 ### feat
+- 任务级日志：每个 Task 输出 task.log，记录步骤开始/完成/耗时/失败
+- 资源清理：CleanIntermediate 可配置，成功后删除中间产物保留最终交付件
+- 翻译+TTS 真流水线并行：翻译逐块产出推入 channel，多 TTS worker 并发消费
 - 翻译上下文窗口：每个 chunk 携带前后各 3 句上下文，提升跨块翻译连贯性
 - TTS 温和调速：超时音频段自动 atempo 加速，上限可配置（MaxSpeedFactor）
 - 批量提交改为视频路径数组：POST /tasks/batch 接受 videos[] 而非目录
-- Flutter 批量导入弹窗改为多文件选择器
-- Flutter 配置页新增 TTS 调速上限滑块
+- Go -port flag 支持命令行覆盖 HTTP 端口
+- Flutter 随机端口 + 引擎自动拉起/关闭同杀
+- Flutter 引擎健康检查失败 3 次自动重启
+- Go UI 看门狗：全部 WS 断连 75s 自动退出
+- Onboarding 引导：Whisper 模式选择 + SharedPreferences 存储
+- Dashboard 首页：快捷操作卡片 + 最近任务 + 环境状态
+- macOS 26 液态玻璃 UI：窄化侧边栏 + BackdropFilter 毛玻璃 + 渐变
+- Flutter 设置页 CleanIntermediate 开关
+- Makefile：build/test/run/dev/bundle 一键操作 + macOS .app 内嵌 Go 二进制
 
 ### fix
+- 修复 Flutter _findBinary Platform.operatingSystem→GOOS 映射
+- 修复 pipelineInput 缺少 TranslateChunkSize/TTSWorkers 导致 type error
 - 修复 status 零值覆盖 bug（SetTaskStatus 替代 copier 全量覆盖）
 - Flutter status 映射修正（0=等待/1=处理中/2=已暂停/3=已完成/4=失败）
+- 修复 WS AuthTimeout 断连（Flutter 连接后即发 auth 消息）
 
 ---
 
