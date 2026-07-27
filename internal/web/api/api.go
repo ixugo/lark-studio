@@ -46,6 +46,7 @@ func setupRouter(r *gin.Engine, uc *Usecase) {
 	versionapi.Register(r, uc.Version, auth)
 	RegisterTask(r, uc.TaskAPI)
 	RegisterTerm(r, uc.TermAPI)
+	RegisterModel(r, uc.Hub)
 
 	r.GET("/config", web.WrapH(uc.getConfig))
 	r.PUT("/config", web.WrapH(uc.updateConfig))

@@ -134,6 +134,25 @@ class ApiClient {
     _checkStatus(resp);
   }
 
+  // ---- Model API ----
+
+  Future<List<Map<String, dynamic>>> listModels() async {
+    final resp = await _client.get(Uri.parse('$baseUrl/models'));
+    _checkStatus(resp);
+    final body = jsonDecode(resp.body) as Map<String, dynamic>;
+    final data = body['data'] as List<dynamic>? ?? [];
+    return data.cast<Map<String, dynamic>>();
+  }
+
+  Future<void> downloadModel(String name) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/models/download'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'name': name}),
+    );
+    _checkStatus(resp);
+  }
+
   // ---- Config API ----
 
   Future<AppConfig> getConfig() async {

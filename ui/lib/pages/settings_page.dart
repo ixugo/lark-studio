@@ -45,6 +45,7 @@ class _SettingsPageState extends State<SettingsPage> {
   int _ttsWorkers = 2;
   bool _cleanIntermediate = false;
   String _subtitleOutput = 'burn';
+  List<Map<String, dynamic>> _models = [];
 
   @override
   void initState() {
@@ -77,6 +78,7 @@ class _SettingsPageState extends State<SettingsPage> {
       final cfg = await api.getConfig();
       _applyConfig(cfg);
       try { _terms = await api.listTerms(); } catch (_) {}
+      try { _models = await api.listModels(); } catch (_) {}
       setState(() { _config = cfg; _loading = false; });
     } catch (e) {
       setState(() { _error = '$e'; _loading = false; });
@@ -227,6 +229,31 @@ class _SettingsPageState extends State<SettingsPage> {
         _GlassSection(title: '流水线', children: [
           _segmentRow('Whisper', {'ffmpeg': 'FFmpeg', 'whisper-cpp': 'whisper.cpp'}, _whisperMode, (v) => setState(() => _whisperMode = v)),
           _GlassField(label: '模型路径', controller: _whisperModel, placeholder: '/path/to/ggml-large-v3.bin'),
+          if (_models.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('可用模型 (点击下载后自动填入路径)', style: TextStyle(fontSize: 11, color: Color(0xFF8E8E93))),
+                  const SizedBox(height: 6),
+                  ..._models.map((m) => _ModelRow(
+                    name: m['name'] as String? ?? '',
+                    size: m['size'] as String? ?? '',
+                    desc: m['desc'] as String? ?? '',
+                    downloaded: m['downloaded'] as bool? ?? false,
+                    downloading: m['downloading'] as bool? ?? false,
+                    progress: m['progress'] as int? ?? 0,
+                    path: m['path'] as String? ?? '',
+                    onDownload: () => _downloadModel(m['name'] as String? ?? ''),
+                    onSelect: () {
+                      final p = m['path'] as String? ?? '';
+                      if (p.isNotEmpty) setState(() => _whisperModel.text = p);
+                    },
+                  )),
+                ],
+              ),
+            ),
           _GlassField(label: 'FFmpeg', controller: _ffmpegBin, placeholder: '留空使用 PATH'),
           _GlassField(label: '目标语言', controller: _targetLang, placeholder: 'zh-CN'),
           _sliderRow('Worker 数', _workers, 1, 4, (v) => setState(() => _workers = v)),
@@ -410,6 +437,21 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Future<void> _downloadModel(String name) async {
+    final api = context.read<ApiClient>();
+    try {
+      await api.downloadModel(name);
+      if (mounted) _showToast('模型 $name 开始下载');
+      Future.delayed(const Duration(seconds: 2), () async {
+        if (!mounted) return;
+        try { _models = await api.listModels(); } catch (_) {}
+        if (mounted) setState(() {});
+      });
+    } catch (e) {
+      if (mounted) _showToast('下载失败: $e');
+    }
+  }
+
   void _showToast(String msg) {
     showCupertinoDialog(
       context: context,
@@ -590,6 +632,60 @@ class _TermChip extends StatelessWidget {
             onTap: onDelete,
             child: Icon(CupertinoIcons.xmark_circle_fill, size: 14, color: const Color(0xFF007AFF).withValues(alpha: 0.6)),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ModelRow extends StatelessWidget {
+  final String name;
+  final String size;
+  final String desc;
+  final bool downloaded;
+  final bool downloading;
+  final int progress;
+  final String path;
+  final VoidCallback onDownload;
+  final VoidCallback onSelect;
+
+  const _ModelRow({
+    required this.name, required this.size, required this.desc,
+    required this.downloaded, required this.downloading, required this.progress,
+    required this.path, required this.onDownload, required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF3A3A3C))),
+                Text('$size · $desc', style: const TextStyle(fontSize: 10, color: Color(0xFF8E8E93))),
+              ],
+            ),
+          ),
+          if (downloaded)
+            CupertinoButton(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              minimumSize: Size.zero,
+              onPressed: onSelect,
+              child: const Text('使用', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF34C759))),
+            )
+          else if (downloading)
+            Text('$progress%', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF007AFF)))
+          else
+            CupertinoButton(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              minimumSize: Size.zero,
+              onPressed: onDownload,
+              child: const Text('下载', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF007AFF))),
+            ),
         ],
       ),
     );
