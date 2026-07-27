@@ -26,6 +26,7 @@ func NewPipelineCore(bc *conf.Bootstrap, opts ...pipeline.Option) *pipeline.Core
 		TranslateChunkSize: bc.Pipeline.TranslateChunkSize,
 		TTSWorkers:         bc.Pipeline.TTSWorkers,
 		CleanIntermediate:  bc.Pipeline.CleanIntermediate,
+		SubtitleOutput:     bc.Pipeline.SubtitleOutput,
 	}
 
 	var wr pipeline.WhisperRunner

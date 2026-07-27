@@ -25,6 +25,7 @@ class PipelineConfig {
   final int translateChunkSize;
   final int ttsWorkers;
   final bool cleanIntermediate;
+  final String subtitleOutput;
 
   const PipelineConfig({
     this.workers = 2,
@@ -37,6 +38,7 @@ class PipelineConfig {
     this.translateChunkSize = 10,
     this.ttsWorkers = 2,
     this.cleanIntermediate = false,
+    this.subtitleOutput = 'burn',
   });
 
   factory PipelineConfig.fromJson(Map<String, dynamic> json) {
@@ -51,6 +53,7 @@ class PipelineConfig {
       translateChunkSize: json['TranslateChunkSize'] as int? ?? 10,
       ttsWorkers: json['TTSWorkers'] as int? ?? 2,
       cleanIntermediate: json['CleanIntermediate'] as bool? ?? false,
+      subtitleOutput: json['SubtitleOutput'] as String? ?? 'burn',
     );
   }
 }

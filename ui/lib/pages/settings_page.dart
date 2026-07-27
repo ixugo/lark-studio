@@ -44,6 +44,7 @@ class _SettingsPageState extends State<SettingsPage> {
   int _translateChunkSize = 10;
   int _ttsWorkers = 2;
   bool _cleanIntermediate = false;
+  String _subtitleOutput = 'burn';
 
   @override
   void initState() {
@@ -128,6 +129,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _translateChunkSize = cfg.pipeline.translateChunkSize;
     _ttsWorkers = cfg.pipeline.ttsWorkers;
     _cleanIntermediate = cfg.pipeline.cleanIntermediate;
+    _subtitleOutput = cfg.pipeline.subtitleOutput;
   }
 
   Future<void> _saveConfig() async {
@@ -157,6 +159,7 @@ class _SettingsPageState extends State<SettingsPage> {
           'translate_chunk_size': _translateChunkSize,
           'tts_workers': _ttsWorkers,
           'clean_intermediate': _cleanIntermediate,
+          'subtitle_output': _subtitleOutput,
         },
       };
       final cfg = await context.read<ApiClient>().updateConfig(updates);
@@ -233,6 +236,7 @@ class _SettingsPageState extends State<SettingsPage> {
             (v) => setState(() => _translateChunkSize = v)),
           _sliderRow('TTS 并发', _ttsWorkers, 1, 4,
             (v) => setState(() => _ttsWorkers = v)),
+          _segmentRow('字幕输出', {'burn': '烧录到视频', 'file': '独立字幕文件'}, _subtitleOutput, (v) => setState(() => _subtitleOutput = v)),
           _switchRow('清理中间产物', _cleanIntermediate, '完成后删除 raw.mp3/audio_segs 等临时文件',
             (v) => setState(() => _cleanIntermediate = v)),
         ]),

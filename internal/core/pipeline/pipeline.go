@@ -59,6 +59,7 @@ type Config struct {
 	TranslateChunkSize int     // 每次发给 LLM 的句子数（默认 10）
 	TTSWorkers         int     // TTS 并发协程数（默认 2）
 	CleanIntermediate  bool    // 成功后删除中间产物
+	SubtitleOutput     string  // "burn" 烧录到视频 / "file" 仅输出字幕文件
 }
 
 // Core 流水线调度核心
@@ -263,17 +264,30 @@ func (c *Core) runStepWithRetry(ctx context.Context, job Job, step string, fn fu
 }
 
 // buildSteps 根据模式构建步骤列表
+// SubtitleOutput=="file" 时跳过 burn 步骤，仅输出独立字幕文件
 func (c *Core) buildSteps(mode int) []string {
+	skipBurn := c.cfg.SubtitleOutput == "file"
+	var steps []string
 	switch mode {
 	case ModeSubtitle:
-		return []string{StepWhisper, StepBurn}
+		steps = []string{StepWhisper, StepBurn}
 	case ModeTranslate:
-		return []string{StepWhisper, StepSplit, StepTranslate, StepBurn}
+		steps = []string{StepWhisper, StepSplit, StepTranslate, StepBurn}
 	case ModeDub:
-		return []string{StepWhisper, StepSplit, StepTranslate, StepTTS, StepMerge, StepBurn}
+		steps = []string{StepWhisper, StepSplit, StepTranslate, StepTTS, StepMerge, StepBurn}
 	default:
-		return []string{StepWhisper, StepBurn}
+		steps = []string{StepWhisper, StepBurn}
 	}
+	if skipBurn {
+		filtered := steps[:0]
+		for _, s := range steps {
+			if s != StepBurn {
+				filtered = append(filtered, s)
+			}
+		}
+		return filtered
+	}
+	return steps
 }
 
 // noopNotifier 空通知实现

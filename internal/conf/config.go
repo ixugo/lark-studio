@@ -30,6 +30,7 @@ type Pipeline struct {
 	TranslateChunkSize int     `comment:"每次发给 LLM 的句子数（5~20，默认 10）"`
 	TTSWorkers         int     `comment:"TTS 并发协程数（1~4，默认 2）"`
 	CleanIntermediate  bool    `comment:"处理完成后删除中间产物（raw.mp3/audio_segs 等）"`
+	SubtitleOutput     string  `comment:"字幕输出方式: burn(烧录到视频) / file(仅输出字幕文件)"`
 }
 
 // LLM 大模型配置
