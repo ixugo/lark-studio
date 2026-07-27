@@ -45,7 +45,13 @@ func getBuildRelease() bool {
 }
 
 func main() {
+	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("vdub %s (%s/%s) built %s\n", buildVersion, gitBranch, gitHash, buildTime)
+		return
+	}
 
 	// 初始化数据目录 ~/dsub/
 	if err := conf.EnsureDataDirs(); err != nil {
