@@ -77,7 +77,9 @@ class BackendService extends ChangeNotifier {
 
   Future<void> _check() async {
     try {
-      final resp = await http.get(Uri.parse('$baseUrl/health')).timeout(const Duration(seconds: 2));
+      final resp = await http
+          .get(Uri.parse('$baseUrl/health'))
+          .timeout(const Duration(seconds: 2));
       if (resp.statusCode == 200) {
         _failCount = 0;
         _setOnline(true);
@@ -88,9 +90,12 @@ class BackendService extends ChangeNotifier {
     _failCount++;
     _setOnline(false);
 
-    if (_binaryPath != null && _failCount >= _maxFailBeforeRestart && !_restarting) {
+    if (_binaryPath != null &&
+        _failCount >= _maxFailBeforeRestart &&
+        !_restarting) {
       _restarting = true;
-      debugPrint('engine health check failed $_failCount times, restarting...');
+      debugPrint(
+          'engine health check failed $_failCount times, restarting...');
       _killProcess();
       await Future.delayed(const Duration(seconds: 1));
       await _launchProcess(_binaryPath!);
@@ -111,21 +116,22 @@ class BackendService extends ChangeNotifier {
     for (var i = 0; i < 20; i++) {
       final candidate = 9523 + rng.nextInt(100);
       try {
-        final socket = await ServerSocket.bind(InternetAddress.loopbackIPv4, candidate);
+        final socket =
+            await ServerSocket.bind(InternetAddress.loopbackIPv4, candidate);
         await socket.close();
         return candidate;
       } catch (_) {
         continue;
       }
     }
-    final socket = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    final socket =
+        await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
     final port = socket.port;
     await socket.close();
     return port;
   }
 
   /// 在常见位置查找 vdub 可执行文件
-  /// 搜索顺序：macOS bundle → 调试模式推导路径 → cwd 相对路径
   String? _findBinary() {
     final exe = Platform.resolvedExecutable;
     final goos = _goOS();
@@ -133,12 +139,14 @@ class BackendService extends ChangeNotifier {
     final candidates = <String>[];
 
     if (Platform.isMacOS && exe.contains('.app/Contents/')) {
-      final contentsDir = exe.substring(0, exe.indexOf('.app/Contents/') + '.app/Contents'.length);
+      final contentsDir = exe.substring(
+          0, exe.indexOf('.app/Contents/') + '.app/Contents'.length);
       candidates.add('$contentsDir/Resources/vdub');
 
-      // 调试模式：.app 在 ui/build/macos/…，向上推导至项目根
       final appDir = exe.substring(0, exe.indexOf('.app/'));
-      final uiDir = appDir.contains('/ui/') ? appDir.substring(0, appDir.indexOf('/ui/')) : null;
+      final uiDir = appDir.contains('/ui/')
+          ? appDir.substring(0, appDir.indexOf('/ui/'))
+          : null;
       if (uiDir != null) {
         candidates.add('$uiDir/build/${goos}_$arch/vdub');
         candidates.add('$uiDir/vdub');
@@ -168,7 +176,6 @@ class BackendService extends ChangeNotifier {
     return 'amd64';
   }
 
-  /// Dart Platform.operatingSystem → Go GOOS 映射
   static String _goOS() {
     if (Platform.isMacOS) return 'darwin';
     if (Platform.isWindows) return 'windows';

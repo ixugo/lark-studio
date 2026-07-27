@@ -28,12 +28,14 @@ class _OnboardingPageState extends State<OnboardingPage> {
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 40),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 48, vertical: 40),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    width: 64, height: 64,
+                    width: 64,
+                    height: 64,
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
                         begin: Alignment.topLeft,
@@ -42,17 +44,35 @@ class _OnboardingPageState extends State<OnboardingPage> {
                       ),
                       borderRadius: BorderRadius.circular(18),
                       boxShadow: [
-                        BoxShadow(color: const Color(0xFF007AFF).withValues(alpha: 0.25), blurRadius: 20, offset: const Offset(0, 6)),
+                        BoxShadow(
+                            color: const Color(0xFF007AFF)
+                                .withValues(alpha: 0.25),
+                            blurRadius: 20,
+                            offset: const Offset(0, 6)),
                       ],
                     ),
                     child: const Center(
-                      child: Text('v', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: CupertinoColors.white, letterSpacing: -1)),
+                      child: Text('v',
+                          style: TextStyle(
+                              fontSize: 32,
+                              fontWeight: FontWeight.w800,
+                              color: CupertinoColors.white,
+                              letterSpacing: -1)),
                     ),
                   ),
                   const SizedBox(height: 20),
-                  const Text('vdub', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: Color(0xFF1D1D1F), letterSpacing: -1.2)),
+                  const Text('vdub',
+                      style: TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF1D1D1F),
+                          letterSpacing: -1.2)),
                   const SizedBox(height: 4),
-                  const Text('视频翻译配音工具', style: TextStyle(fontSize: 14, color: Color(0xFF8E8E93), letterSpacing: 0.2)),
+                  const Text('视频翻译配音工具',
+                      style: TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF8E8E93),
+                          letterSpacing: 0.2)),
                   const SizedBox(height: 44),
                   _glassCard(),
                   const SizedBox(height: 36),
@@ -62,7 +82,11 @@ class _OnboardingPageState extends State<OnboardingPage> {
                       borderRadius: BorderRadius.circular(14),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       onPressed: _finish,
-                      child: const Text('开始使用', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: CupertinoColors.white)),
+                      child: const Text('开始使用',
+                          style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: CupertinoColors.white)),
                     ),
                   ),
                 ],
@@ -91,17 +115,28 @@ class _OnboardingPageState extends State<OnboardingPage> {
               ],
             ),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFFFFFFF).withValues(alpha: 0.5), width: 0.5),
+            border: Border.all(
+                color: const Color(0xFFFFFFFF).withValues(alpha: 0.5),
+                width: 0.5),
             boxShadow: [
-              BoxShadow(color: const Color(0xFF000000).withValues(alpha: 0.04), blurRadius: 16, offset: const Offset(0, 4)),
+              BoxShadow(
+                  color: const Color(0xFF000000).withValues(alpha: 0.04),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4)),
             ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('选择语音识别引擎', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Color(0xFF1D1D1F), letterSpacing: -0.3)),
+              const Text('选择语音识别引擎',
+                  style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF1D1D1F),
+                      letterSpacing: -0.3)),
               const SizedBox(height: 4),
-              const Text('其余配置可在设置页随时修改', style: TextStyle(fontSize: 13, color: Color(0xFF8E8E93))),
+              const Text('其余配置可在设置页随时修改',
+                  style: TextStyle(fontSize: 13, color: Color(0xFF8E8E93))),
               const SizedBox(height: 18),
               _optionTile(
                 'FFmpeg 内置 Whisper',
@@ -122,7 +157,8 @@ class _OnboardingPageState extends State<OnboardingPage> {
     );
   }
 
-  Widget _optionTile(String title, String subtitle, bool selected, VoidCallback onTap) {
+  Widget _optionTile(
+      String title, String subtitle, bool selected, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -146,17 +182,24 @@ class _OnboardingPageState extends State<OnboardingPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: TextStyle(
-                    fontSize: 14, fontWeight: FontWeight.w500,
-                    color: selected ? const Color(0xFF007AFF) : const Color(0xFF1D1D1F),
-                  )),
+                  Text(title,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: selected
+                            ? const Color(0xFF007AFF)
+                            : const Color(0xFF1D1D1F),
+                      )),
                   const SizedBox(height: 2),
-                  Text(subtitle, style: const TextStyle(fontSize: 11, color: Color(0xFF8E8E93))),
+                  Text(subtitle,
+                      style: const TextStyle(
+                          fontSize: 11, color: Color(0xFF8E8E93))),
                 ],
               ),
             ),
             if (selected)
-              const Icon(CupertinoIcons.checkmark_circle_fill, size: 20, color: Color(0xFF007AFF)),
+              const Icon(CupertinoIcons.checkmark_circle_fill,
+                  size: 20, color: Color(0xFF007AFF)),
           ],
         ),
       ),

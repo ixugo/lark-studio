@@ -1,46 +1,57 @@
 import 'package:flutter/cupertino.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
-import 'services/api_client.dart';
-import 'services/backend_service.dart';
-import 'services/websocket_service.dart';
+import 'data/services/api_client.dart';
+import 'providers.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final backend = BackendService();
-  final api = ApiClient(baseUrl: 'http://localhost:9523');
-  final wsService = WebSocketService();
-  var configSynced = false;
-
-  backend.addListener(() {
-    if (backend.port > 0) {
-      api.updateBaseUrl('http://localhost:${backend.port}');
-      wsService.updateWsUrl('ws://localhost:${backend.port}/ws');
-    }
-    if (backend.online && !wsService.connected) {
-      wsService.connect();
-    }
-    if (backend.online && !configSynced) {
-      configSynced = true;
-      _syncOnboardingConfig(api);
-    }
-  });
-  backend.start();
-
   runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider<BackendService>.value(value: backend),
-        Provider<ApiClient>.value(value: api),
-        ChangeNotifierProvider<WebSocketService>.value(value: wsService),
-        ChangeNotifierProvider(create: (_) => TaskListNotifier(api)),
-      ],
-      child: const VdubApp(),
+    ProviderScope(
+      child: const _AppBootstrap(),
     ),
   );
+}
+
+/// 读取 providers 启动引擎和 WebSocket
+class _AppBootstrap extends ConsumerStatefulWidget {
+  const _AppBootstrap();
+
+  @override
+  ConsumerState<_AppBootstrap> createState() => _AppBootstrapState();
+}
+
+class _AppBootstrapState extends ConsumerState<_AppBootstrap> {
+  bool _configSynced = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final backend = ref.read(backendProvider);
+    final api = ref.read(apiClientProvider);
+    final ws = ref.read(wsServiceProvider);
+
+    backend.addListener(() {
+      if (backend.port > 0) {
+        api.updateBaseUrl('http://localhost:${backend.port}');
+        ws.updateWsUrl('ws://localhost:${backend.port}/ws');
+      }
+      if (backend.online && !ws.connected) {
+        ws.connect();
+      }
+      if (backend.online && !_configSynced) {
+        _configSynced = true;
+        _syncOnboardingConfig(api);
+      }
+    });
+    backend.start();
+  }
+
+  @override
+  Widget build(BuildContext context) => const VdubApp();
 }
 
 /// 引擎首次上线时，将 onboarding 保存的 whisper_mode 同步到 Go 后端

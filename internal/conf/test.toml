@@ -67,6 +67,8 @@
   TTSWorkers = 0
   # 处理完成后删除中间产物（raw.mp3/audio_segs 等）
   CleanIntermediate = false
+  # 字幕输出方式: burn(烧录到视频) / file(仅输出字幕文件)
+  SubtitleOutput = ''
 
 [LLM]
   # OpenAI 兼容 API 地址
@@ -87,3 +89,11 @@
   APIKey = ''
   # OpenAI TTS 模型名
   Model = ''
+
+[LipSync]
+  # 是否启用对口型（MuseTalk），仅 ModeDub 生效
+  Enabled = false
+  # MuseTalk API 地址
+  BaseURL = ''
+  # API 密钥（部分服务需要）
+  APIKey = ''

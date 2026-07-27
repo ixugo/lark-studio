@@ -42,7 +42,9 @@ class Task {
   }
 
   static DateTime _parseTime(dynamic v) {
-    if (v is String && v.isNotEmpty) return DateTime.tryParse(v) ?? DateTime.now();
+    if (v is String && v.isNotEmpty) {
+      return DateTime.tryParse(v) ?? DateTime.now();
+    }
     return DateTime.now();
   }
 
