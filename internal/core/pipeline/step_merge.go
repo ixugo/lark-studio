@@ -40,6 +40,11 @@ func (c *Core) runMerge(ctx context.Context, job Job) error {
 	}
 	srtEntries := parseSRT(string(srtData))
 
+	trimmed := c.trimTrailingSilence(ctx, audioFiles, job)
+	if trimmed > 0 {
+		c.notifier.OnLog(job.TaskID, fmt.Sprintf("裁掉 %d 段音频尾部静音", trimmed))
+	}
+
 	c.adjustAudioSpeeds(ctx, audioFiles, srtEntries, job)
 
 	dubAudio := filepath.Join(job.OutputDir, "dub.mp3")
@@ -49,6 +54,44 @@ func (c *Core) runMerge(ctx context.Context, job Job) error {
 
 	c.notifier.OnProgress(job.TaskID, StepMerge, 100)
 	return nil
+}
+
+// trimTrailingSilence 裁掉每段 TTS 音频尾部的无声段
+// 避免静音膨胀导致调速计算偏差和字幕间隙异常
+func (c *Core) trimTrailingSilence(ctx context.Context, audioFiles []string, job Job) int {
+	ffmpeg := c.cfg.FFmpegBin
+	if ffmpeg == "" {
+		ffmpeg = "ffmpeg"
+	}
+
+	trimmed := 0
+	for _, af := range audioFiles {
+		if ctx.Err() != nil {
+			break
+		}
+
+		trimPath := af + ".trim.wav"
+		cmd := exec.CommandContext(ctx, ffmpeg,
+			"-y", "-i", af,
+			"-af", "silenceremove=stop_periods=1:stop_threshold=-40dB:stop_duration=0.05",
+			trimPath,
+		)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			slog.Debug("trim trailing silence failed", "file", af, "err", err, "output", string(out))
+			continue
+		}
+
+		trimInfo, _ := os.Stat(trimPath)
+		origInfo, _ := os.Stat(af)
+		if trimInfo != nil && origInfo != nil && trimInfo.Size() > 0 && trimInfo.Size() < origInfo.Size() {
+			os.Remove(af)
+			os.Rename(trimPath, af)
+			trimmed++
+		} else {
+			os.Remove(trimPath)
+		}
+	}
+	return trimmed
 }
 
 // adjustAudioSpeeds 温和调速：TTS 音频超过原始字幕时长时，用 atempo 适度加速
