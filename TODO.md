@@ -99,13 +99,21 @@
 - [x] 单元测试: matchTerms 7 用例 + injectTermsIntoPrompt 4 用例
 - [x] Flutter: 设置页术语管理区域 (添加/删除 Chip 组件)
 
-## 待实现
+### 字幕 / 模型 / 对口型
 
-### 质量提升
-
-- [ ] 停顿节奏保留: 原视频停顿检测 → 配音对应位置插入同样停顿
+- [x] 软字幕输出选项: SubtitleOutput="file" 跳过 burn，仅输出独立 .srt 文件
+- [x] Whisper 模型下载管理: GET/POST /models API + Flutter 模型列表/下载进度/自动填入路径
+- [x] 对口型 (MuseTalk): LipSyncClient 接口 + HTTP 适配器 + ModeDub lipsync 可选步骤 + Flutter 设置页开关
 
 ### 工程优化
 
 - [x] 日志系统: 每个 Task 独立日志文件 (task.log)，记录步骤开始/完成/耗时/失败
 - [x] 资源清理: CleanIntermediate 可配置，成功后删除中间产物 (raw.mp3/audio_segs 等)，保留 *.mp4/src.srt/trans.srt/task.log
+- [x] Makefile: build/test/run/dev/bundle + macOS/Windows 打包 + 版本注入 + FFmpeg 静态包自动下载
+- [x] -version 命令行标志: 打印 version/branch/hash/buildTime
+
+## 待实现
+
+### 质量提升
+
+- [ ] 停顿节奏保留: 原视频停顿检测 → 配音对应位置插入同样停顿 (Large 级别，暂缓)
