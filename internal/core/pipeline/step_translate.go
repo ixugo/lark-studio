@@ -151,6 +151,9 @@ func (c *Core) translateAllChunks(
 		chunkSize = 10
 	}
 
+	prompt := c.cfg.TranslatePrompt
+	prompt = c.injectTermsIntoPrompt(ctx, prompt, sentences)
+
 	var translated []string
 	total := len(sentences)
 
@@ -167,7 +170,7 @@ func (c *Core) translateAllChunks(
 		before := sentences[ctxStart:i]
 		after := sentences[end:ctxEnd]
 
-		result, err := c.llm.Translate(ctx, chunk, job.TargetLang, c.cfg.TranslatePrompt, before, after)
+		result, err := c.llm.Translate(ctx, chunk, job.TargetLang, prompt, before, after)
 		if err != nil {
 			return nil, fmt.Errorf("翻译第 %d-%d 句失败: %w", i+1, end, err)
 		}
@@ -191,6 +194,61 @@ func (c *Core) translateAllChunks(
 
 	c.notifier.OnProgress(job.TaskID, StepTranslate, 100)
 	return translated, nil
+}
+
+// injectTermsIntoPrompt 查询术语表，将与当前字幕匹配的术语映射注入翻译 prompt
+// 不区分大小写匹配：仅当术语源词完整出现在某句字幕中才注入
+// 返回增强后的 prompt（空串交由 LLM 适配器使用内置默认）
+func (c *Core) injectTermsIntoPrompt(ctx context.Context, basePrompt string, sentences []string) string {
+	if c.termLister == nil {
+		return basePrompt
+	}
+	allMappings, err := c.termLister.ListMappings(ctx)
+	if err != nil || len(allMappings) == 0 {
+		return basePrompt
+	}
+
+	matched := matchTermMappings(allMappings, sentences)
+	if len(matched) == 0 {
+		return basePrompt
+	}
+
+	var parts []string
+	for _, m := range matched {
+		if strings.EqualFold(m.Text, m.Translation) {
+			parts = append(parts, fmt.Sprintf("%q → keep as-is", m.Text))
+		} else {
+			parts = append(parts, fmt.Sprintf("%q → %q", m.Text, m.Translation))
+		}
+	}
+
+	termLine := fmt.Sprintf(
+		"\n- MANDATORY terminology: for each term below, when you encounter it (case-insensitive), you MUST translate it EXACTLY as specified: %s",
+		strings.Join(parts, "; "),
+	)
+
+	if basePrompt != "" {
+		return basePrompt + termLine
+	}
+	return termLine
+}
+
+// matchTermMappings 从术语映射中筛出在 sentences 中出现的条目（不区分大小写）
+func matchTermMappings(mappings []TermMapping, sentences []string) []TermMapping {
+	corpus := strings.ToLower(strings.Join(sentences, " "))
+	var matched []TermMapping
+	seen := make(map[string]bool, len(mappings))
+	for _, m := range mappings {
+		lower := strings.ToLower(m.Text)
+		if seen[lower] {
+			continue
+		}
+		if strings.Contains(corpus, lower) {
+			matched = append(matched, m)
+			seen[lower] = true
+		}
+	}
+	return matched
 }
 
 // writeTranslationOutputs 写入翻译文本和翻译字幕文件

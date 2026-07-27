@@ -12,6 +12,8 @@ import (
 	"github.com/ixugo/goddd/pkg/web"
 	"github.com/ixugo/vdub/internal/conf"
 	"github.com/ixugo/vdub/internal/core/pipeline"
+	"github.com/ixugo/vdub/internal/core/term"
+	"github.com/ixugo/vdub/internal/core/term/store/termdb"
 	"github.com/ixugo/vdub/pkg/ws"
 	"gorm.io/gorm"
 )
@@ -23,6 +25,7 @@ var (
 		NewHTTPHandler,
 		versionapi.New,
 		NewTaskCore, NewTaskAPI,
+		NewTermCore, NewTermAPI,
 	)
 )
 
@@ -32,8 +35,15 @@ type Usecase struct {
 	Version versionapi.API
 
 	TaskAPI   TaskAPI
+	TermAPI   TermAPI
 	Scheduler *pipeline.Scheduler
 	Hub       ws.Huber
+}
+
+// NewTermCore 创建术语 Core，自动迁移表结构
+func NewTermCore(db *gorm.DB) term.Core {
+	store := termdb.NewDB(db).AutoMigrate(orm.GetEnabledAutoMigrate())
+	return term.NewCore(store)
 }
 
 // NewHTTPHandler 生成Gin框架路由内容

@@ -63,11 +63,12 @@ type Config struct {
 
 // Core 流水线调度核心
 type Core struct {
-	cfg      Config
-	whisper  WhisperRunner
-	llm      LLMClient
-	tts      TTSClient
-	notifier Notifier
+	cfg        Config
+	whisper    WhisperRunner
+	llm        LLMClient
+	tts        TTSClient
+	notifier   Notifier
+	termLister TermLister
 
 	// 资源互斥锁：翻译和 TTS 同一时间只能一个 worker 使用
 	llmMu sync.Mutex
@@ -79,6 +80,11 @@ type Option func(*Core)
 
 func WithNotifier(n Notifier) Option {
 	return func(c *Core) { c.notifier = n }
+}
+
+// WithTermLister 注入术语列表查询，翻译时自动将匹配术语写入 prompt
+func WithTermLister(tl TermLister) Option {
+	return func(c *Core) { c.termLister = tl }
 }
 
 // NewCore 创建流水线核心

@@ -11,6 +11,7 @@ import (
 	"github.com/ixugo/vdub/internal/conf"
 	"github.com/ixugo/vdub/internal/core/pipeline"
 	"github.com/ixugo/vdub/internal/core/task"
+	"github.com/ixugo/vdub/internal/core/term"
 	"github.com/ixugo/vdub/pkg/ws"
 )
 
@@ -48,10 +49,30 @@ func NewPipelineCore(bc *conf.Bootstrap, opts ...pipeline.Option) *pipeline.Core
 	return pipeline.NewCore(cfg, wr, lc, tc, opts...)
 }
 
+// termAdapter 将 term.Core 适配为 pipeline.TermLister
+type termAdapter struct {
+	core term.Core
+}
+
+func (a *termAdapter) ListMappings(ctx context.Context) ([]pipeline.TermMapping, error) {
+	terms, err := a.core.ListAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	mappings := make([]pipeline.TermMapping, len(terms))
+	for i, t := range terms {
+		mappings[i] = pipeline.TermMapping{Text: t.Text, Translation: t.Translation}
+	}
+	return mappings, nil
+}
+
 // NewPipelineScheduler 创建带 DB 状态回写 + WebSocket 广播的流水线调度器
-func NewPipelineScheduler(bc *conf.Bootstrap, taskCore task.Core, hub ws.Huber) (*pipeline.Scheduler, func()) {
+func NewPipelineScheduler(bc *conf.Bootstrap, taskCore task.Core, termCore term.Core, hub ws.Huber) (*pipeline.Scheduler, func()) {
 	notifier := &dbNotifier{taskCore: taskCore, hub: hub}
-	pipeCore := NewPipelineCore(bc, pipeline.WithNotifier(notifier))
+	pipeCore := NewPipelineCore(bc,
+		pipeline.WithNotifier(notifier),
+		pipeline.WithTermLister(&termAdapter{core: termCore}),
+	)
 
 	var sched *pipeline.Scheduler
 	onDone := func(taskID string, err error) {

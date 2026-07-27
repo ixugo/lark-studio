@@ -27,6 +27,7 @@ func WireApp(bc *conf.Bootstrap, log *slog.Logger) (http.Handler, func(), error)
 	core := versionapi.NewVersionCore(db)
 	versionapiAPI := versionapi.New(core)
 	taskCore := api.NewTaskCore(db)
+	termCore := api.NewTermCore(db)
 
 	hub := ws.NewHub(func(c *ws.Config) {
 		c.MaxConnections = 10
@@ -35,14 +36,16 @@ func WireApp(bc *conf.Bootstrap, log *slog.Logger) (http.Handler, func(), error)
 		return nil
 	}))
 
-	scheduler, schedulerCleanup := NewPipelineScheduler(bc, taskCore, hub)
+	scheduler, schedulerCleanup := NewPipelineScheduler(bc, taskCore, termCore, hub)
 	taskAPI := api.NewTaskAPI(taskCore, scheduler, bc)
+	termAPI := api.NewTermAPI(termCore)
 
 	usecase := &api.Usecase{
 		Conf:      bc,
 		DB:        db,
 		Version:   versionapiAPI,
 		TaskAPI:   taskAPI,
+		TermAPI:   termAPI,
 		Scheduler: scheduler,
 		Hub:       hub,
 	}

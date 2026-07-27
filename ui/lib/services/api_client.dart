@@ -104,6 +104,36 @@ class ApiClient {
     return items.map((e) => Task.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  // ---- Term API ----
+
+  Future<List<Map<String, dynamic>>> listTerms() async {
+    final resp = await _client.get(Uri.parse('$baseUrl/terms'));
+    _checkStatus(resp);
+    final body = jsonDecode(resp.body) as Map<String, dynamic>;
+    final data = body['data'] as Map<String, dynamic>? ?? {};
+    final items = data['items'] as List<dynamic>? ?? [];
+    return items.cast<Map<String, dynamic>>();
+  }
+
+  Future<Map<String, dynamic>> createTerm(String text, {String translation = ''}) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/terms'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'text': text,
+        if (translation.isNotEmpty) 'translation': translation,
+      }),
+    );
+    _checkStatus(resp);
+    final body = jsonDecode(resp.body) as Map<String, dynamic>;
+    return body['data'] as Map<String, dynamic>;
+  }
+
+  Future<void> deleteTerm(int id) async {
+    final resp = await _client.delete(Uri.parse('$baseUrl/terms/$id'));
+    _checkStatus(resp);
+  }
+
   // ---- Config API ----
 
   Future<AppConfig> getConfig() async {

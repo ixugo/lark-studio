@@ -34,3 +34,14 @@ type TTSClient interface {
 	// voice: 语音名称/ID
 	Synthesize(ctx context.Context, text, outputPath, voice string) error
 }
+
+// TermMapping 术语映射条目
+type TermMapping struct {
+	Text        string
+	Translation string
+}
+
+// TermLister 术语列表查询接口，翻译时向 LLM 注入术语表
+type TermLister interface {
+	ListMappings(ctx context.Context) ([]TermMapping, error)
+}

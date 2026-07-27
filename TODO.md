@@ -91,11 +91,18 @@
 - [x] Flutter 设置页新增翻译分块/TTS 并发滑块
 - [x] 修复 Flutter _findBinary Platform.operatingSystem→GOOS 映射
 
+### 术语锁定
+
+- [x] Term 领域: 模型定义 + SQLite CRUD (goddd 规范)
+- [x] API: GET/POST/DELETE /terms 接口
+- [x] 翻译集成: translateAllChunks 注入术语 prompt，不区分大小写匹配
+- [x] 单元测试: matchTerms 7 用例 + injectTermsIntoPrompt 4 用例
+- [x] Flutter: 设置页术语管理区域 (添加/删除 Chip 组件)
+
 ## 待实现
 
 ### 质量提升
 
-- [ ] 术语锁定: 视频摘要提取术语表，翻译时强制使用
 - [ ] 停顿节奏保留: 原视频停顿检测 → 配音对应位置插入同样停顿
 
 ### 工程优化
