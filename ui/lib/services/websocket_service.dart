@@ -33,6 +33,7 @@ class WebSocketService extends ChangeNotifier {
       _connected = true;
       notifyListeners();
 
+      _send('auth', {});
       _startHeartbeat();
 
       _channel!.stream.listen(

@@ -18,15 +18,18 @@ type Bootstrap struct {
 
 // Pipeline 流水线处理配置
 type Pipeline struct {
-	Workers           int     `comment:"并行 worker 数量"`
-	WhisperMode       string  `comment:"whisper 模式: whisper-cpp / ffmpeg"`
-	WhisperBin        string  `comment:"whisper.cpp 可执行文件路径（WhisperMode=whisper-cpp 时生效）"`
-	WhisperModel      string  `comment:"whisper ggml 模型文件路径"`
-	FFmpegBin         string  `comment:"ffmpeg 路径（空则使用 PATH 中的）"`
-	DefaultOutputDir  string  `comment:"默认输出目录"`
-	DefaultTargetLang string  `comment:"默认目标语言"`
-	TranslatePrompt   string  `comment:"自定义翻译系统提示词（留空使用内置默认）"`
-	MaxSpeedFactor    float64 `comment:"TTS 调速上限（0 或 ≤1 不调速，推荐 1.2~1.3）"`
+	Workers            int     `comment:"并行 worker 数量"`
+	WhisperMode        string  `comment:"whisper 模式: whisper-cpp / ffmpeg"`
+	WhisperBin         string  `comment:"whisper.cpp 可执行文件路径（WhisperMode=whisper-cpp 时生效）"`
+	WhisperModel       string  `comment:"whisper ggml 模型文件路径"`
+	FFmpegBin          string  `comment:"ffmpeg 路径（空则使用 PATH 中的）"`
+	DefaultOutputDir   string  `comment:"默认输出目录"`
+	DefaultTargetLang  string  `comment:"默认目标语言"`
+	TranslatePrompt    string  `comment:"自定义翻译系统提示词（留空使用内置默认）"`
+	MaxSpeedFactor     float64 `comment:"TTS 调速上限（0 或 ≤1 不调速，推荐 1.2~1.3）"`
+	TranslateChunkSize int     `comment:"每次发给 LLM 的句子数（5~20，默认 10）"`
+	TTSWorkers         int     `comment:"TTS 并发协程数（1~4，默认 2）"`
+	CleanIntermediate  bool    `comment:"处理完成后删除中间产物（raw.mp3/audio_segs 等）"`
 }
 
 // LLM 大模型配置

@@ -25,19 +25,28 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        _Sidebar(
-          selectedIndex: _selectedIndex,
-          onSelect: (i) => setState(() => _selectedIndex = i),
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFF8F8FA), Color(0xFFF0F0F5), Color(0xFFECECF4)],
         ),
-        Expanded(
-          child: CupertinoPageScaffold(
-            backgroundColor: const Color(0xFFF5F5F7),
-            child: _pages[_selectedIndex],
+      ),
+      child: Row(
+        children: [
+          _Sidebar(
+            selectedIndex: _selectedIndex,
+            onSelect: (i) => setState(() => _selectedIndex = i),
           ),
-        ),
-      ],
+          Expanded(
+            child: CupertinoPageScaffold(
+              backgroundColor: CupertinoColors.transparent,
+              child: _pages[_selectedIndex],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -60,41 +69,26 @@ class _Sidebar extends StatelessWidget {
 
     return ClipRect(
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+        filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
         child: Container(
-          width: 72,
+          width: 68,
           decoration: BoxDecoration(
-            color: const Color(0xFFF2F2F7).withValues(alpha: 0.85),
-            border: const Border(right: BorderSide(color: Color(0xFFD1D1D6), width: 0.5)),
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                const Color(0xFFFFFFFF).withValues(alpha: 0.72),
+                const Color(0xFFF2F2F7).withValues(alpha: 0.68),
+              ],
+            ),
+            border: const Border(right: BorderSide(color: Color(0x22000000), width: 0.5)),
           ),
           child: SafeArea(
             child: Column(
               children: [
-                const SizedBox(height: 12),
-                // 引擎状态指示灯
-                Container(
-                  width: 8, height: 8,
-                  margin: const EdgeInsets.only(bottom: 4),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: backend.online ? CupertinoColors.systemGreen : CupertinoColors.systemRed,
-                    boxShadow: [
-                      BoxShadow(
-                        color: (backend.online ? CupertinoColors.systemGreen : CupertinoColors.systemRed).withValues(alpha: 0.5),
-                        blurRadius: 6,
-                      ),
-                    ],
-                  ),
-                ),
-                Text(
-                  backend.online ? '就绪' : '异常',
-                  style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w500,
-                    color: backend.online ? const Color(0xFF8E8E93) : CupertinoColors.systemRed,
-                  ),
-                ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 14),
+                _EngineIndicator(online: backend.online),
+                const SizedBox(height: 18),
                 ..._items.asMap().entries.map((e) {
                   final idx = e.key;
                   final (icon, label) = e.value;
@@ -111,6 +105,43 @@ class _Sidebar extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _EngineIndicator extends StatelessWidget {
+  final bool online;
+  const _EngineIndicator({required this.online});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          width: 9, height: 9,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: online ? const Color(0xFF34C759) : const Color(0xFFFF3B30),
+            boxShadow: [
+              BoxShadow(
+                color: (online ? const Color(0xFF34C759) : const Color(0xFFFF3B30)).withValues(alpha: 0.45),
+                blurRadius: 8,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          online ? '就绪' : '异常',
+          style: TextStyle(
+            fontSize: 9,
+            fontWeight: FontWeight.w500,
+            color: online ? const Color(0xFF8E8E93) : const Color(0xFFFF3B30),
+            letterSpacing: 0.2,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -139,26 +170,28 @@ class _NavItemState extends State<_NavItem> {
       child: GestureDetector(
         onTap: widget.onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
             color: active
-                ? CupertinoColors.systemBlue.withValues(alpha: 0.15)
+                ? const Color(0xFF007AFF).withValues(alpha: 0.12)
                 : _hovering
-                    ? const Color(0xFF8E8E93).withValues(alpha: 0.08)
-                    : null,
-            borderRadius: BorderRadius.circular(12),
+                    ? const Color(0xFF000000).withValues(alpha: 0.04)
+                    : CupertinoColors.transparent,
+            borderRadius: BorderRadius.circular(10),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(widget.icon, size: 22, color: active ? CupertinoColors.systemBlue : const Color(0xFF8E8E93)),
+              Icon(widget.icon, size: 21, color: active ? const Color(0xFF007AFF) : const Color(0xFF8E8E93)),
               const SizedBox(height: 3),
               Text(widget.label, style: TextStyle(
                 fontSize: 10,
                 fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-                color: active ? CupertinoColors.systemBlue : const Color(0xFF8E8E93),
+                color: active ? const Color(0xFF007AFF) : const Color(0xFF8E8E93),
+                letterSpacing: 0.1,
               )),
             ],
           ),

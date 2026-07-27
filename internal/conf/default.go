@@ -38,11 +38,13 @@ func DefaultConfig() Bootstrap {
 			MaxBackups:   0,
 		},
 		Pipeline: Pipeline{
-			Workers:           2,
-			WhisperMode:       "ffmpeg",
-			WhisperBin:        "whisper-cpp",
-			DefaultTargetLang: "zh-CN",
-			MaxSpeedFactor:    1.2,
+			Workers:            2,
+			WhisperMode:        "ffmpeg",
+			WhisperBin:         "whisper-cpp",
+			DefaultTargetLang:  "zh-CN",
+			MaxSpeedFactor:     1.2,
+			TranslateChunkSize: 10,
+			TTSWorkers:         2,
 		},
 		LLM: LLM{
 			BaseURL: "http://localhost:11434/v1",

@@ -7,13 +7,20 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
-// 翻译分块大小（每次发给 LLM 的句子数量）
-const translateChunkSize = 8
+// 上下文窗口大小：每次翻译时携带前后各 3 句供 LLM 参考语境
+const contextWindow = 3
+
+// ttsPair 翻译→TTS 的流水线数据单元
+type ttsPair struct {
+	index int
+	text  string
+}
 
 // runTranslate 翻译步骤
-// ModeDub 模式下同时启动 TTS goroutine，实现翻译与 TTS 流水线并行
+// ModeDub 模式下同时启动 TTS goroutine，实现翻译与 TTS 真流水线并行
 func (c *Core) runTranslate(ctx context.Context, job Job) error {
 	srcSRT := filepath.Join(job.OutputDir, "src.srt")
 	data, err := os.ReadFile(srcSRT)
@@ -44,7 +51,7 @@ func (c *Core) translateOnly(ctx context.Context, job Job, entries []srtEntry, s
 
 	c.notifier.OnLog(job.TaskID, fmt.Sprintf("翻译 %d 句到 %s", len(sentences), job.TargetLang))
 
-	translated, err := c.translateAllChunks(ctx, job, sentences)
+	translated, err := c.translateAllChunks(ctx, job, sentences, nil)
 	if err != nil {
 		return err
 	}
@@ -52,78 +59,80 @@ func (c *Core) translateOnly(ctx context.Context, job Job, entries []srtEntry, s
 	return c.writeTranslationOutputs(entries, translated, job.OutputDir)
 }
 
-// translateAndTTS 翻译与 TTS 流水线并行（ModeDub 用）
-// 翻译 goroutine 产出翻译结果 → channel → TTS goroutine 消费并合成语音
+// translateAndTTS 翻译与 TTS 真流水线并行（ModeDub 用）
+// 翻译每完成一个 chunk，立即将结果推入 channel；N 个 TTS worker 并发消费
+// 有序性靠文件名 {index}.wav 保证，不会朗读两遍（已存在的文件自动跳过）
 func (c *Core) translateAndTTS(ctx context.Context, job Job, entries []srtEntry, sentences []string) error {
-	type ttsPair struct {
-		index int
-		text  string
+	ttsWorkers := c.cfg.TTSWorkers
+	if ttsWorkers <= 0 {
+		ttsWorkers = 2
+	}
+	if ttsWorkers > 4 {
+		ttsWorkers = 4
 	}
 
-	ttsCh := make(chan ttsPair, translateChunkSize)
+	ttsCh := make(chan ttsPair, 300)
 	audioDir := filepath.Join(job.OutputDir, "audio_segs")
 	if err := os.MkdirAll(audioDir, 0o755); err != nil {
 		return fmt.Errorf("创建音频目录失败: %w", err)
 	}
 
 	total := len(sentences)
-	c.notifier.OnLog(job.TaskID, fmt.Sprintf("翻译+TTS 流水线启动: %d 句到 %s", total, job.TargetLang))
+	c.notifier.OnLog(job.TaskID, fmt.Sprintf("翻译+TTS 流水线: %d 句, TTS 并发 %d", total, ttsWorkers))
 
-	// TTS 消费者 goroutine
+	var ttsDone atomic.Int32
 	var ttsErr error
+	var ttsOnce sync.Once
 	var ttsWg sync.WaitGroup
-	ttsWg.Add(1)
-	go func() {
-		defer ttsWg.Done()
-		c.ttsMu.Lock()
-		defer c.ttsMu.Unlock()
 
-		done := 0
-		for pair := range ttsCh {
-			if ctx.Err() != nil {
-				ttsErr = ctx.Err()
-				return
-			}
-
-			outputPath := filepath.Join(audioDir, fmt.Sprintf("%d.wav", pair.index))
-
-			// 断点恢复：已存在的音频文件跳过
-			if info, e := os.Stat(outputPath); e == nil && info.Size() > 0 {
-				done++
-				c.notifier.OnProgress(job.TaskID, StepTTS, (done*100)/total)
-				continue
-			}
-
-			if err := c.tts.Synthesize(ctx, pair.text, outputPath, ""); err != nil {
-				ttsErr = fmt.Errorf("TTS 第 %d 句失败: %w", pair.index+1, err)
-				// 排空 channel 防止翻译 goroutine 阻塞
-				for range ttsCh {
+	// TTS 消费者——持有 ttsMu 阻止其他任务同时使用 TTS 资源
+	c.ttsMu.Lock()
+	for w := range ttsWorkers {
+		ttsWg.Add(1)
+		go func(workerID int) {
+			defer ttsWg.Done()
+			for pair := range ttsCh {
+				if ctx.Err() != nil {
+					ttsOnce.Do(func() { ttsErr = ctx.Err() })
+					for range ttsCh {
+					}
+					return
 				}
-				return
-			}
-			done++
-			c.notifier.OnProgress(job.TaskID, StepTTS, (done*100)/total)
-		}
-	}()
 
-	// 翻译生产者
+				outputPath := filepath.Join(audioDir, fmt.Sprintf("%d.wav", pair.index))
+
+				if info, e := os.Stat(outputPath); e == nil && info.Size() > 0 {
+					done := int(ttsDone.Add(1))
+					c.notifier.OnProgress(job.TaskID, StepTTS, (done*100)/total)
+					continue
+				}
+
+				if err := c.tts.Synthesize(ctx, pair.text, outputPath, ""); err != nil {
+					ttsOnce.Do(func() {
+						ttsErr = fmt.Errorf("TTS 第 %d 句失败: %w", pair.index+1, err)
+					})
+					for range ttsCh {
+					}
+					return
+				}
+				done := int(ttsDone.Add(1))
+				c.notifier.OnProgress(job.TaskID, StepTTS, (done*100)/total)
+			}
+		}(w)
+	}
+
+	// 翻译生产者：逐块翻译，每完成一块立即推入 channel
 	c.llmMu.Lock()
-	translated, translateErr := c.translateAllChunks(ctx, job, sentences)
+	translated, translateErr := c.translateAllChunks(ctx, job, sentences, ttsCh)
 	c.llmMu.Unlock()
 
+	close(ttsCh)
+	ttsWg.Wait()
+	c.ttsMu.Unlock()
+
 	if translateErr != nil {
-		close(ttsCh)
-		ttsWg.Wait()
 		return translateErr
 	}
-
-	// 将翻译结果推送给 TTS goroutine
-	for i, t := range translated {
-		ttsCh <- ttsPair{index: i, text: t}
-	}
-	close(ttsCh)
-
-	ttsWg.Wait()
 	if ttsErr != nil {
 		return ttsErr
 	}
@@ -131,21 +140,26 @@ func (c *Core) translateAndTTS(ctx context.Context, job Job, entries []srtEntry,
 	return c.writeTranslationOutputs(entries, translated, job.OutputDir)
 }
 
-// 上下文窗口大小：每次翻译时携带前后各 3 句供 LLM 参考语境
-const contextWindow = 3
-
 // translateAllChunks 分块翻译全部句子（调用方须持有 llmMu 锁）
-// 每个 chunk 额外携带前后各 contextWindow 句作为上下文，提升跨块连贯性
-func (c *Core) translateAllChunks(ctx context.Context, job Job, sentences []string) ([]string, error) {
+// 每个 chunk 额外携带前后各 contextWindow 句作为上下文
+// 若 streamTo 非 nil，每完成一个 chunk 立即将 (index, text) 推入 channel
+func (c *Core) translateAllChunks(
+	ctx context.Context, job Job, sentences []string, streamTo chan<- ttsPair,
+) ([]string, error) {
+	chunkSize := c.cfg.TranslateChunkSize
+	if chunkSize <= 0 {
+		chunkSize = 10
+	}
+
 	var translated []string
 	total := len(sentences)
 
-	for i := 0; i < total; i += translateChunkSize {
+	for i := 0; i < total; i += chunkSize {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
 
-		end := min(i+translateChunkSize, total)
+		end := min(i+chunkSize, total)
 		chunk := sentences[i:end]
 
 		ctxStart := max(0, i-contextWindow)
@@ -159,10 +173,15 @@ func (c *Core) translateAllChunks(ctx context.Context, job Job, sentences []stri
 		}
 		translated = append(translated, result...)
 
+		if streamTo != nil {
+			for j, t := range result {
+				streamTo <- ttsPair{index: i + j, text: t}
+			}
+		}
+
 		c.notifier.OnProgress(job.TaskID, StepTranslate, (end*100)/total)
 	}
 
-	// 数量对齐
 	for len(translated) < total {
 		translated = append(translated, sentences[len(translated)])
 	}

@@ -7,11 +7,17 @@ import 'package:http/http.dart' as http;
 
 /// 管理 Go 引擎进程的生命周期 + 存活监控
 /// 启动时自动选择可用端口，关闭时杀死引擎进程
+/// 健康检查连续失败 3 次后自动重启引擎
 class BackendService extends ChangeNotifier {
   Process? _process;
   bool _online = false;
   Timer? _healthTimer;
   int _port = 0;
+  String? _binaryPath;
+  int _failCount = 0;
+  bool _restarting = false;
+
+  static const _maxFailBeforeRestart = 3;
 
   BackendService();
 
@@ -30,7 +36,11 @@ class BackendService extends ChangeNotifier {
       connectOnly();
       return false;
     }
+    _binaryPath = bin;
+    return _launchProcess(bin);
+  }
 
+  Future<bool> _launchProcess(String bin) async {
     _port = await _findFreePort();
     try {
       _process = await Process.start(bin, ['-port', '$_port']);
@@ -48,6 +58,7 @@ class BackendService extends ChangeNotifier {
       debugPrint('engine start failed: $e');
       return false;
     }
+    _failCount = 0;
     _startHealthCheck();
     return true;
   }
@@ -67,9 +78,23 @@ class BackendService extends ChangeNotifier {
   Future<void> _check() async {
     try {
       final resp = await http.get(Uri.parse('$baseUrl/health')).timeout(const Duration(seconds: 2));
-      _setOnline(resp.statusCode == 200);
-    } catch (_) {
-      _setOnline(false);
+      if (resp.statusCode == 200) {
+        _failCount = 0;
+        _setOnline(true);
+        return;
+      }
+    } catch (_) {}
+
+    _failCount++;
+    _setOnline(false);
+
+    if (_binaryPath != null && _failCount >= _maxFailBeforeRestart && !_restarting) {
+      _restarting = true;
+      debugPrint('engine health check failed $_failCount times, restarting...');
+      _killProcess();
+      await Future.delayed(const Duration(seconds: 1));
+      await _launchProcess(_binaryPath!);
+      _restarting = false;
     }
   }
 
@@ -93,7 +118,6 @@ class BackendService extends ChangeNotifier {
         continue;
       }
     }
-    // fallback: 让 OS 分配
     final socket = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
     final port = socket.port;
     await socket.close();
@@ -101,26 +125,66 @@ class BackendService extends ChangeNotifier {
   }
 
   /// 在常见位置查找 vdub 可执行文件
+  /// 搜索顺序：macOS bundle → 调试模式推导路径 → cwd 相对路径
   String? _findBinary() {
-    final candidates = [
+    final exe = Platform.resolvedExecutable;
+    final goos = _goOS();
+    final arch = _arch();
+    final candidates = <String>[];
+
+    if (Platform.isMacOS && exe.contains('.app/Contents/')) {
+      final contentsDir = exe.substring(0, exe.indexOf('.app/Contents/') + '.app/Contents'.length);
+      candidates.add('$contentsDir/Resources/vdub');
+
+      // 调试模式：.app 在 ui/build/macos/…，向上推导至项目根
+      final appDir = exe.substring(0, exe.indexOf('.app/'));
+      final uiDir = appDir.contains('/ui/') ? appDir.substring(0, appDir.indexOf('/ui/')) : null;
+      if (uiDir != null) {
+        candidates.add('$uiDir/build/${goos}_$arch/vdub');
+        candidates.add('$uiDir/vdub');
+      }
+    }
+
+    candidates.addAll([
       '${Directory.current.path}/vdub',
-      '${Directory.current.path}/build/darwin_arm64/bin',
+      '${Directory.current.path}/build/${goos}_$arch/vdub',
       '${Directory.current.path}/../vdub',
-      '${Directory.current.path}/../build/darwin_arm64/bin',
-      '${Directory.current.path}/../tmp/vdub',
-    ];
+      '${Directory.current.path}/../build/${goos}_$arch/vdub',
+    ]);
+
     for (final path in candidates) {
-      if (File(path).existsSync()) return path;
+      debugPrint('searching engine: $path');
+      if (File(path).existsSync()) {
+        debugPrint('engine found: $path');
+        return path;
+      }
     }
     return null;
   }
 
-  void stop() {
-    _healthTimer?.cancel();
+  static String _arch() {
+    final dart = Platform.version;
+    if (dart.contains('arm64') || dart.contains('aarch64')) return 'arm64';
+    return 'amd64';
+  }
+
+  /// Dart Platform.operatingSystem → Go GOOS 映射
+  static String _goOS() {
+    if (Platform.isMacOS) return 'darwin';
+    if (Platform.isWindows) return 'windows';
+    return 'linux';
+  }
+
+  void _killProcess() {
     if (_process != null) {
       _process!.kill(ProcessSignal.sigterm);
       _process = null;
     }
+  }
+
+  void stop() {
+    _healthTimer?.cancel();
+    _killProcess();
     _setOnline(false);
   }
 

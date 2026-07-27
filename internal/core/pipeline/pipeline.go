@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sync"
 	"time"
@@ -48,12 +50,15 @@ type Notifier interface {
 
 // Config 流水线依赖配置
 type Config struct {
-	WhisperBin      string  // whisper.cpp 可执行文件路径
-	WhisperModel    string  // whisper 模型路径
-	FFmpegBin       string  // ffmpeg 路径，空则使用 PATH 中的
-	WorkDir         string  // 临时工作目录
-	TranslatePrompt string  // 自定义翻译提示词，空串则使用内置默认
-	MaxSpeedFactor  float64 // TTS 调速上限，≤1 时不调速（推荐 1.2~1.3）
+	WhisperBin         string  // whisper.cpp 可执行文件路径
+	WhisperModel       string  // whisper 模型路径
+	FFmpegBin          string  // ffmpeg 路径，空则使用 PATH 中的
+	WorkDir            string  // 临时工作目录
+	TranslatePrompt    string  // 自定义翻译提示词，空串则使用内置默认
+	MaxSpeedFactor     float64 // TTS 调速上限，≤1 时不调速（推荐 1.2~1.3）
+	TranslateChunkSize int     // 每次发给 LLM 的句子数（默认 10）
+	TTSWorkers         int     // TTS 并发协程数（默认 2）
+	CleanIntermediate  bool    // 成功后删除中间产物
 }
 
 // Core 流水线调度核心
@@ -109,8 +114,13 @@ const (
 )
 
 // Run 执行单个任务的流水线，每个步骤失败时自动指数退避重试
+// 同时将执行时间线写入 {outputDir}/task.log 供事后排查
 func (c *Core) Run(ctx context.Context, job Job) error {
 	slog.InfoContext(ctx, "pipeline.Run", "task_id", job.TaskID, "mode", job.Mode, "resume", job.ResumeFrom)
+
+	tl := openTaskLog(job.OutputDir)
+	defer tl.Close()
+	tl.Write("pipeline started: task=%s mode=%d resume=%q", job.TaskID, job.Mode, job.ResumeFrom)
 
 	steps := c.buildSteps(job.Mode)
 	startIdx := 0
@@ -123,26 +133,75 @@ func (c *Core) Run(ctx context.Context, job Job) error {
 		}
 	}
 
+	pipeStart := time.Now()
 	for i := startIdx; i < len(steps); i++ {
 		step := steps[i]
 		if err := ctx.Err(); err != nil {
+			tl.Write("pipeline cancelled: %v", err)
 			return fmt.Errorf("任务被取消: %w", err)
 		}
 
 		c.notifier.OnLog(job.TaskID, fmt.Sprintf("开始步骤: %s", step))
+		tl.Write("step started: %s", step)
 
 		stepFn := c.stepFunc(step)
+		t0 := time.Now()
 		err := c.runStepWithRetry(ctx, job, step, stepFn)
+		elapsed := time.Since(t0)
+
 		if err != nil {
+			tl.Write("step failed: %s (%v): %v", step, elapsed, err)
 			c.notifier.OnTaskFailed(job.TaskID, err)
 			return fmt.Errorf("步骤 %s 失败: %w", step, err)
 		}
 
+		tl.Write("step done: %s (%v)", step, elapsed)
 		c.notifier.OnStepDone(job.TaskID, step)
 	}
 
+	tl.Write("pipeline completed (%v)", time.Since(pipeStart))
 	c.notifier.OnTaskDone(job.TaskID)
+
+	if c.cfg.CleanIntermediate {
+		cleaned := cleanIntermediate(job.OutputDir)
+		if cleaned > 0 {
+			tl.Write("cleaned %d intermediate files", cleaned)
+			c.notifier.OnLog(job.TaskID, fmt.Sprintf("已清理 %d 个中间产物", cleaned))
+		}
+	}
+
 	return nil
+}
+
+// taskLog 任务级日志写入器，追加写入 {outputDir}/task.log
+type taskLog struct {
+	file *os.File
+}
+
+func openTaskLog(outputDir string) *taskLog {
+	f, err := os.OpenFile(
+		filepath.Join(outputDir, "task.log"),
+		os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644,
+	)
+	if err != nil {
+		slog.Warn("无法创建 task.log", "dir", outputDir, "err", err)
+		return &taskLog{}
+	}
+	return &taskLog{file: f}
+}
+
+func (tl *taskLog) Write(format string, args ...any) {
+	if tl.file == nil {
+		return
+	}
+	msg := fmt.Sprintf(format, args...)
+	fmt.Fprintf(tl.file, "[%s] %s\n", time.Now().Format(time.DateTime), msg)
+}
+
+func (tl *taskLog) Close() {
+	if tl.file != nil {
+		tl.file.Close()
+	}
 }
 
 // stepFunc 根据步骤名返回对应的执行函数

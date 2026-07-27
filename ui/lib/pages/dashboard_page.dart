@@ -53,21 +53,21 @@ class _DashboardPageState extends State<DashboardPage> {
 
     return Column(
       children: [
-        _toolbar(),
+        _DashboardToolbar(onRefresh: _load),
         Expanded(
           child: _loading && !backend.online
               ? const Center(child: CupertinoActivityIndicator(radius: 14))
               : ListView(
-                  padding: const EdgeInsets.all(24),
+                  padding: const EdgeInsets.fromLTRB(28, 20, 28, 28),
                   children: [
                     _buildQuickActions(),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 24),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(child: _buildRecentTasks()),
-                        const SizedBox(width: 16),
-                        SizedBox(width: 280, child: _buildEnvReadiness(backend)),
+                        const SizedBox(width: 20),
+                        SizedBox(width: 260, child: _buildEnvReadiness(backend)),
                       ],
                     ),
                   ],
@@ -77,45 +77,30 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _toolbar() {
-    return Container(
-      height: 52,
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      decoration: const BoxDecoration(
-        color: Color(0xFFFAFAFA),
-        border: Border(bottom: BorderSide(color: Color(0xFFE5E5EA), width: 0.5)),
-      ),
-      child: const Row(
-        children: [
-          Text('vdub', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Color(0xFF1D1D1F), letterSpacing: -0.5)),
-          SizedBox(width: 8),
-          Text('视频翻译配音', style: TextStyle(fontSize: 12, color: Color(0xFF8E8E93))),
-        ],
-      ),
-    );
-  }
-
   Widget _buildQuickActions() {
     return Row(
       children: [
         _ActionCard(
           icon: CupertinoIcons.film,
           label: '生成字幕',
-          color: CupertinoColors.systemBlue,
+          subtitle: 'Whisper 识别',
+          gradient: const [Color(0xFF007AFF), Color(0xFF5AC8FA)],
           onTap: () => _quickCreate(1),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 14),
         _ActionCard(
           icon: CupertinoIcons.textformat,
           label: '翻译字幕',
-          color: CupertinoColors.systemPurple,
+          subtitle: 'LLM 翻译',
+          gradient: const [Color(0xFFAF52DE), Color(0xFFDA8FFF)],
           onTap: () => _quickCreate(2),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 14),
         _ActionCard(
           icon: CupertinoIcons.mic_fill,
           label: '翻译配音',
-          color: CupertinoColors.systemOrange,
+          subtitle: 'TTS 合成',
+          gradient: const [Color(0xFFFF9500), Color(0xFFFFCC00)],
           onTap: () => _quickCreate(3),
         ),
       ],
@@ -129,17 +114,29 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Widget _buildRecentTasks() {
-    return _GlassCard(
+    return GlassCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 14, 16, 10),
-            child: Text('最近任务', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF1D1D1F))),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 4, height: 16,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF007AFF),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Text('最近任务', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF1D1D1F), letterSpacing: -0.3)),
+              ],
+            ),
           ),
           if (_recentTasks.isEmpty)
             const Padding(
-              padding: EdgeInsets.all(24),
+              padding: EdgeInsets.all(32),
               child: Center(child: Text('暂无任务', style: TextStyle(fontSize: 13, color: Color(0xFFC7C7CC)))),
             )
           else
@@ -148,7 +145,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 builder: (_) => TaskDetailPage(taskId: t.id),
               ));
             })),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
         ],
       ),
     );
@@ -161,40 +158,33 @@ class _DashboardPageState extends State<DashboardPage> {
       _EnvRow('翻译服务', _config?.llm.baseUrl.isNotEmpty == true, _config?.llm.model ?? '未配置'),
       _EnvRow('配音服务', _config != null, _config?.tts.type == 'edge' ? 'Edge TTS' : 'OpenAI TTS'),
     ];
-
     final allReady = rows.every((r) => r.ready);
 
-    return _GlassCard(
+    return GlassCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
             child: Row(
               children: [
-                const Text('环境就绪', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF1D1D1F))),
+                Container(
+                  width: 4, height: 16,
+                  decoration: BoxDecoration(
+                    color: allReady ? const Color(0xFF34C759) : const Color(0xFFFF9500),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Text('环境状态', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF1D1D1F), letterSpacing: -0.3)),
                 const Spacer(),
                 if (allReady)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: CupertinoColors.systemGreen.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(CupertinoIcons.checkmark_circle_fill, size: 12, color: CupertinoColors.systemGreen),
-                        SizedBox(width: 4),
-                        Text('全部就绪', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: CupertinoColors.systemGreen)),
-                      ],
-                    ),
-                  ),
+                  _ReadyBadge(),
               ],
             ),
           ),
           ...rows.map((r) => _envRowWidget(r)),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
         ],
       ),
     );
@@ -202,27 +192,29 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _envRowWidget(_EnvRow row) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
       child: Row(
         children: [
           SizedBox(
-            width: 64,
+            width: 56,
             child: Text(row.label, style: const TextStyle(fontSize: 12, color: Color(0xFF8E8E93))),
           ),
           Container(
             width: 7, height: 7,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: row.ready ? CupertinoColors.systemGreen : const Color(0xFFC7C7CC),
+              color: row.ready ? const Color(0xFF34C759) : const Color(0xFFC7C7CC),
               boxShadow: row.ready
-                  ? [BoxShadow(color: CupertinoColors.systemGreen.withValues(alpha: 0.3), blurRadius: 4)]
+                  ? [BoxShadow(color: const Color(0xFF34C759).withValues(alpha: 0.35), blurRadius: 6)]
                   : null,
             ),
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(row.value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Color(0xFF3A3A3C)),
-              overflow: TextOverflow.ellipsis),
+            child: Text(row.value,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Color(0xFF3A3A3C)),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),
@@ -237,23 +229,93 @@ class _EnvRow {
   const _EnvRow(this.label, this.ready, this.value);
 }
 
-/// 毛玻璃卡片
-class _GlassCard extends StatelessWidget {
+class _ReadyBadge extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: const Color(0xFF34C759).withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF34C759).withValues(alpha: 0.2)),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(CupertinoIcons.checkmark_circle_fill, size: 11, color: Color(0xFF34C759)),
+          SizedBox(width: 4),
+          Text('全部就绪', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF34C759))),
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardToolbar extends StatelessWidget {
+  final VoidCallback onRefresh;
+  const _DashboardToolbar({required this.onRefresh});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+        child: Container(
+          height: 52,
+          padding: const EdgeInsets.symmetric(horizontal: 28),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFFFFF).withValues(alpha: 0.65),
+            border: const Border(bottom: BorderSide(color: Color(0x1A000000), width: 0.5)),
+          ),
+          child: Row(
+            children: [
+              const Text('vdub', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1D1D1F), letterSpacing: -0.8)),
+              const SizedBox(width: 8),
+              const Text('视频翻译配音', style: TextStyle(fontSize: 12, color: Color(0xFF8E8E93), letterSpacing: 0.1)),
+              const Spacer(),
+              CupertinoButton(
+                padding: EdgeInsets.zero,
+                onPressed: onRefresh,
+                child: const Icon(CupertinoIcons.refresh, size: 16, color: Color(0xFF8E8E93)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 液态玻璃卡片
+class GlassCard extends StatelessWidget {
   final Widget child;
-  const _GlassCard({required this.child});
+  const GlassCard({super.key, required this.child});
 
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(16),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
         child: Container(
           decoration: BoxDecoration(
-            color: CupertinoColors.white.withValues(alpha: 0.78),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFE5E5EA).withValues(alpha: 0.6), width: 0.5),
-            boxShadow: const [BoxShadow(color: Color(0x0A000000), blurRadius: 12, offset: Offset(0, 4))],
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                const Color(0xFFFFFFFF).withValues(alpha: 0.82),
+                const Color(0xFFF9F9FB).withValues(alpha: 0.72),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: const Color(0xFFFFFFFF).withValues(alpha: 0.5),
+              width: 0.5,
+            ),
+            boxShadow: [
+              BoxShadow(color: const Color(0xFF000000).withValues(alpha: 0.04), blurRadius: 16, offset: const Offset(0, 4)),
+              BoxShadow(color: const Color(0xFF000000).withValues(alpha: 0.02), blurRadius: 4, offset: const Offset(0, 1)),
+            ],
           ),
           child: child,
         ),
@@ -262,14 +324,21 @@ class _GlassCard extends StatelessWidget {
   }
 }
 
-/// 快捷操作卡片
+/// 快捷操作卡片——渐变玻璃风格
 class _ActionCard extends StatefulWidget {
   final IconData icon;
   final String label;
-  final Color color;
+  final String subtitle;
+  final List<Color> gradient;
   final VoidCallback onTap;
 
-  const _ActionCard({required this.icon, required this.label, required this.color, required this.onTap});
+  const _ActionCard({
+    required this.icon,
+    required this.label,
+    required this.subtitle,
+    required this.gradient,
+    required this.onTap,
+  });
 
   @override
   State<_ActionCard> createState() => _ActionCardState();
@@ -286,29 +355,50 @@ class _ActionCardState extends State<_ActionCard> {
         onExit: (_) => setState(() => _hovering = false),
         child: GestureDetector(
           onTap: widget.onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft, end: Alignment.bottomRight,
-                colors: [
-                  widget.color.withValues(alpha: _hovering ? 0.18 : 0.10),
-                  widget.color.withValues(alpha: _hovering ? 0.08 : 0.04),
-                ],
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOut,
+                padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 18),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      widget.gradient[0].withValues(alpha: _hovering ? 0.20 : 0.12),
+                      widget.gradient[1].withValues(alpha: _hovering ? 0.10 : 0.05),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: widget.gradient[0].withValues(alpha: _hovering ? 0.25 : 0.12),
+                    width: 0.5,
+                  ),
+                  boxShadow: _hovering
+                      ? [BoxShadow(color: widget.gradient[0].withValues(alpha: 0.12), blurRadius: 16, offset: const Offset(0, 4))]
+                      : null,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 36, height: 36,
+                      decoration: BoxDecoration(
+                        color: widget.gradient[0].withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(widget.icon, size: 20, color: widget.gradient[0]),
+                    ),
+                    const SizedBox(height: 14),
+                    Text(widget.label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: widget.gradient[0], letterSpacing: -0.2)),
+                    const SizedBox(height: 2),
+                    Text(widget.subtitle, style: TextStyle(fontSize: 11, color: widget.gradient[0].withValues(alpha: 0.55))),
+                  ],
+                ),
               ),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: widget.color.withValues(alpha: 0.15)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(widget.icon, size: 28, color: widget.color),
-                const SizedBox(height: 10),
-                Text(widget.label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: widget.color)),
-                const SizedBox(height: 2),
-                Text('选择视频开始', style: TextStyle(fontSize: 11, color: widget.color.withValues(alpha: 0.6))),
-              ],
             ),
           ),
         ),
@@ -318,63 +408,84 @@ class _ActionCardState extends State<_ActionCard> {
 }
 
 /// 最近任务行
-class _RecentTaskRow extends StatelessWidget {
+class _RecentTaskRow extends StatefulWidget {
   final Task task;
   final VoidCallback onTap;
 
   const _RecentTaskRow({required this.task, required this.onTap});
 
   @override
+  State<_RecentTaskRow> createState() => _RecentTaskRowState();
+}
+
+class _RecentTaskRowState extends State<_RecentTaskRow> {
+  bool _hovering = false;
+
+  @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: Color(0xFFF2F2F7), width: 0.5)),
-        ),
-        child: Row(
-          children: [
-            _statusDot(task.status),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(task.fileName, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Color(0xFF1D1D1F)),
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
-                  Text(task.modeName, style: const TextStyle(fontSize: 11, color: Color(0xFF8E8E93))),
-                ],
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+          decoration: BoxDecoration(
+            color: _hovering ? const Color(0xFF007AFF).withValues(alpha: 0.04) : CupertinoColors.transparent,
+            border: const Border(bottom: BorderSide(color: Color(0x0A000000), width: 0.5)),
+          ),
+          child: Row(
+            children: [
+              _statusDot(widget.task.status),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(widget.task.fileName,
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Color(0xFF1D1D1F)),
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 1),
+                    Text(widget.task.modeName, style: const TextStyle(fontSize: 11, color: Color(0xFF8E8E93))),
+                  ],
+                ),
               ),
-            ),
-            Text(task.statusName, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: _statusColor(task.status))),
-            const SizedBox(width: 4),
-            const Icon(CupertinoIcons.chevron_right, size: 12, color: Color(0xFFC7C7CC)),
-          ],
+              Text(widget.task.statusName, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: _statusColor(widget.task.status))),
+              const SizedBox(width: 6),
+              const Icon(CupertinoIcons.chevron_right, size: 11, color: Color(0xFFC7C7CC)),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _statusDot(int status) {
+    final color = _statusColor(status);
     return Container(
       width: 8, height: 8,
-      decoration: BoxDecoration(shape: BoxShape.circle, color: _statusColor(status)),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color,
+        boxShadow: [BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 4)],
+      ),
     );
   }
 
   Color _statusColor(int status) {
     switch (status) {
-      case 1: return CupertinoColors.systemOrange;
-      case 2: return CupertinoColors.systemYellow;
-      case 3: return CupertinoColors.systemGreen;
-      case 4: return CupertinoColors.systemRed;
+      case 1: return const Color(0xFFFF9500);
+      case 2: return const Color(0xFFFFCC00);
+      case 3: return const Color(0xFF34C759);
+      case 4: return const Color(0xFFFF3B30);
       default: return const Color(0xFFC7C7CC);
     }
   }
 }
 
-/// 快捷创建任务的简易页面
+/// 快捷创建任务页面
 class _CreateTaskSheet extends StatefulWidget {
   final int mode;
   const _CreateTaskSheet({required this.mode});
@@ -405,15 +516,23 @@ class _CreateTaskSheetState extends State<_CreateTaskSheet> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(CupertinoIcons.cloud_upload, size: 48, color: CupertinoColors.systemBlue.withValues(alpha: 0.6)),
-              const SizedBox(height: 16),
-              const Text('选择视频文件', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF1D1D1F))),
-              const SizedBox(height: 8),
+              Container(
+                width: 72, height: 72,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF007AFF).withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Icon(CupertinoIcons.cloud_upload, size: 32, color: const Color(0xFF007AFF).withValues(alpha: 0.7)),
+              ),
+              const SizedBox(height: 20),
+              const Text('选择视频文件', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Color(0xFF1D1D1F), letterSpacing: -0.3)),
+              const SizedBox(height: 6),
               const Text('支持 MP4、MKV、AVI、MOV 等格式', style: TextStyle(fontSize: 13, color: Color(0xFF8E8E93))),
-              const SizedBox(height: 24),
+              const SizedBox(height: 28),
               CupertinoButton.filled(
+                borderRadius: BorderRadius.circular(12),
                 onPressed: _creating ? null : _pickAndCreate,
-                child: Text(_creating ? '创建中...' : '选择文件并开始'),
+                child: Text(_creating ? '创建中...' : '选择文件并开始', style: const TextStyle(fontWeight: FontWeight.w600)),
               ),
             ],
           ),

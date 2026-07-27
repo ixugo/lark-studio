@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
 import 'services/api_client.dart';
@@ -12,6 +13,7 @@ void main() {
   final backend = BackendService();
   final api = ApiClient(baseUrl: 'http://localhost:9523');
   final wsService = WebSocketService();
+  var configSynced = false;
 
   backend.addListener(() {
     if (backend.port > 0) {
@@ -20,6 +22,10 @@ void main() {
     }
     if (backend.online && !wsService.connected) {
       wsService.connect();
+    }
+    if (backend.online && !configSynced) {
+      configSynced = true;
+      _syncOnboardingConfig(api);
     }
   });
   backend.start();
@@ -35,4 +41,18 @@ void main() {
       child: const VdubApp(),
     ),
   );
+}
+
+/// 引擎首次上线时，将 onboarding 保存的 whisper_mode 同步到 Go 后端
+Future<void> _syncOnboardingConfig(ApiClient api) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final mode = prefs.getString('whisper_mode');
+    if (mode == null) return;
+    await api.updateConfig({
+      'pipeline': {'whisper_mode': mode},
+    });
+  } catch (e) {
+    debugPrint('sync onboarding config failed: $e');
+  }
 }

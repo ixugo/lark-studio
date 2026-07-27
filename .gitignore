@@ -45,3 +45,5 @@ CLAUDE.local.md
 *.mp3
 **/.DS_Store
 tmp/
+vdub
+.cursor/skills/

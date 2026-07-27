@@ -17,11 +17,14 @@ import (
 // NewPipelineCore 根据配置创建完整的流水线核心，组装所有适配器
 func NewPipelineCore(bc *conf.Bootstrap, opts ...pipeline.Option) *pipeline.Core {
 	cfg := pipeline.Config{
-		WhisperBin:      bc.Pipeline.WhisperBin,
-		WhisperModel:    bc.Pipeline.WhisperModel,
-		FFmpegBin:       bc.Pipeline.FFmpegBin,
-		TranslatePrompt: bc.Pipeline.TranslatePrompt,
-		MaxSpeedFactor:  bc.Pipeline.MaxSpeedFactor,
+		WhisperBin:         bc.Pipeline.WhisperBin,
+		WhisperModel:       bc.Pipeline.WhisperModel,
+		FFmpegBin:          bc.Pipeline.FFmpegBin,
+		TranslatePrompt:    bc.Pipeline.TranslatePrompt,
+		MaxSpeedFactor:     bc.Pipeline.MaxSpeedFactor,
+		TranslateChunkSize: bc.Pipeline.TranslateChunkSize,
+		TTSWorkers:         bc.Pipeline.TTSWorkers,
+		CleanIntermediate:  bc.Pipeline.CleanIntermediate,
 	}
 
 	var wr pipeline.WhisperRunner

@@ -22,6 +22,9 @@ class PipelineConfig {
   final String defaultTargetLang;
   final String translatePrompt;
   final double maxSpeedFactor;
+  final int translateChunkSize;
+  final int ttsWorkers;
+  final bool cleanIntermediate;
 
   const PipelineConfig({
     this.workers = 2,
@@ -31,6 +34,9 @@ class PipelineConfig {
     this.defaultTargetLang = 'zh-CN',
     this.translatePrompt = '',
     this.maxSpeedFactor = 0,
+    this.translateChunkSize = 10,
+    this.ttsWorkers = 2,
+    this.cleanIntermediate = false,
   });
 
   factory PipelineConfig.fromJson(Map<String, dynamic> json) {
@@ -42,6 +48,9 @@ class PipelineConfig {
       defaultTargetLang: json['DefaultTargetLang'] as String? ?? 'zh-CN',
       translatePrompt: json['TranslatePrompt'] as String? ?? '',
       maxSpeedFactor: (json['MaxSpeedFactor'] as num?)?.toDouble() ?? 0,
+      translateChunkSize: json['TranslateChunkSize'] as int? ?? 10,
+      ttsWorkers: json['TTSWorkers'] as int? ?? 2,
+      cleanIntermediate: json['CleanIntermediate'] as bool? ?? false,
     );
   }
 }

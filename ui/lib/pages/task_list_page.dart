@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
@@ -53,52 +54,57 @@ class _TaskListPageState extends State<TaskListPage> {
   }
 
   Widget _buildToolbar(BuildContext context) {
-    return Container(
-      height: 52,
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      decoration: const BoxDecoration(
-        color: Color(0xFFFAFAFA),
-        border: Border(bottom: BorderSide(color: Color(0xFFE5E5EA), width: 0.5)),
-      ),
-      child: Row(
-        children: [
-          const Text('任务列表', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF1D1D1F))),
-          const Spacer(),
-          CupertinoButton(
-            padding: EdgeInsets.zero,
-            onPressed: () => context.read<TaskListNotifier>().refresh(),
-            child: const Icon(CupertinoIcons.arrow_clockwise, size: 18),
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+        child: Container(
+          height: 52,
+          padding: const EdgeInsets.symmetric(horizontal: 28),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFFFFF).withValues(alpha: 0.65),
+            border: const Border(bottom: BorderSide(color: Color(0x1A000000), width: 0.5)),
           ),
-          const SizedBox(width: 8),
-          CupertinoButton(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            color: const Color(0xFFE5E5EA),
-            borderRadius: BorderRadius.circular(8),
-            onPressed: () => _showBatchDialog(context),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(CupertinoIcons.folder_badge_plus, size: 16, color: Color(0xFF3A3A3C)),
-                SizedBox(width: 4),
-                Text('批量导入', style: TextStyle(fontSize: 13, color: Color(0xFF3A3A3C))),
-              ],
-            ),
+          child: Row(
+            children: [
+              const Text('任务', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Color(0xFF1D1D1F), letterSpacing: -0.5)),
+              const Spacer(),
+              CupertinoButton(
+                padding: EdgeInsets.zero,
+                onPressed: () => context.read<TaskListNotifier>().refresh(),
+                child: const Icon(CupertinoIcons.refresh, size: 16, color: Color(0xFF8E8E93)),
+              ),
+              const SizedBox(width: 10),
+              CupertinoButton(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                color: const Color(0xFF000000).withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(10),
+                onPressed: () => _showBatchDialog(context),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(CupertinoIcons.folder_badge_plus, size: 15, color: Color(0xFF3A3A3C)),
+                    SizedBox(width: 5),
+                    Text('批量导入', style: TextStyle(fontSize: 13, color: Color(0xFF3A3A3C))),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              CupertinoButton.filled(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                borderRadius: BorderRadius.circular(10),
+                onPressed: () => _showCreateDialog(context),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(CupertinoIcons.add, size: 15, color: CupertinoColors.white),
+                    SizedBox(width: 5),
+                    Text('新建', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: CupertinoColors.white)),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
-          CupertinoButton.filled(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            borderRadius: BorderRadius.circular(8),
-            onPressed: () => _showCreateDialog(context),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(CupertinoIcons.add, size: 16, color: CupertinoColors.white),
-                SizedBox(width: 4),
-                Text('新建任务', style: TextStyle(fontSize: 13, color: CupertinoColors.white)),
-              ],
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -137,9 +143,9 @@ class _TaskListPageState extends State<TaskListPage> {
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(28, 20, 28, 28),
       itemCount: notifier.tasks.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 8),
+      separatorBuilder: (_, _) => const SizedBox(height: 10),
       itemBuilder: (context, index) {
         final t = notifier.tasks[index];
         return _TaskCard(
@@ -195,12 +201,26 @@ class _TaskCard extends StatelessWidget {
       onTap: () {
         Navigator.of(context).push(CupertinoPageRoute(builder: (_) => TaskDetailPage(taskId: task.id)));
       },
-      child: Container(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+          child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: CupertinoColors.white,
-          borderRadius: BorderRadius.circular(10),
-          boxShadow: const [BoxShadow(color: Color(0x0A000000), blurRadius: 8, offset: Offset(0, 2))],
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              const Color(0xFFFFFFFF).withValues(alpha: 0.80),
+              const Color(0xFFF9F9FB).withValues(alpha: 0.70),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFFFFFFF).withValues(alpha: 0.5), width: 0.5),
+          boxShadow: [
+            BoxShadow(color: const Color(0xFF000000).withValues(alpha: 0.04), blurRadius: 14, offset: const Offset(0, 3)),
+          ],
         ),
         child: Row(
           children: [
@@ -251,7 +271,7 @@ class _TaskCard extends StatelessWidget {
             const Icon(CupertinoIcons.chevron_right, size: 14, color: Color(0xFFC7C7CC)),
           ],
         ),
-      ),
+      ),),),
     );
   }
 

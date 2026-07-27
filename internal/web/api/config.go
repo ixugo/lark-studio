@@ -48,13 +48,16 @@ type updateConfigInput struct {
 }
 
 type pipelineInput struct {
-	Workers           *int     `json:"workers,omitempty"`
-	WhisperMode       *string  `json:"whisper_mode,omitempty"`
-	WhisperModel      *string  `json:"whisper_model,omitempty"`
-	FFmpegBin         *string  `json:"ffmpeg_bin,omitempty"`
-	DefaultTargetLang *string  `json:"default_target_lang,omitempty"`
-	TranslatePrompt   *string  `json:"translate_prompt,omitempty"`
-	MaxSpeedFactor    *float64 `json:"max_speed_factor,omitempty"`
+	Workers            *int     `json:"workers,omitempty"`
+	WhisperMode        *string  `json:"whisper_mode,omitempty"`
+	WhisperModel       *string  `json:"whisper_model,omitempty"`
+	FFmpegBin          *string  `json:"ffmpeg_bin,omitempty"`
+	DefaultTargetLang  *string  `json:"default_target_lang,omitempty"`
+	TranslatePrompt    *string  `json:"translate_prompt,omitempty"`
+	MaxSpeedFactor     *float64 `json:"max_speed_factor,omitempty"`
+	TranslateChunkSize *int     `json:"translate_chunk_size,omitempty"`
+	TTSWorkers         *int     `json:"tts_workers,omitempty"`
+	CleanIntermediate  *bool    `json:"clean_intermediate,omitempty"`
 }
 
 type llmInput struct {
@@ -95,6 +98,15 @@ func (uc *Usecase) updateConfig(_ *gin.Context, in *updateConfigInput) (configOu
 		}
 		if p.MaxSpeedFactor != nil {
 			c.Pipeline.MaxSpeedFactor = *p.MaxSpeedFactor
+		}
+		if p.TranslateChunkSize != nil {
+			c.Pipeline.TranslateChunkSize = *p.TranslateChunkSize
+		}
+		if p.TTSWorkers != nil {
+			c.Pipeline.TTSWorkers = *p.TTSWorkers
+		}
+		if p.CleanIntermediate != nil {
+			c.Pipeline.CleanIntermediate = *p.CleanIntermediate
 		}
 	}
 

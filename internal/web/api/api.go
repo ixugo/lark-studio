@@ -4,15 +4,18 @@ import (
 	"expvar"
 	"log/slog"
 	"net/http"
+	"os"
 	"runtime"
 	"runtime/debug"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/ixugo/goddd/domain/version/versionapi"
 	"github.com/ixugo/goddd/pkg/web"
+	"github.com/ixugo/vdub/pkg/ws"
 )
 
 var startRuntime = time.Now()
@@ -46,6 +49,53 @@ func setupRouter(r *gin.Engine, uc *Usecase) {
 	r.GET("/config", web.WrapH(uc.getConfig))
 	r.PUT("/config", web.WrapH(uc.updateConfig))
 	r.GET("/ws", gin.WrapF(uc.Hub.ServeHTTP))
+
+	startUIWatchdog(uc.Hub)
+}
+
+// startUIWatchdog 监控 UI WebSocket 连接。
+// 首次连接建立后，若所有连接断开超过 75 秒无重连，则自动退出进程。
+// 用于 Flutter 崩溃/关闭时自动回收 Go 引擎。
+func startUIWatchdog(hub ws.Huber) {
+	const watchdogTimeout = 75 * time.Second
+
+	var (
+		connCount    atomic.Int32
+		hadConn      atomic.Bool
+		lastDropTime atomic.Value // time.Time
+	)
+
+	hub.SetConnectHandler(func(_ *ws.Client) error {
+		connCount.Add(1)
+		hadConn.Store(true)
+		return nil
+	})
+	hub.SetDisconnectHandler(func(_ *ws.Client, _ error) {
+		if connCount.Add(-1) <= 0 {
+			lastDropTime.Store(time.Now())
+		}
+	})
+
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			if !hadConn.Load() {
+				continue
+			}
+			if connCount.Load() > 0 {
+				continue
+			}
+			t, ok := lastDropTime.Load().(time.Time)
+			if !ok {
+				continue
+			}
+			if time.Since(t) > watchdogTimeout {
+				slog.Info("UI 全部断开超过 75s，自动退出", "last_drop", t.Format(time.DateTime))
+				os.Exit(0)
+			}
+		}
+	}()
 }
 
 type getHealthOutput struct {
