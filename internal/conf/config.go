@@ -14,6 +14,7 @@ type Bootstrap struct {
 	Pipeline Pipeline // 流水线配置
 	LLM      LLM      // LLM 翻译配置
 	TTS      TTS      // TTS 配音配置
+	LipSync  LipSync  // 对口型配置
 }
 
 // Pipeline 流水线处理配置
@@ -47,6 +48,13 @@ type TTS struct {
 	BaseURL string `comment:"OpenAI TTS API 地址（Type=openai 时生效）"`
 	APIKey  string `comment:"OpenAI TTS API 密钥"`
 	Model   string `comment:"OpenAI TTS 模型名"`
+}
+
+// LipSync 对口型（唇形同步）配置
+type LipSync struct {
+	Enabled bool   `comment:"是否启用对口型（MuseTalk），仅 ModeDub 生效"`
+	BaseURL string `comment:"MuseTalk API 地址"`
+	APIKey  string `comment:"API 密钥（部分服务需要）"`
 }
 
 type Runtime struct {

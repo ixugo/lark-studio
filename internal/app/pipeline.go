@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/ixugo/vdub/internal/adapter/lipsync"
 	"github.com/ixugo/vdub/internal/adapter/llm"
 	"github.com/ixugo/vdub/internal/adapter/tts"
 	"github.com/ixugo/vdub/internal/adapter/whisper"
@@ -27,6 +28,7 @@ func NewPipelineCore(bc *conf.Bootstrap, opts ...pipeline.Option) *pipeline.Core
 		TTSWorkers:         bc.Pipeline.TTSWorkers,
 		CleanIntermediate:  bc.Pipeline.CleanIntermediate,
 		SubtitleOutput:     bc.Pipeline.SubtitleOutput,
+		LipSyncEnabled:     bc.LipSync.Enabled,
 	}
 
 	var wr pipeline.WhisperRunner
@@ -45,6 +47,11 @@ func NewPipelineCore(bc *conf.Bootstrap, opts ...pipeline.Option) *pipeline.Core
 		tc = tts.NewOpenAITTS(bc.TTS.BaseURL, bc.TTS.APIKey, bc.TTS.Model, bc.TTS.Voice)
 	default:
 		tc = tts.NewEdgeTTS(bc.TTS.Voice)
+	}
+
+	if bc.LipSync.Enabled && bc.LipSync.BaseURL != "" {
+		ls := lipsync.NewMuseTalkClient(bc.LipSync.BaseURL, bc.LipSync.APIKey)
+		opts = append(opts, pipeline.WithLipSync(ls))
 	}
 
 	return pipeline.NewCore(cfg, wr, lc, tc, opts...)

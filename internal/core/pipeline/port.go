@@ -35,6 +35,12 @@ type TTSClient interface {
 	Synthesize(ctx context.Context, text, outputPath, voice string) error
 }
 
+// LipSyncClient 对口型/唇形同步接口
+// 输入原始视频+配音音频，输出唇形同步后的视频
+type LipSyncClient interface {
+	Generate(ctx context.Context, videoPath, audioPath, outputPath string) error
+}
+
 // TermMapping 术语映射条目
 type TermMapping struct {
 	Text        string

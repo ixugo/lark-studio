@@ -20,6 +20,7 @@ const (
 	StepTranslate = "translate"
 	StepTTS       = "tts"
 	StepMerge     = "merge"
+	StepLipSync   = "lipsync"
 	StepBurn      = "burn"
 )
 
@@ -60,6 +61,7 @@ type Config struct {
 	TTSWorkers         int     // TTS 并发协程数（默认 2）
 	CleanIntermediate  bool    // 成功后删除中间产物
 	SubtitleOutput     string  // "burn" 烧录到视频 / "file" 仅输出字幕文件
+	LipSyncEnabled     bool    // 是否启用对口型（仅 ModeDub 生效）
 }
 
 // Core 流水线调度核心
@@ -68,6 +70,7 @@ type Core struct {
 	whisper    WhisperRunner
 	llm        LLMClient
 	tts        TTSClient
+	lipSync    LipSyncClient
 	notifier   Notifier
 	termLister TermLister
 
@@ -86,6 +89,11 @@ func WithNotifier(n Notifier) Option {
 // WithTermLister 注入术语列表查询，翻译时自动将匹配术语写入 prompt
 func WithTermLister(tl TermLister) Option {
 	return func(c *Core) { c.termLister = tl }
+}
+
+// WithLipSync 注入对口型客户端，ModeDub 且 LipSyncEnabled 时在 merge 后执行
+func WithLipSync(ls LipSyncClient) Option {
+	return func(c *Core) { c.lipSync = ls }
 }
 
 // NewCore 创建流水线核心
@@ -224,6 +232,8 @@ func (c *Core) stepFunc(step string) func(context.Context, Job) error {
 		return c.runTTS
 	case StepMerge:
 		return c.runMerge
+	case StepLipSync:
+		return c.runLipSync
 	case StepBurn:
 		return c.runBurn
 	default:
@@ -274,7 +284,11 @@ func (c *Core) buildSteps(mode int) []string {
 	case ModeTranslate:
 		steps = []string{StepWhisper, StepSplit, StepTranslate, StepBurn}
 	case ModeDub:
-		steps = []string{StepWhisper, StepSplit, StepTranslate, StepTTS, StepMerge, StepBurn}
+		if c.cfg.LipSyncEnabled && c.lipSync != nil {
+			steps = []string{StepWhisper, StepSplit, StepTranslate, StepTTS, StepMerge, StepLipSync, StepBurn}
+		} else {
+			steps = []string{StepWhisper, StepSplit, StepTranslate, StepTTS, StepMerge, StepBurn}
+		}
 	default:
 		steps = []string{StepWhisper, StepBurn}
 	}

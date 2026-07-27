@@ -45,6 +45,9 @@ class _SettingsPageState extends State<SettingsPage> {
   int _ttsWorkers = 2;
   bool _cleanIntermediate = false;
   String _subtitleOutput = 'burn';
+  bool _lipSyncEnabled = false;
+  final _lipSyncBaseUrl = TextEditingController();
+  final _lipSyncApiKey = TextEditingController();
   List<Map<String, dynamic>> _models = [];
 
   @override
@@ -68,6 +71,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _ffmpegBin.dispose();
     _targetLang.dispose();
     _translatePrompt.dispose();
+    _lipSyncBaseUrl.dispose();
+    _lipSyncApiKey.dispose();
     super.dispose();
   }
 
@@ -132,6 +137,9 @@ class _SettingsPageState extends State<SettingsPage> {
     _ttsWorkers = cfg.pipeline.ttsWorkers;
     _cleanIntermediate = cfg.pipeline.cleanIntermediate;
     _subtitleOutput = cfg.pipeline.subtitleOutput;
+    _lipSyncEnabled = cfg.lipSync.enabled;
+    _lipSyncBaseUrl.text = cfg.lipSync.baseUrl;
+    _lipSyncApiKey.text = cfg.lipSync.apiKey;
   }
 
   Future<void> _saveConfig() async {
@@ -162,6 +170,11 @@ class _SettingsPageState extends State<SettingsPage> {
           'tts_workers': _ttsWorkers,
           'clean_intermediate': _cleanIntermediate,
           'subtitle_output': _subtitleOutput,
+        },
+        'lip_sync': {
+          'enabled': _lipSyncEnabled,
+          'base_url': _lipSyncBaseUrl.text.trim(),
+          if (!_lipSyncApiKey.text.contains('****')) 'api_key': _lipSyncApiKey.text.trim(),
         },
       };
       final cfg = await context.read<ApiClient>().updateConfig(updates);
@@ -220,6 +233,22 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Text(
                 '支持 CosyVoice / F5-TTS / ChatTTS 等开源 TTS，'
                 '部署后将 API 地址指向本地服务即可 (如 http://localhost:8880/v1)。',
+                style: TextStyle(fontSize: 11, color: Color(0xFF8E8E93)),
+              ),
+            ),
+          ],
+        ]),
+        const SizedBox(height: 20),
+        _GlassSection(title: '对口型 (MuseTalk)', children: [
+          _switchRow('启用', _lipSyncEnabled, '配音后自动对口型（需 MuseTalk 服务）', (v) => setState(() => _lipSyncEnabled = v)),
+          if (_lipSyncEnabled) ...[
+            _GlassField(label: 'API 地址', controller: _lipSyncBaseUrl, placeholder: 'http://localhost:7860'),
+            _GlassField(label: 'API 密钥', controller: _lipSyncApiKey, placeholder: '选填', obscure: true),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(18, 0, 18, 12),
+              child: Text(
+                '需自行部署 MuseTalk 服务。配音完成后自动调用 API 做唇形同步。'
+                '也可连接阿里云万象大模型等兼容服务。',
                 style: TextStyle(fontSize: 11, color: Color(0xFF8E8E93)),
               ),
             ),

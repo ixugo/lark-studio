@@ -12,6 +12,13 @@ type configOutput struct {
 	Pipeline conf.Pipeline `json:"pipeline"`
 	LLM      llmOutput     `json:"llm"`
 	TTS      conf.TTS      `json:"tts"`
+	LipSync  lipSyncOutput `json:"lip_sync"`
+}
+
+type lipSyncOutput struct {
+	Enabled bool   `json:"Enabled"`
+	BaseURL string `json:"BaseURL"`
+	APIKey  string `json:"APIKey"`
 }
 
 // llmOutput 遮蔽 APIKey，不将明文推到前端
@@ -38,6 +45,11 @@ func (uc *Usecase) getConfig(_ *gin.Context, _ *struct{}) (configOutput, error) 
 			Model:   c.LLM.Model,
 		},
 		TTS: c.TTS,
+		LipSync: lipSyncOutput{
+			Enabled: c.LipSync.Enabled,
+			BaseURL: c.LipSync.BaseURL,
+			APIKey:  maskKey(c.LipSync.APIKey),
+		},
 	}, nil
 }
 
@@ -45,6 +57,13 @@ type updateConfigInput struct {
 	Pipeline *pipelineInput `json:"pipeline,omitempty"`
 	LLM      *llmInput      `json:"llm,omitempty"`
 	TTS      *ttsInput      `json:"tts,omitempty"`
+	LipSync  *lipSyncInput  `json:"lip_sync,omitempty"`
+}
+
+type lipSyncInput struct {
+	Enabled *bool   `json:"enabled,omitempty"`
+	BaseURL *string `json:"base_url,omitempty"`
+	APIKey  *string `json:"api_key,omitempty"`
 }
 
 type pipelineInput struct {
@@ -58,6 +77,7 @@ type pipelineInput struct {
 	TranslateChunkSize *int     `json:"translate_chunk_size,omitempty"`
 	TTSWorkers         *int     `json:"tts_workers,omitempty"`
 	CleanIntermediate  *bool    `json:"clean_intermediate,omitempty"`
+	SubtitleOutput     *string  `json:"subtitle_output,omitempty"`
 }
 
 type llmInput struct {
@@ -108,6 +128,9 @@ func (uc *Usecase) updateConfig(_ *gin.Context, in *updateConfigInput) (configOu
 		if p.CleanIntermediate != nil {
 			c.Pipeline.CleanIntermediate = *p.CleanIntermediate
 		}
+		if p.SubtitleOutput != nil {
+			c.Pipeline.SubtitleOutput = *p.SubtitleOutput
+		}
 	}
 
 	if l := in.LLM; l != nil {
@@ -140,6 +163,18 @@ func (uc *Usecase) updateConfig(_ *gin.Context, in *updateConfigInput) (configOu
 		}
 	}
 
+	if ls := in.LipSync; ls != nil {
+		if ls.Enabled != nil {
+			c.LipSync.Enabled = *ls.Enabled
+		}
+		if ls.BaseURL != nil {
+			c.LipSync.BaseURL = *ls.BaseURL
+		}
+		if ls.APIKey != nil {
+			c.LipSync.APIKey = *ls.APIKey
+		}
+	}
+
 	if err := conf.WriteConfig(c, c.Runtime.ConfigPath); err != nil {
 		return configOutput{}, reason.ErrServer.Withf("保存配置失败: %s", err)
 	}
@@ -152,5 +187,10 @@ func (uc *Usecase) updateConfig(_ *gin.Context, in *updateConfigInput) (configOu
 			Model:   c.LLM.Model,
 		},
 		TTS: c.TTS,
+		LipSync: lipSyncOutput{
+			Enabled: c.LipSync.Enabled,
+			BaseURL: c.LipSync.BaseURL,
+			APIKey:  maskKey(c.LipSync.APIKey),
+		},
 	}, nil
 }

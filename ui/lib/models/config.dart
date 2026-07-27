@@ -2,14 +2,16 @@ class AppConfig {
   final PipelineConfig pipeline;
   final LLMConfig llm;
   final TTSConfig tts;
+  final LipSyncConfig lipSync;
 
-  const AppConfig({required this.pipeline, required this.llm, required this.tts});
+  const AppConfig({required this.pipeline, required this.llm, required this.tts, required this.lipSync});
 
   factory AppConfig.fromJson(Map<String, dynamic> json) {
     return AppConfig(
       pipeline: PipelineConfig.fromJson(json['pipeline'] as Map<String, dynamic>? ?? {}),
       llm: LLMConfig.fromJson(json['llm'] as Map<String, dynamic>? ?? {}),
       tts: TTSConfig.fromJson(json['tts'] as Map<String, dynamic>? ?? {}),
+      lipSync: LipSyncConfig.fromJson(json['lip_sync'] as Map<String, dynamic>? ?? {}),
     );
   }
 }
@@ -90,6 +92,22 @@ class TTSConfig {
       baseUrl: json['BaseURL'] as String? ?? '',
       apiKey: json['APIKey'] as String? ?? '',
       model: json['Model'] as String? ?? '',
+    );
+  }
+}
+
+class LipSyncConfig {
+  final bool enabled;
+  final String baseUrl;
+  final String apiKey;
+
+  const LipSyncConfig({this.enabled = false, this.baseUrl = '', this.apiKey = ''});
+
+  factory LipSyncConfig.fromJson(Map<String, dynamic> json) {
+    return LipSyncConfig(
+      enabled: json['Enabled'] as bool? ?? false,
+      baseUrl: json['BaseURL'] as String? ?? '',
+      apiKey: json['APIKey'] as String? ?? '',
     );
   }
 }

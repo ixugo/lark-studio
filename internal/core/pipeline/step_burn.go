@@ -33,6 +33,15 @@ var subFontName = func() string {
 	}
 }()
 
+// resolveSourceVideo 若对口型步骤产出了 lipsync.mp4 则优先使用，否则用原始视频
+func resolveSourceVideo(job Job) string {
+	lipsync := filepath.Join(job.OutputDir, "lipsync.mp4")
+	if _, err := os.Stat(lipsync); err == nil {
+		return lipsync
+	}
+	return job.InputPath
+}
+
 // runBurn 烧录字幕到视频 / 合并配音
 func (c *Core) runBurn(ctx context.Context, job Job) error {
 	ffmpeg := c.cfg.FFmpegBin
@@ -44,6 +53,7 @@ func (c *Core) runBurn(ctx context.Context, job Job) error {
 	transSRT := filepath.Join(job.OutputDir, "trans.srt")
 	srcSRT := filepath.Join(job.OutputDir, "src.srt")
 	dubAudio := filepath.Join(job.OutputDir, "dub.mp3")
+	videoSrc := resolveSourceVideo(job)
 
 	switch job.Mode {
 	case ModeSubtitle:
@@ -60,7 +70,7 @@ func (c *Core) runBurn(ctx context.Context, job Job) error {
 
 	case ModeDub:
 		outputVideo := filepath.Join(job.OutputDir, baseName+".final.mp4")
-		if err := c.burnWithDub(ctx, ffmpeg, job.InputPath, transSRT, srcSRT, dubAudio, outputVideo, job.TaskID); err != nil {
+		if err := c.burnWithDub(ctx, ffmpeg, videoSrc, transSRT, srcSRT, dubAudio, outputVideo, job.TaskID); err != nil {
 			return err
 		}
 	}
