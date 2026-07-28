@@ -134,6 +134,9 @@ func TestInjectTermsIntoPrompt(t *testing.T) {
 		if !contains(got, `"人工智能"`) {
 			t.Fatalf("expected '人工智能' in prompt, got: %s", got)
 		}
+		if !contains(got, "Translate") || !contains(got, "{{target_lang}}") {
+			t.Fatalf("术语提示词丢失翻译指令: %s", got)
+		}
 	})
 }
 

@@ -374,7 +374,10 @@ func (c *Core) injectTermsIntoPrompt(ctx context.Context, basePrompt string, sen
 	if basePrompt != "" {
 		return basePrompt + termLine
 	}
-	return termLine
+	return `Translate the numbered subtitle sentences to {{target_lang}}.
+Output exactly {{count}} numbered translated lines.
+Keep each translation concise, natural, and faithful to the original.
+Do not repeat the source text unless it is already written in the target language.` + termLine
 }
 
 // matchTermMappings 从术语映射中筛出在 sentences 中出现的条目（不区分大小写）
