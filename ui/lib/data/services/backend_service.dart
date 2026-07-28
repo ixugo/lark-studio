@@ -44,10 +44,12 @@ class BackendService extends ChangeNotifier {
     _port = 0;
     try {
       final workingDirectory = _engineWorkingDirectory();
-      _process = await Process.start(bin, const [
-        '-port',
-        '0',
-      ], workingDirectory: workingDirectory);
+      _process = await Process.start(
+        bin,
+        const ['-port', '0'],
+        workingDirectory: workingDirectory,
+        environment: _engineEnvironment(),
+      );
       _process!.stdout
           .transform(utf8.decoder)
           .transform(const LineSplitter())
@@ -78,6 +80,26 @@ class BackendService extends ChangeNotifier {
         : '${Directory.systemTemp.path}/vdub';
     Directory(base).createSync(recursive: true);
     return base;
+  }
+
+  /// _engineEnvironment 补齐 Finder 启动时缺失的 Homebrew 路径，确保引擎能找到媒体工具。
+  Map<String, String> _engineEnvironment() {
+    final environment = Map<String, String>.from(Platform.environment);
+    if (!Platform.isMacOS) return environment;
+    const requiredPaths = [
+      '/opt/homebrew/bin',
+      '/usr/local/bin',
+      '/usr/bin',
+      '/bin',
+      '/usr/sbin',
+      '/sbin',
+    ];
+    final currentPaths = (environment['PATH'] ?? '').split(':');
+    environment['PATH'] = {
+      ...requiredPaths,
+      ...currentPaths.where((path) => path.isNotEmpty),
+    }.join(':');
+    return environment;
   }
 
   /// 解析引擎就绪行；端口由 Go 原子绑定，避免前端探测端口的竞态。
