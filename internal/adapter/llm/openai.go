@@ -11,24 +11,45 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
 // Client OpenAI 兼容 API 客户端
 type Client struct {
-	baseURL string
-	apiKey  string
-	model   string
-	client  *http.Client
+	baseURL   string
+	apiKey    string
+	model     string
+	provider  string
+	deepLXURL string
+	client    *http.Client
+	token     string
+	tokenAt   time.Time
+	tokenMu   sync.Mutex
+	bingAuth  string
+	bingAPI   string
+}
+
+// NewRoutingClient 创建支持必应、DeepLX 与 OpenAI 的翻译客户端。
+func NewRoutingClient(baseURL, apiKey, model, provider, deepLXURL string) *Client {
+	client := NewClient(baseURL, apiKey, model)
+	if strings.TrimSpace(provider) == "" {
+		provider = "bing"
+	}
+	client.provider = provider
+	client.deepLXURL = strings.TrimRight(deepLXURL, "/")
+	return client
 }
 
 // NewClient 创建 LLM 客户端
 func NewClient(baseURL, apiKey, model string) *Client {
 	return &Client{
-		baseURL: strings.TrimRight(baseURL, "/"),
-		apiKey:  apiKey,
-		model:   model,
-		client:  &http.Client{Timeout: 120 * time.Second},
+		baseURL:  strings.TrimRight(baseURL, "/"),
+		apiKey:   apiKey,
+		model:    model,
+		client:   &http.Client{Timeout: 120 * time.Second},
+		bingAuth: bingAuthURL,
+		bingAPI:  bingTranslateURL,
 	}
 }
 
@@ -146,6 +167,12 @@ const (
 // systemPrompt 为空时使用内置默认提示词
 // contextBefore/contextAfter 作为上下文帮助 LLM 理解语境，不计入翻译输出
 func (c *Client) Translate(ctx context.Context, sentences []string, targetLang, systemPrompt string, contextBefore, contextAfter []string) ([]string, error) {
+	switch strings.ToLower(c.provider) {
+	case "bing":
+		return c.translateBing(ctx, sentences, targetLang)
+	case "deeplx":
+		return c.translateDeepLX(ctx, sentences, targetLang)
+	}
 	numbered := make([]string, len(sentences))
 	for i, s := range sentences {
 		numbered[i] = fmt.Sprintf("%d. %s", i+1, s)

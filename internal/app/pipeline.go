@@ -42,7 +42,13 @@ func NewPipelineCore(bc *conf.Bootstrap, opts ...pipeline.Option) *pipeline.Core
 		wr = whisper.NewFFmpegRunner(bc.Pipeline.FFmpegBin, bc.Pipeline.WhisperModel)
 	}
 
-	lc := llm.NewClient(bc.LLM.BaseURL, bc.LLM.APIKey, bc.LLM.Model)
+	lc := llm.NewRoutingClient(
+		bc.LLM.BaseURL,
+		bc.LLM.APIKey,
+		bc.LLM.Model,
+		bc.LLM.Provider,
+		bc.LLM.DeepLXURL,
+	)
 
 	var tc pipeline.TTSClient
 	switch bc.TTS.Type {

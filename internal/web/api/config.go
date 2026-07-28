@@ -23,9 +23,11 @@ type lipSyncOutput struct {
 
 // llmOutput 遮蔽 APIKey，不将明文推到前端
 type llmOutput struct {
-	BaseURL string `json:"base_url"`
-	APIKey  string `json:"api_key"`
-	Model   string `json:"model"`
+	Provider  string `json:"provider"`
+	BaseURL   string `json:"base_url"`
+	APIKey    string `json:"api_key"`
+	Model     string `json:"model"`
+	DeepLXURL string `json:"deeplx_url"`
 }
 
 func maskKey(key string) string {
@@ -40,9 +42,11 @@ func (uc *Usecase) getConfig(_ *gin.Context, _ *struct{}) (configOutput, error) 
 	return configOutput{
 		Pipeline: c.Pipeline,
 		LLM: llmOutput{
-			BaseURL: c.LLM.BaseURL,
-			APIKey:  maskKey(c.LLM.APIKey),
-			Model:   c.LLM.Model,
+			Provider:  c.LLM.Provider,
+			BaseURL:   c.LLM.BaseURL,
+			APIKey:    maskKey(c.LLM.APIKey),
+			Model:     c.LLM.Model,
+			DeepLXURL: c.LLM.DeepLXURL,
 		},
 		TTS: c.TTS,
 		LipSync: lipSyncOutput{
@@ -81,9 +85,11 @@ type pipelineInput struct {
 }
 
 type llmInput struct {
-	BaseURL *string `json:"base_url,omitempty"`
-	APIKey  *string `json:"api_key,omitempty"`
-	Model   *string `json:"model,omitempty"`
+	Provider  *string `json:"provider,omitempty"`
+	BaseURL   *string `json:"base_url,omitempty"`
+	APIKey    *string `json:"api_key,omitempty"`
+	Model     *string `json:"model,omitempty"`
+	DeepLXURL *string `json:"deeplx_url,omitempty"`
 }
 
 type ttsInput struct {
@@ -134,6 +140,9 @@ func (uc *Usecase) updateConfig(_ *gin.Context, in *updateConfigInput) (configOu
 	}
 
 	if l := in.LLM; l != nil {
+		if l.Provider != nil {
+			c.LLM.Provider = *l.Provider
+		}
 		if l.BaseURL != nil {
 			c.LLM.BaseURL = *l.BaseURL
 		}
@@ -142,6 +151,9 @@ func (uc *Usecase) updateConfig(_ *gin.Context, in *updateConfigInput) (configOu
 		}
 		if l.Model != nil {
 			c.LLM.Model = *l.Model
+		}
+		if l.DeepLXURL != nil {
+			c.LLM.DeepLXURL = *l.DeepLXURL
 		}
 	}
 

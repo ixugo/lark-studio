@@ -71,12 +71,16 @@
   SubtitleOutput = ''
 
 [LLM]
+  # 翻译服务: bing / deeplx / openai
+  Provider = ''
   # OpenAI 兼容 API 地址
   BaseURL = ''
   # API 密钥
   APIKey = ''
   # 模型名称
   Model = ''
+  # DeepLX 自建接口地址
+  DeepLXURL = ''
 
 [TTS]
   # TTS 类型: edge / openai
