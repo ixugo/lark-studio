@@ -4,20 +4,23 @@ class AppConfig {
   final TTSConfig tts;
   final LipSyncConfig lipSync;
 
-  const AppConfig(
-      {required this.pipeline,
-      required this.llm,
-      required this.tts,
-      required this.lipSync});
+  const AppConfig({
+    required this.pipeline,
+    required this.llm,
+    required this.tts,
+    required this.lipSync,
+  });
 
   factory AppConfig.fromJson(Map<String, dynamic> json) {
     return AppConfig(
       pipeline: PipelineConfig.fromJson(
-          json['pipeline'] as Map<String, dynamic>? ?? {}),
+        json['pipeline'] as Map<String, dynamic>? ?? {},
+      ),
       llm: LLMConfig.fromJson(json['llm'] as Map<String, dynamic>? ?? {}),
       tts: TTSConfig.fromJson(json['tts'] as Map<String, dynamic>? ?? {}),
       lipSync: LipSyncConfig.fromJson(
-          json['lip_sync'] as Map<String, dynamic>? ?? {}),
+        json['lip_sync'] as Map<String, dynamic>? ?? {},
+      ),
     );
   }
 }
@@ -51,18 +54,54 @@ class PipelineConfig {
 
   factory PipelineConfig.fromJson(Map<String, dynamic> json) {
     return PipelineConfig(
-      workers: json['Workers'] as int? ?? 2,
-      whisperMode: json['WhisperMode'] as String? ?? 'ffmpeg',
+      workers: _boundedInt(json['Workers'], fallback: 2, min: 1, max: 4),
+      whisperMode: _knownString(
+        json['WhisperMode'],
+        fallback: 'whisper-cpp',
+        values: const {'ffmpeg', 'whisper-cpp'},
+      ),
       whisperModel: json['WhisperModel'] as String? ?? '',
       ffmpegBin: json['FFmpegBin'] as String? ?? '',
       defaultTargetLang: json['DefaultTargetLang'] as String? ?? 'zh-CN',
       translatePrompt: json['TranslatePrompt'] as String? ?? '',
-      maxSpeedFactor: (json['MaxSpeedFactor'] as num?)?.toDouble() ?? 0,
-      translateChunkSize: json['TranslateChunkSize'] as int? ?? 10,
-      ttsWorkers: json['TTSWorkers'] as int? ?? 2,
+      maxSpeedFactor: ((json['MaxSpeedFactor'] as num?)?.toDouble() ?? 0).clamp(
+        0,
+        1.5,
+      ),
+      translateChunkSize: _boundedInt(
+        json['TranslateChunkSize'],
+        fallback: 10,
+        min: 5,
+        max: 20,
+      ),
+      ttsWorkers: _boundedInt(json['TTSWorkers'], fallback: 2, min: 1, max: 4),
       cleanIntermediate: json['CleanIntermediate'] as bool? ?? false,
-      subtitleOutput: json['SubtitleOutput'] as String? ?? 'burn',
+      subtitleOutput: _knownString(
+        json['SubtitleOutput'],
+        fallback: 'burn',
+        values: const {'burn', 'file'},
+      ),
     );
+  }
+
+  /// 旧配置可能保留零值，此处恢复为界面支持的默认范围。
+  static int _boundedInt(
+    dynamic value, {
+    required int fallback,
+    required int min,
+    required int max,
+  }) {
+    final number = value is num ? value.toInt() : fallback;
+    return number >= min && number <= max ? number : fallback;
+  }
+
+  /// 分段控件只接受已声明值，非法旧值统一回到默认项。
+  static String _knownString(
+    dynamic value, {
+    required String fallback,
+    required Set<String> values,
+  }) {
+    return value is String && values.contains(value) ? value : fallback;
   }
 }
 
@@ -89,12 +128,13 @@ class TTSConfig {
   final String apiKey;
   final String model;
 
-  const TTSConfig(
-      {this.type = 'edge',
-      this.voice = '',
-      this.baseUrl = '',
-      this.apiKey = '',
-      this.model = ''});
+  const TTSConfig({
+    this.type = 'edge',
+    this.voice = '',
+    this.baseUrl = '',
+    this.apiKey = '',
+    this.model = '',
+  });
 
   factory TTSConfig.fromJson(Map<String, dynamic> json) {
     return TTSConfig(
@@ -112,8 +152,11 @@ class LipSyncConfig {
   final String baseUrl;
   final String apiKey;
 
-  const LipSyncConfig(
-      {this.enabled = false, this.baseUrl = '', this.apiKey = ''});
+  const LipSyncConfig({
+    this.enabled = false,
+    this.baseUrl = '',
+    this.apiKey = '',
+  });
 
   factory LipSyncConfig.fromJson(Map<String, dynamic> json) {
     return LipSyncConfig(
