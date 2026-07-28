@@ -226,8 +226,6 @@ const _configItems = <_NavSection>[
   _NavSection(CupertinoIcons.waveform, '音色'),
 ];
 
-const _navSections = [..._taskItems, ..._configItems];
-
 /// 左侧玻璃侧栏：分组标签 + 强调色胶囊选中态
 class _NavRail extends StatelessWidget {
   final int selectedIndex;
