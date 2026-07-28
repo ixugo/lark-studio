@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -28,7 +29,7 @@ func (c *Core) runMerge(ctx context.Context, job Job) error {
 			audioFiles = append(audioFiles, filepath.Join(audioDir, e.Name()))
 		}
 	}
-	sort.Strings(audioFiles)
+	sortAudioFiles(audioFiles)
 
 	if len(audioFiles) == 0 {
 		return fmt.Errorf("无音频段文件")
@@ -42,7 +43,7 @@ func (c *Core) runMerge(ctx context.Context, job Job) error {
 
 	trimmed := c.trimTrailingSilence(ctx, audioFiles, job)
 	if trimmed > 0 {
-		c.notifier.OnLog(job.TaskID, fmt.Sprintf("裁掉 %d 段音频尾部静音", trimmed))
+		c.logEvent(job.TaskID, "info", StepMerge, "裁掉 %d 段音频尾部静音", trimmed)
 	}
 
 	c.adjustAudioSpeeds(ctx, audioFiles, srtEntries, job)
@@ -56,8 +57,7 @@ func (c *Core) runMerge(ctx context.Context, job Job) error {
 	return nil
 }
 
-// trimTrailingSilence 裁掉每段 TTS 音频尾部的无声段
-// 避免静音膨胀导致调速计算偏差和字幕间隙异常
+// trimTrailingSilence 以 O(n) 串行规范化音频并仅裁掉尾部静音。
 func (c *Core) trimTrailingSilence(ctx context.Context, audioFiles []string, job Job) int {
 	ffmpeg := c.cfg.FFmpegBin
 	if ffmpeg == "" {
@@ -65,33 +65,72 @@ func (c *Core) trimTrailingSilence(ctx context.Context, audioFiles []string, job
 	}
 
 	trimmed := 0
-	for _, af := range audioFiles {
+	for _, audioPath := range audioFiles {
 		if ctx.Err() != nil {
 			break
 		}
-
-		trimPath := af + ".trim.wav"
-		cmd := exec.CommandContext(ctx, ffmpeg,
-			"-y", "-i", af,
-			"-af", "silenceremove=stop_periods=1:stop_threshold=-40dB:stop_duration=0.05",
-			trimPath,
-		)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			slog.Debug("trim trailing silence failed", "file", af, "err", err, "output", string(out))
+		wasTrimmed, err := normalizeAudioSegment(ctx, ffmpeg, audioPath)
+		if err != nil {
+			slog.Debug("normalize audio failed", "file", audioPath, "err", err)
 			continue
 		}
-
-		trimInfo, _ := os.Stat(trimPath)
-		origInfo, _ := os.Stat(af)
-		if trimInfo != nil && origInfo != nil && trimInfo.Size() > 0 && trimInfo.Size() < origInfo.Size() {
-			os.Remove(af)
-			os.Rename(trimPath, af)
+		if wasTrimmed {
 			trimmed++
-		} else {
-			os.Remove(trimPath)
 		}
 	}
 	return trimmed
+}
+
+// normalizeAudioSegment 保留句中停顿，裁去尾静音并统一为单声道 PCM WAV。
+func normalizeAudioSegment(ctx context.Context, ffmpeg, audioPath string) (bool, error) {
+	normalizedPath := audioPath + ".normalized.wav"
+	before := probeMediaDuration(ffmpeg, audioPath)
+	filter := "areverse,silenceremove=" +
+		"start_periods=1:start_duration=0.05:start_threshold=-45dB,areverse"
+	cmd := exec.CommandContext(
+		ctx,
+		ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", audioPath,
+		"-af", filter, "-ar", "24000", "-ac", "1", "-c:a", "pcm_s16le",
+		normalizedPath,
+	)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		_ = os.Remove(normalizedPath)
+		return false, fmt.Errorf("ffmpeg 规范化失败: %w, output: %s", err, output)
+	}
+	info, err := os.Stat(normalizedPath)
+	if err != nil || info.Size() == 0 {
+		_ = os.Remove(normalizedPath)
+		return false, fmt.Errorf("规范化音频为空")
+	}
+	after := probeMediaDuration(ffmpeg, normalizedPath)
+	if err := os.Rename(normalizedPath, audioPath); err != nil {
+		_ = os.Remove(normalizedPath)
+		return false, fmt.Errorf("替换规范化音频失败: %w", err)
+	}
+	return before-after > 0.03, nil
+}
+
+// sortAudioFiles 按字幕数字序号排序，避免 10.wav 排在 2.wav 前。
+func sortAudioFiles(audioFiles []string) {
+	sort.SliceStable(audioFiles, func(left, right int) bool {
+		leftIndex, leftOK := audioSegmentIndex(audioFiles[left])
+		rightIndex, rightOK := audioSegmentIndex(audioFiles[right])
+		if leftOK && rightOK {
+			return leftIndex < rightIndex
+		}
+		if leftOK != rightOK {
+			return leftOK
+		}
+		return audioFiles[left] < audioFiles[right]
+	})
+}
+
+// audioSegmentIndex 从配音文件名读取字幕序号。
+func audioSegmentIndex(path string) (int, bool) {
+	name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	index, err := strconv.Atoi(name)
+	return index, err == nil
 }
 
 // adjustAudioSpeeds 温和调速：TTS 音频超过原始字幕时长时，用 atempo 适度加速
@@ -144,7 +183,7 @@ func (c *Core) adjustAudioSpeeds(ctx context.Context, audioFiles []string, entri
 	}
 
 	if adjusted > 0 {
-		c.notifier.OnLog(job.TaskID, fmt.Sprintf("调速 %d 段音频 (上限 %.1fx)", adjusted, maxFactor))
+		c.logEvent(job.TaskID, "info", StepMerge, "调速 %d 段音频（上限 %.1fx）", adjusted, maxFactor)
 	}
 }
 

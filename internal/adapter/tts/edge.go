@@ -5,6 +5,7 @@ package tts
 import (
 	"context"
 	"fmt"
+	"math"
 	"os/exec"
 	"time"
 )
@@ -30,6 +31,17 @@ func NewEdgeTTS(voice string) *EdgeTTS {
 
 // Synthesize 合成语音，失败时指数退避重试
 func (e *EdgeTTS) Synthesize(ctx context.Context, text, outputPath, voice string) error {
+	return e.SynthesizeWithSpeed(ctx, text, outputPath, voice, 1)
+}
+
+// SynthesizeWithSpeed 使用任务指定的音色与语速合成语音。
+func (e *EdgeTTS) SynthesizeWithSpeed(
+	ctx context.Context,
+	text string,
+	outputPath string,
+	voice string,
+	speed float64,
+) error {
 	if voice == "" {
 		voice = e.voice
 	}
@@ -40,11 +52,15 @@ func (e *EdgeTTS) Synthesize(ctx context.Context, text, outputPath, voice string
 			return err
 		}
 
-		cmd := exec.CommandContext(ctx, "edge-tts",
+		args := []string{
 			"--voice", voice,
 			"--text", text,
 			"--write-media", outputPath,
-		)
+		}
+		if rate := edgeRate(speed); rate != "+0%" {
+			args = append(args, "--rate", rate)
+		}
+		cmd := exec.CommandContext(ctx, "edge-tts", args...)
 		output, err := cmd.CombinedOutput()
 		if err == nil {
 			return nil
@@ -63,4 +79,13 @@ func (e *EdgeTTS) Synthesize(ctx context.Context, text, outputPath, voice string
 	}
 
 	return lastErr
+}
+
+// edgeRate 把倍率转换为 edge-tts 使用的百分比参数。
+func edgeRate(speed float64) string {
+	if speed <= 0 {
+		speed = 1
+	}
+	percent := int(math.Round((speed - 1) * 100))
+	return fmt.Sprintf("%+d%%", percent)
 }

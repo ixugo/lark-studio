@@ -5,6 +5,7 @@ package task
 type Storer interface {
 	Task() TaskStorer
 	Step() StepStorer
+	TaskLog() TaskLogStorer
 }
 
 // Core business domain

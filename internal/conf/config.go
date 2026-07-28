@@ -36,9 +36,11 @@ type Pipeline struct {
 
 // LLM 大模型配置
 type LLM struct {
-	BaseURL string `comment:"OpenAI 兼容 API 地址"`
-	APIKey  string `comment:"API 密钥"`
-	Model   string `comment:"模型名称"`
+	Provider  string `comment:"翻译服务: bing / deeplx / openai"`
+	BaseURL   string `comment:"OpenAI 兼容 API 地址"`
+	APIKey    string `comment:"API 密钥"`
+	Model     string `comment:"模型名称"`
+	DeepLXURL string `comment:"DeepLX 自建接口地址"`
 }
 
 // TTS 语音合成配置
@@ -170,6 +172,12 @@ func (bc *Bootstrap) ApplyEnvOverrides() {
 	}
 	if v := os.Getenv("VDUB_LLM_MODEL"); v != "" {
 		bc.LLM.Model = v
+	}
+	if v := os.Getenv("VDUB_TRANSLATE_PROVIDER"); v != "" {
+		bc.LLM.Provider = v
+	}
+	if v := os.Getenv("VDUB_DEEPLX_URL"); v != "" {
+		bc.LLM.DeepLXURL = v
 	}
 	if v := os.Getenv("VDUB_WHISPER_MODEL"); v != "" {
 		bc.Pipeline.WhisperModel = v

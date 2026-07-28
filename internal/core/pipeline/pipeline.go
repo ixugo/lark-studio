@@ -116,12 +116,19 @@ func NewCore(cfg Config, whisper WhisperRunner, llm LLMClient, tts TTSClient, op
 
 // Job 描述一个待处理的视频任务
 type Job struct {
-	TaskID     string
-	InputPath  string // 视频文件路径
-	OutputDir  string // 输出目录
-	Mode       int    // 处理模式
-	TargetLang string // 目标语言
-	ResumeFrom string // 断点恢复：从此步骤开始（空=从头）
+	TaskID         string
+	InputPath      string  // 视频文件路径
+	OutputDir      string  // 输出目录
+	Mode           int     // 处理模式
+	SourceLang     string  // 源语言
+	TargetLang     string  // 目标语言
+	Translator     string  // 翻译引擎
+	OutputContent  string  // source / translated / bilingual
+	TTSEngine      string  // edge / openai
+	TTSVoice       string  // 音色名称
+	SpeechRate     float64 // 语速倍率
+	SubtitleOutput string  // burn / file / none
+	ResumeFrom     string  // 断点恢复：从此步骤开始（空=从头）
 }
 
 const (
@@ -133,31 +140,33 @@ const (
 // 同时将执行时间线写入 {outputDir}/task.log 供事后排查
 func (c *Core) Run(ctx context.Context, job Job) error {
 	slog.InfoContext(ctx, "pipeline.Run", "task_id", job.TaskID, "mode", job.Mode, "resume", job.ResumeFrom)
+	c.logEvent(job.TaskID, "info", "", "任务开始，模式：%s", modeTitle(job.Mode))
 
 	tl := openTaskLog(job.OutputDir)
 	defer tl.Close()
 	tl.Write("pipeline started: task=%s mode=%d resume=%q", job.TaskID, job.Mode, job.ResumeFrom)
 
-	steps := c.buildSteps(job.Mode)
-	startIdx := 0
-	if job.ResumeFrom != "" {
-		for i, s := range steps {
-			if s == job.ResumeFrom {
-				startIdx = i
-				break
-			}
-		}
-	}
-
+	steps := c.buildSteps(job)
 	pipeStart := time.Now()
-	for i := startIdx; i < len(steps); i++ {
-		step := steps[i]
+	if err := c.runSteps(ctx, job, steps, resumeStepIndex(steps, job.ResumeFrom), tl); err != nil {
+		return err
+	}
+	c.finishTask(job, pipeStart, tl)
+	return nil
+}
+
+// runSteps 依序执行任务步骤，并统一记录开始、失败和完成事件。
+func (c *Core) runSteps(ctx context.Context, job Job, steps []string, startIndex int, tl *taskLog) error {
+	for index := startIndex; index < len(steps); index++ {
+		step := steps[index]
 		if err := ctx.Err(); err != nil {
 			tl.Write("pipeline cancelled: %v", err)
+			c.logEvent(job.TaskID, "warn", step, "任务已暂停")
 			return fmt.Errorf("任务被取消: %w", err)
 		}
 
-		c.notifier.OnLog(job.TaskID, fmt.Sprintf("开始步骤: %s", step))
+		c.startStep(job.TaskID, step)
+		c.logEvent(job.TaskID, "info", step, "%s开始", stepTitle(step))
 		tl.Write("step started: %s", step)
 
 		stepFn := c.stepFunc(step)
@@ -167,26 +176,43 @@ func (c *Core) Run(ctx context.Context, job Job) error {
 
 		if err != nil {
 			tl.Write("step failed: %s (%v): %v", step, elapsed, err)
-			c.notifier.OnTaskFailed(job.TaskID, err)
+			c.logEvent(job.TaskID, "error", step, "%s失败，耗时 %s：%v", stepTitle(step), formatDuration(elapsed), err)
+			c.failStep(job.TaskID, step, elapsed, err)
 			return fmt.Errorf("步骤 %s 失败: %w", step, err)
 		}
 
 		tl.Write("step done: %s (%v)", step, elapsed)
+		c.notifier.OnProgress(job.TaskID, step, 100)
+		c.logEvent(job.TaskID, "success", step, "%s完成，耗时 %s", stepTitle(step), formatDuration(elapsed))
 		c.notifier.OnStepDone(job.TaskID, step)
 	}
+	return nil
+}
 
-	tl.Write("pipeline completed (%v)", time.Since(pipeStart))
+// finishTask 记录总耗时并按配置清理中间产物。
+func (c *Core) finishTask(job Job, pipeStart time.Time, tl *taskLog) {
+	totalElapsed := time.Since(pipeStart)
+	tl.Write("pipeline completed (%v)", totalElapsed)
+	c.logEvent(job.TaskID, "success", "", "任务完成，总耗时 %s", formatDuration(totalElapsed))
 	c.notifier.OnTaskDone(job.TaskID)
 
 	if c.cfg.CleanIntermediate {
 		cleaned := cleanIntermediate(job.OutputDir)
 		if cleaned > 0 {
 			tl.Write("cleaned %d intermediate files", cleaned)
-			c.notifier.OnLog(job.TaskID, fmt.Sprintf("已清理 %d 个中间产物", cleaned))
+			c.logEvent(job.TaskID, "info", "", "已清理 %d 个中间产物", cleaned)
 		}
 	}
+}
 
-	return nil
+// resumeStepIndex 查找断点步骤，未指定或不存在时从头执行。
+func resumeStepIndex(steps []string, resumeFrom string) int {
+	for index, step := range steps {
+		if step == resumeFrom {
+			return index
+		}
+	}
+	return 0
 }
 
 // taskLog 任务级日志写入器，追加写入 {outputDir}/task.log
@@ -262,8 +288,16 @@ func (c *Core) runStepWithRetry(ctx context.Context, job Job, step string, fn fu
 
 		if attempt < stepMaxRetries-1 {
 			delay := stepBaseDelay * time.Duration(1<<uint(attempt))
-			c.notifier.OnLog(job.TaskID, fmt.Sprintf("步骤 %s 失败 (第%d次): %v, %v 后重试",
-				step, attempt+1, lastErr, delay))
+			c.logEvent(
+				job.TaskID,
+				"warn",
+				step,
+				"%s失败（第 %d 次）：%v，%s 后重试",
+				stepTitle(step),
+				attempt+1,
+				lastErr,
+				formatDuration(delay),
+			)
 			select {
 			case <-ctx.Done():
 				return lastErr
@@ -274,10 +308,18 @@ func (c *Core) runStepWithRetry(ctx context.Context, job Job, step string, fn fu
 	return lastErr
 }
 
-// buildSteps 根据模式构建步骤列表
-// SubtitleOutput=="file" 时跳过 burn 步骤，仅输出独立字幕文件
-func (c *Core) buildSteps(mode int) []string {
-	skipBurn := c.cfg.SubtitleOutput == "file"
+// formatDuration 将处理耗时压缩为适合任务日志的中文短格式。
+func formatDuration(duration time.Duration) string {
+	duration = duration.Round(time.Second)
+	if duration < time.Minute {
+		return fmt.Sprintf("%d 秒", max(0, int(duration.Seconds())))
+	}
+	return fmt.Sprintf("%d 分 %02d 秒", int(duration.Minutes()), int(duration.Seconds())%60)
+}
+
+// buildSteps 根据任务模式和字幕方式构建步骤列表。
+func (c *Core) buildSteps(job Job) []string {
+	mode := job.Mode
 	var steps []string
 	switch mode {
 	case ModeSubtitle:
@@ -293,7 +335,14 @@ func (c *Core) buildSteps(mode int) []string {
 	default:
 		steps = []string{StepWhisper, StepBurn}
 	}
-	if skipBurn {
+	subtitleOutput := job.SubtitleOutput
+	if subtitleOutput == "" {
+		subtitleOutput = c.cfg.SubtitleOutput
+		if subtitleOutput == "" {
+			subtitleOutput = "burn"
+		}
+	}
+	if mode != ModeDub && subtitleOutput != "burn" {
 		filtered := steps[:0]
 		for _, s := range steps {
 			if s != StepBurn {
@@ -318,7 +367,13 @@ var ffmpegTimeRe = regexp.MustCompile(`time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})`)
 
 // runFFmpegWithProgress 运行 ffmpeg 命令并通过解析 stderr 中的 time= 字段实时回报进度
 // totalDuration 为总时长（秒），用于计算百分比；progressFn 在每次解析到进度时被调用
-func runFFmpegWithProgress(ctx context.Context, totalDuration float64, progressFn func(pct int), args ...string) error {
+func runFFmpegWithProgress(
+	ctx context.Context,
+	totalDuration float64,
+	progressFn func(int),
+	logFn func(string),
+	args ...string,
+) error {
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 
 	stderr, err := cmd.StderrPipe()
@@ -336,29 +391,37 @@ func runFFmpegWithProgress(ctx context.Context, totalDuration float64, progressF
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		if totalDuration <= 0 || progressFn == nil {
-			continue
+		if line != "" && logFn != nil {
+			logFn(line)
 		}
-		matches := ffmpegTimeRe.FindStringSubmatch(line)
-		if len(matches) < 5 {
-			continue
-		}
-		h := parseIntSafe(matches[1])
-		m := parseIntSafe(matches[2])
-		s := parseIntSafe(matches[3])
-		cs := parseIntSafe(matches[4])
-		current := float64(h)*3600 + float64(m)*60 + float64(s) + float64(cs)/100.0
-		pct := int(current / totalDuration * 100)
-		if pct > 99 {
-			pct = 99
-		}
-		progressFn(pct)
+		reportFFmpegProgress(line, totalDuration, progressFn)
 	}
 
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("读取 ffmpeg 输出失败: %w", err)
+	}
 	if err := cmd.Wait(); err != nil {
 		return err
 	}
 	return nil
+}
+
+// reportFFmpegProgress 从单行输出提取时间并换算为百分比。
+func reportFFmpegProgress(line string, totalDuration float64, progressFn func(int)) {
+	if totalDuration <= 0 || progressFn == nil {
+		return
+	}
+	matches := ffmpegTimeRe.FindStringSubmatch(line)
+	if len(matches) < 5 {
+		return
+	}
+	hours := parseIntSafe(matches[1])
+	minutes := parseIntSafe(matches[2])
+	seconds := parseIntSafe(matches[3])
+	centiseconds := parseIntSafe(matches[4])
+	current := float64(hours)*3600 + float64(minutes)*60 +
+		float64(seconds) + float64(centiseconds)/100
+	progressFn(min(99, int(current/totalDuration*100)))
 }
 
 // scanFFmpegOutput 自定义 bufio.SplitFunc，按 \r 或 \n 分割 ffmpeg 输出

@@ -22,7 +22,7 @@ func (c *Core) runTTS(ctx context.Context, job Job) error {
 				}
 			}
 			if wavCount > 0 {
-				c.notifier.OnLog(job.TaskID, fmt.Sprintf("TTS 已在流水线中完成 (%d 段)，跳过", wavCount))
+				c.logEvent(job.TaskID, "success", StepTTS, "配音已完成：%d 段", wavCount)
 				c.notifier.OnProgress(job.TaskID, StepTTS, 100)
 				return nil
 			}
@@ -48,7 +48,7 @@ func (c *Core) runTTS(ctx context.Context, job Job) error {
 		return fmt.Errorf("创建音频目录失败: %w", err)
 	}
 
-	c.notifier.OnLog(job.TaskID, fmt.Sprintf("TTS 合成 %d 句", len(sentences)))
+	c.logEvent(job.TaskID, "info", StepTTS, "配音开始：%d 句", len(sentences))
 
 	for i, text := range sentences {
 		if err := ctx.Err(); err != nil {
@@ -69,12 +69,21 @@ func (c *Core) runTTS(ctx context.Context, job Job) error {
 			continue
 		}
 
-		if err := c.tts.Synthesize(ctx, text, outputPath, ""); err != nil {
+		if err := c.synthesizeWithJob(ctx, job, text, outputPath); err != nil {
 			return fmt.Errorf("TTS 第 %d 句失败: %w", i+1, err)
 		}
 
 		progress := ((i + 1) * 100) / len(sentences)
 		c.notifier.OnProgress(job.TaskID, StepTTS, progress)
+		c.logEvent(
+			job.TaskID,
+			"info",
+			StepTTS,
+			"配音进度 %d%%（%d/%d）",
+			progress,
+			i+1,
+			len(sentences),
+		)
 	}
 
 	c.notifier.OnProgress(job.TaskID, StepTTS, 100)

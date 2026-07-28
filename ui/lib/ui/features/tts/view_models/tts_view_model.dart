@@ -1,9 +1,10 @@
 import 'dart:ui' show Color;
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/widgets.dart' show IconData;
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../../data/repositories/config_repository.dart';
+import '../../../../data/models/config.dart';
 import '../../../../providers.dart';
 
 /// TTS 服务定义
@@ -37,12 +38,16 @@ class TTSState {
   final String? selectedServiceId;
   final String currentType;
   final String currentVoice;
+  final TTSConfig config;
+  final bool saving;
 
   const TTSState({
     this.services = const [],
     this.selectedServiceId,
     this.currentType = '',
     this.currentVoice = '',
+    this.config = const TTSConfig(),
+    this.saving = false,
   });
 
   TTSState copyWith({
@@ -51,13 +56,18 @@ class TTSState {
     bool clearSelection = false,
     String? currentType,
     String? currentVoice,
+    TTSConfig? config,
+    bool? saving,
   }) {
     return TTSState(
       services: services ?? this.services,
-      selectedServiceId:
-          clearSelection ? null : (selectedServiceId ?? this.selectedServiceId),
+      selectedServiceId: clearSelection
+          ? null
+          : (selectedServiceId ?? this.selectedServiceId),
       currentType: currentType ?? this.currentType,
       currentVoice: currentVoice ?? this.currentVoice,
+      config: config ?? this.config,
+      saving: saving ?? this.saving,
     );
   }
 }
@@ -169,6 +179,7 @@ class TTSNotifier extends Notifier<TTSState> {
         services: services,
         currentType: tts.type,
         currentVoice: tts.voice,
+        config: tts,
       );
     } catch (_) {}
   }
@@ -182,7 +193,26 @@ class TTSNotifier extends Notifier<TTSState> {
   Future<void> testConnection(String serviceId) async {
     await Future.delayed(const Duration(seconds: 1));
   }
+
+  /// saveConfig 将音色页的合成服务配置写回后端。
+  Future<void> saveConfig(TTSConfig config) async {
+    state = state.copyWith(saving: true);
+    try {
+      await _configRepo.updateConfig({
+        'tts': {
+          'type': config.type,
+          'voice': config.voice,
+          'base_url': config.baseUrl,
+          if (!config.apiKey.contains('****')) 'api_key': config.apiKey,
+          'model': config.model,
+        },
+      });
+      state = state.copyWith(config: config, saving: false);
+    } catch (_) {
+      state = state.copyWith(saving: false);
+      rethrow;
+    }
+  }
 }
 
-final ttsProvider =
-    NotifierProvider<TTSNotifier, TTSState>(TTSNotifier.new);
+final ttsProvider = NotifierProvider<TTSNotifier, TTSState>(TTSNotifier.new);

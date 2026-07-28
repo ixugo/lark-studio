@@ -28,45 +28,64 @@ class ApiClient {
   // ---- Task API ----
 
   Future<List<Task>> listTasks({int page = 1, int size = 50}) async {
-    final uri = Uri.parse('$baseUrl/tasks').replace(
-      queryParameters: {'page': '$page', 'size': '$size'},
-    );
+    final uri = Uri.parse(
+      '$baseUrl/tasks',
+    ).replace(queryParameters: {'page': '$page', 'size': '$size'});
     final resp = await _client.get(uri);
     _checkStatus(resp);
     final body = jsonDecode(resp.body) as Map<String, dynamic>;
-    final data = body['data'] as Map<String, dynamic>? ?? {};
-    final items = data['items'] as List<dynamic>? ?? [];
-    return items
-        .map((e) => Task.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final items = body['items'] as List<dynamic>? ?? [];
+    return items.map((e) => Task.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   Future<Task> getTask(String id) async {
     final resp = await _client.get(Uri.parse('$baseUrl/tasks/$id'));
     _checkStatus(resp);
     final body = jsonDecode(resp.body) as Map<String, dynamic>;
-    return Task.fromJson(body['data'] as Map<String, dynamic>? ?? {});
+    return Task.fromJson(body);
+  }
+
+  Future<List<TaskLog>> getTaskLogs(String id) async {
+    final resp = await _client.get(Uri.parse('$baseUrl/tasks/$id/logs'));
+    _checkStatus(resp);
+    final body = jsonDecode(resp.body) as Map<String, dynamic>;
+    final items = body['items'] as List<dynamic>? ?? [];
+    return items
+        .map((item) => TaskLog.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// listTaskSteps 读取指定任务的处理步骤，供详情页展示模型与耗时。
+  Future<List<TaskStep>> listTaskSteps(String taskId) async {
+    final uri = Uri.parse(
+      '$baseUrl/steps',
+    ).replace(queryParameters: {'task_id': taskId, 'page': '1', 'size': '20'});
+    final resp = await _client.get(uri);
+    _checkStatus(resp);
+    final body = jsonDecode(resp.body) as Map<String, dynamic>;
+    final items = body['items'] as List<dynamic>? ?? [];
+    return items
+        .map((item) => TaskStep.fromJson(item as Map<String, dynamic>))
+        .toList();
   }
 
   Future<Task> createTask({
     required String inputPath,
-    required int mode,
+    required TaskRecipe recipe,
     String outputDir = '',
-    String targetLang = '',
   }) async {
     final resp = await _client.post(
       Uri.parse('$baseUrl/tasks'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'input_path': inputPath,
-        'mode': mode,
+        ...recipe.toJson(),
         if (outputDir.isNotEmpty) 'output_dir': outputDir,
-        if (targetLang.isNotEmpty) 'target_lang': targetLang,
       }),
     );
     _checkStatus(resp);
     final body = jsonDecode(resp.body) as Map<String, dynamic>;
-    return Task.fromJson(body['data'] as Map<String, dynamic>? ?? {});
+    return Task.fromJson(body);
   }
 
   Future<void> deleteTask(String id) async {
@@ -83,30 +102,22 @@ class ApiClient {
     final resp = await _client.post(Uri.parse('$baseUrl/tasks/$id/resume'));
     _checkStatus(resp);
     final body = jsonDecode(resp.body) as Map<String, dynamic>;
-    return Task.fromJson(body['data'] as Map<String, dynamic>? ?? {});
+    return Task.fromJson(body);
   }
 
   Future<List<Task>> batchCreateTasks({
     required List<String> videos,
-    required int mode,
-    String targetLang = '',
+    required TaskRecipe recipe,
   }) async {
     final resp = await _client.post(
       Uri.parse('$baseUrl/tasks/batch'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'videos': videos,
-        'mode': mode,
-        if (targetLang.isNotEmpty) 'target_lang': targetLang,
-      }),
+      body: jsonEncode({'videos': videos, ...recipe.toJson()}),
     );
     _checkStatus(resp);
     final body = jsonDecode(resp.body) as Map<String, dynamic>;
-    final data = body['data'] as Map<String, dynamic>? ?? {};
-    final items = data['items'] as List<dynamic>? ?? [];
-    return items
-        .map((e) => Task.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final items = body['items'] as List<dynamic>? ?? [];
+    return items.map((e) => Task.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   // ---- Glossary API ----
@@ -115,8 +126,7 @@ class ApiClient {
     final resp = await _client.get(Uri.parse('$baseUrl/glossaries'));
     _checkStatus(resp);
     final body = jsonDecode(resp.body) as Map<String, dynamic>;
-    final data = body['data'] as Map<String, dynamic>? ?? {};
-    final items = data['items'] as List<dynamic>? ?? [];
+    final items = body['items'] as List<dynamic>? ?? [];
     return items.cast<Map<String, dynamic>>();
   }
 
@@ -128,10 +138,15 @@ class ApiClient {
     );
     _checkStatus(resp);
     final body = jsonDecode(resp.body) as Map<String, dynamic>;
-    return body['data'] as Map<String, dynamic>? ?? {};
+    return body;
   }
 
-  Future<Map<String, dynamic>> updateGlossary(int id, {String? name, bool? enabled, int? priority}) async {
+  Future<Map<String, dynamic>> updateGlossary(
+    int id, {
+    String? name,
+    bool? enabled,
+    int? priority,
+  }) async {
     final updates = <String, dynamic>{};
     if (name != null) updates['name'] = name;
     if (enabled != null) updates['enabled'] = enabled;
@@ -143,7 +158,7 @@ class ApiClient {
     );
     _checkStatus(resp);
     final body = jsonDecode(resp.body) as Map<String, dynamic>;
-    return body['data'] as Map<String, dynamic>? ?? {};
+    return body;
   }
 
   Future<void> deleteGlossary(int id) async {
@@ -153,14 +168,16 @@ class ApiClient {
 
   // ---- Term API (per glossary) ----
 
-  Future<List<Map<String, dynamic>>> listTerms({required int glossaryId, String query = ''}) async {
+  Future<List<Map<String, dynamic>>> listTerms({
+    required int glossaryId,
+    String query = '',
+  }) async {
     var url = '$baseUrl/glossaries/$glossaryId/terms';
     if (query.isNotEmpty) url += '?q=${Uri.encodeComponent(query)}';
     final resp = await _client.get(Uri.parse(url));
     _checkStatus(resp);
     final body = jsonDecode(resp.body) as Map<String, dynamic>;
-    final data = body['data'] as Map<String, dynamic>? ?? {};
-    final items = data['items'] as List<dynamic>? ?? [];
+    final items = body['items'] as List<dynamic>? ?? [];
     return items.cast<Map<String, dynamic>>();
   }
 
@@ -181,7 +198,7 @@ class ApiClient {
     );
     _checkStatus(resp);
     final body = jsonDecode(resp.body) as Map<String, dynamic>;
-    return body['data'] as Map<String, dynamic>? ?? {};
+    return body;
   }
 
   Future<Map<String, dynamic>> updateTerm({
@@ -194,14 +211,20 @@ class ApiClient {
     final resp = await _client.put(
       Uri.parse('$baseUrl/glossaries/$glossaryId/terms/$id'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'text': text, 'translation': translation, 'note': note}),
+      body: jsonEncode({
+        'text': text,
+        'translation': translation,
+        'note': note,
+      }),
     );
     _checkStatus(resp);
     return jsonDecode(resp.body) as Map<String, dynamic>;
   }
 
   Future<void> deleteTerm({required int glossaryId, required int id}) async {
-    final resp = await _client.delete(Uri.parse('$baseUrl/glossaries/$glossaryId/terms/$id'));
+    final resp = await _client.delete(
+      Uri.parse('$baseUrl/glossaries/$glossaryId/terms/$id'),
+    );
     _checkStatus(resp);
   }
 
@@ -210,9 +233,8 @@ class ApiClient {
   Future<List<Map<String, dynamic>>> listModels() async {
     final resp = await _client.get(Uri.parse('$baseUrl/models'));
     _checkStatus(resp);
-    final body = jsonDecode(resp.body) as Map<String, dynamic>;
-    final data = body['data'] as List<dynamic>? ?? [];
-    return data.cast<Map<String, dynamic>>();
+    final body = jsonDecode(resp.body) as List<dynamic>;
+    return body.cast<Map<String, dynamic>>();
   }
 
   Future<void> downloadModel(String name) async {
@@ -224,13 +246,30 @@ class ApiClient {
     _checkStatus(resp);
   }
 
+  /// 查询本机实际可用的 whisper.cpp 运行时。
+  Future<Map<String, dynamic>> getWhisperRuntime() async {
+    final resp = await _client.get(Uri.parse('$baseUrl/models/runtime'));
+    _checkStatus(resp);
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  /// 请求后端安装 whisper.cpp，安装输出由 WebSocket 推送。
+  Future<void> installWhisperRuntime() async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/models/runtime/install'),
+      headers: {'Content-Type': 'application/json'},
+      body: '{}',
+    );
+    _checkStatus(resp);
+  }
+
   // ---- Config API ----
 
   Future<AppConfig> getConfig() async {
     final resp = await _client.get(Uri.parse('$baseUrl/config'));
     _checkStatus(resp);
     final body = jsonDecode(resp.body) as Map<String, dynamic>;
-    return AppConfig.fromJson(body['data'] as Map<String, dynamic>? ?? {});
+    return AppConfig.fromJson(body);
   }
 
   Future<AppConfig> updateConfig(Map<String, dynamic> updates) async {
@@ -241,13 +280,16 @@ class ApiClient {
     );
     _checkStatus(resp);
     final body = jsonDecode(resp.body) as Map<String, dynamic>;
-    return AppConfig.fromJson(body['data'] as Map<String, dynamic>? ?? {});
+    return AppConfig.fromJson(body);
   }
 
   void _checkStatus(http.Response resp) {
     if (resp.statusCode >= 400) {
       final body = jsonDecode(resp.body) as Map<String, dynamic>?;
-      final msg = body?['message'] as String? ?? 'request failed';
+      final msg =
+          body?['msg'] as String? ??
+          body?['message'] as String? ??
+          'request failed';
       throw ApiException(resp.statusCode, msg);
     }
   }

@@ -9,7 +9,9 @@ type Step struct {
 	TaskID    string     `gorm:"column:task_id;notNull;default:''" json:"task_id"`
 	Name      string     `gorm:"column:name;notNull;default:'';comment:whisper/split/translate/tts/merge/burn" json:"name"` // whisper/split/translate/tts/merge/burn
 	Status    int        `gorm:"column:status;notNull;default:0;comment:0=待执行, 1=执行中, 2=完成, 3=失败, 4=跳过" json:"status"`      // 0=待执行, 1=执行中, 2=完成, 3=失败, 4=跳过
-	Output    string     `gorm:"column:output;notNull;default:'';comment:JSON: 步骤输出（中间产物路径等）" json:"output"`                // JSON: 步骤输出（中间产物路径等）
+	Progress  int        `gorm:"column:progress;notNull;default:0" json:"progress"`
+	Detail    string     `gorm:"column:detail;notNull;default:''" json:"detail"`
+	Output    string     `gorm:"column:output;notNull;default:'';comment:JSON: 步骤输出（中间产物路径等）" json:"output"` // JSON: 步骤输出（中间产物路径等）
 	Error     string     `gorm:"column:error;notNull;default:''" json:"error"`
 	StartedAt *time.Time `gorm:"column:started_at" json:"started_at"`
 	EndedAt   *time.Time `gorm:"column:ended_at" json:"ended_at"`

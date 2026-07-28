@@ -14,20 +14,19 @@ class AppColors {
     return AppColors._(isDark);
   }
 
-  // ── 背景层级 ──
+  // ── 背景层级（半透明，令环境色透出，成玻璃之质） ──
   Color get bg => isDark ? const Color(0xFF000000) : const Color(0xFFF5F5F7);
   Color get contentBg =>
-      isDark ? const Color(0xFF1C1C1E) : const Color(0xFFFFFFFF);
+      isDark ? const Color(0xF2141418) : const Color(0xFAFFFFFF);
   Color get cardBg =>
-      isDark ? const Color(0xFF2C2C2E) : const Color(0xFFFFFFFF);
+      isDark ? const Color(0x8C2C2C32) : const Color(0xB8FFFFFF);
   Color get cardBgHover =>
-      isDark ? const Color(0xFF3A3A3C) : const Color(0xFFF2F2F7);
-  Color get barBg =>
-      isDark ? const Color(0xFF1C1C1E) : const Color(0xFFFFFFFF);
+      isDark ? const Color(0x9E3A3A42) : const Color(0xD9FFFFFF);
+  Color get barBg => isDark ? const Color(0x8C17171B) : const Color(0x99FAFAFC);
   Color get inputBg =>
-      isDark ? const Color(0xFF3A3A3C) : const Color(0xFFF2F2F7);
+      isDark ? const Color(0x12FFFFFF) : const Color(0x0C000000);
   Color get surfaceBg =>
-      isDark ? const Color(0xFF2C2C2E) : const Color(0xFFF9F9F9);
+      isDark ? const Color(0x802C2C32) : const Color(0x80FFFFFF);
 
   // ── 边框 ──
   Color get border =>
@@ -55,4 +54,23 @@ class AppColors {
   static const red = Color(0xFFFF3B30);
   static const orange = Color(0xFFFF9500);
   static const yellow = Color(0xFFFFCC00);
+
+  /// 主题强调色：暗色下用更亮的系统蓝保证可读性
+  Color get accent => isDark ? const Color(0xFF0A84FF) : blue;
+
+  // ── 玻璃材质（Liquid Glass） ──
+  // 卡片底：半透明让背景色微微透出
+  Color get glassCardBg =>
+      isDark ? const Color(0x8C2C2C32) : const Color(0x9EFFFFFF);
+  Color get glassCardHover =>
+      isDark ? const Color(0x9E3A3A42) : const Color(0xD1FFFFFF);
+  // 横条底（侧栏/顶栏/状态栏）：比卡片更暗一档
+  Color get glassBarBg =>
+      isDark ? const Color(0x8C17171B) : const Color(0x99FAFAFC);
+  // 镜面细描边
+  Color get glassStroke =>
+      isDark ? const Color(0x1AFFFFFF) : const Color(0x17000000);
+  // 顶部高光描边，模拟玻璃受光棱线
+  Color get glassTopLine =>
+      isDark ? const Color(0x24FFFFFF) : const Color(0xD9FFFFFF);
 }

@@ -30,7 +30,7 @@ var (
 
 var (
 	configDir = flag.String("conf", "", "config directory (default: ~/dsub/configs/)")
-	portFlag  = flag.Int("port", 0, "override HTTP listen port (0 = use config)")
+	portFlag  = flag.Int("port", -1, "override HTTP listen port (0 = select an available port)")
 	runFile   = flag.String("run", "", "directly run pipeline on a video file, skip HTTP server")
 	runMode   = flag.Int("mode", 2, "processing mode: 1=subtitle, 2=translate, 3=dub")
 	runLang   = flag.String("lang", "", "target language (default from config)")
@@ -78,8 +78,8 @@ func main() {
 	bc.Runtime.ConfigDir = fileDir
 	bc.Runtime.ConfigPath = filePath
 
-	// 命令行 -port 覆盖配置端口
-	if *portFlag > 0 {
+	// 命令行 -port 覆盖配置端口，零值表示让操作系统分配空闲端口。
+	if *portFlag >= 0 {
 		bc.Server.HTTP.Port = *portFlag
 	}
 

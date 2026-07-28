@@ -212,6 +212,7 @@
 				33CC10EA2044A3C60003C045 /* Frameworks */,
 				33CC10EB2044A3C60003C045 /* Resources */,
 				33CC110E2044A8840003C045 /* Bundle Framework */,
+				7D4B8A012E4F100000000001 /* Build Go Engine */,
 				3399D490228B24CF009A79C7 /* ShellScript */,
 			);
 			buildRules = (
@@ -301,6 +302,25 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		7D4B8A012E4F100000000001 /* Build Go Engine */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build Go Engine";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nVDUB_ROOT=\"$SRCROOT/../..\"\nVDUB_OUTPUT=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/vdub\"\nmkdir -p \"$(dirname \"$VDUB_OUTPUT\")\" \"$PROJECT_TEMP_DIR/vdub-go-cache\"\ncd \"$VDUB_ROOT\"\nenv GOCACHE=\"$PROJECT_TEMP_DIR/vdub-go-cache\" go build -mod=vendor -o \"$VDUB_OUTPUT\" .\nif [ -n \"$EXPANDED_CODE_SIGN_IDENTITY\" ]; then\n  codesign --force --sign \"$EXPANDED_CODE_SIGN_IDENTITY\" \"$VDUB_OUTPUT\"\nfi\n";
+		};
 		3399D490228B24CF009A79C7 /* ShellScript */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;

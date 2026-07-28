@@ -1,4 +1,4 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../../data/models/config.dart';
 import '../../../../data/models/task.dart';
@@ -12,8 +12,11 @@ class WorkflowStep {
   final String id;
   final String label;
   final String icon;
-  const WorkflowStep(
-      {required this.id, required this.label, required this.icon});
+  const WorkflowStep({
+    required this.id,
+    required this.label,
+    required this.icon,
+  });
 }
 
 /// 工作流模板定义
@@ -24,6 +27,7 @@ class WorkflowTemplate {
   final List<String> gradientColors;
   final List<WorkflowStep> steps;
   final int mode;
+  final TaskRecipe? recipe;
 
   const WorkflowTemplate({
     required this.id,
@@ -32,6 +36,7 @@ class WorkflowTemplate {
     required this.gradientColors,
     required this.steps,
     required this.mode,
+    this.recipe,
   });
 }
 
@@ -76,7 +81,7 @@ class DashboardState {
   final AppConfig? config;
   final List<Task> recentTasks;
   final bool loading;
-  final List<Map<String, dynamic>> customWorkflows;
+  final List<TaskRecipe> customWorkflows;
 
   const DashboardState({
     this.config,
@@ -89,7 +94,7 @@ class DashboardState {
     AppConfig? config,
     List<Task>? recentTasks,
     bool? loading,
-    List<Map<String, dynamic>>? customWorkflows,
+    List<TaskRecipe>? customWorkflows,
   }) {
     return DashboardState(
       config: config ?? this.config,
@@ -128,17 +133,26 @@ class DashboardNotifier extends Notifier<DashboardState> {
     } catch (_) {}
     try {
       final cw = await _storage.getList('custom_workflows');
-      state = state.copyWith(customWorkflows: cw);
+      state = state.copyWith(
+        customWorkflows: cw.map(TaskRecipe.fromJson).toList(),
+      );
     } catch (_) {}
     state = state.copyWith(loading: false);
   }
 
-  Future<void> saveCustomWorkflow(Map<String, dynamic> workflow) async {
-    final updated = [...state.customWorkflows, workflow];
-    await _storage.setList('custom_workflows', updated);
+  Future<void> saveCustomWorkflow(TaskRecipe workflow) async {
+    final updated = [
+      ...state.customWorkflows.where((item) => item.name != workflow.name),
+      workflow,
+    ];
+    await _storage.setList(
+      'custom_workflows',
+      updated.map((item) => item.toStorageJson()).toList(),
+    );
     state = state.copyWith(customWorkflows: updated);
   }
 }
 
-final dashboardProvider =
-    NotifierProvider<DashboardNotifier, DashboardState>(DashboardNotifier.new);
+final dashboardProvider = NotifierProvider<DashboardNotifier, DashboardState>(
+  DashboardNotifier.new,
+);

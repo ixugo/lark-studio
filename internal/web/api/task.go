@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/ixugo/goddd/pkg/orm"
 	"github.com/ixugo/goddd/pkg/reason"
 	"github.com/ixugo/goddd/pkg/web"
 	"github.com/ixugo/vdub/internal/conf"
@@ -17,36 +16,39 @@ import (
 	"gorm.io/gorm"
 )
 
-// TaskAPI 为 http 提供业务方法
+const (
+	maxLanguageCodeLength = 16
+	maxVoiceNameLength    = 128
+	maxRecipeNameLength   = 64
+)
+
+// TaskAPI 为 HTTP 层提供任务操作。
 type TaskAPI struct {
 	taskCore  task.Core
 	scheduler *pipeline.Scheduler
 	conf      *conf.Bootstrap
 }
 
+// NewTaskCore 创建任务领域并迁移任务、步骤和日志表。
 func NewTaskCore(db *gorm.DB) task.Core {
 	var store task.Storer
-	store = taskdb.NewDB(db).AutoMigrate(orm.GetEnabledAutoMigrate())
-	// 如果需要缓存，可以取消注释
-	// store = taskcache.NewCache(store,conc.NewTTLCache(time.Hour))
+	store = taskdb.NewDB(db).AutoMigrate(true)
 	return task.NewCore(store)
 }
 
+// NewTaskAPI 组装任务 API 的领域、调度器与配置依赖。
 func NewTaskAPI(core task.Core, sched *pipeline.Scheduler, bc *conf.Bootstrap) TaskAPI {
 	return TaskAPI{taskCore: core, scheduler: sched, conf: bc}
 }
 
-// NewTaskAPIFromDB 如果已经初始化，可以考虑 NewTaskAPI
-// func NewTaskAPIFromDB(db *gorm.DB) TaskAPI {
-// 	return NewTaskAPI(NewTaskCore(db))
-// }
-
+// RegisterTask 注册任务与步骤路由。
 func RegisterTask(g gin.IRouter, api TaskAPI, handler ...gin.HandlerFunc) {
 	{
 		group := g.Group("/tasks", handler...)
 		group.GET("", web.WrapH(api.listTasks))
 		group.POST("", web.WrapH(api.createTask))
 		group.POST("/batch", web.WrapH(api.batchCreateTasks))
+		group.GET("/:id/logs", web.WrapH(api.listTaskLogs))
 		group.GET("/:id", web.WrapH(api.getTask))
 		group.PUT("/:id", web.WrapH(api.updateTask))
 		group.DELETE("/:id", web.WrapH(api.deleteTask))
@@ -64,63 +66,188 @@ func RegisterTask(g gin.IRouter, api TaskAPI, handler ...gin.HandlerFunc) {
 	}
 }
 
-// >>> task >>>>>>>>>>>>>>>>>>>>
-
+// listTasks 返回按创建时间倒序排列的任务。
 func (a TaskAPI) listTasks(c *gin.Context, in *task.ListTaskInput) (any, error) {
 	items, total, err := a.taskCore.ListTasks(c.Request.Context(), in)
 	return gin.H{"items": items, "total": total}, err
 }
 
+// getTask 返回指定任务。
 func (a TaskAPI) getTask(c *gin.Context, in *task.GetTaskInput) (*task.Task, error) {
 	return a.taskCore.GetTask(c.Request.Context(), in.ID)
 }
 
+// listTaskLogs 返回指定任务最近 1000 行日志，顺序从旧到新。
+func (a TaskAPI) listTaskLogs(c *gin.Context, in *task.GetTaskInput) (any, error) {
+	if _, err := a.taskCore.GetTask(c.Request.Context(), in.ID); err != nil {
+		return nil, err
+	}
+	items, err := a.taskCore.ListRecentTaskLogs(c.Request.Context(), in.ID)
+	return gin.H{"items": items}, err
+}
+
+// updateTask 更新指定任务。
 func (a TaskAPI) updateTask(c *gin.Context, in *task.UpdateTaskInput) (*task.Task, error) {
 	return a.taskCore.UpdateTask(c.Request.Context(), in, in.ID)
 }
 
+// createTask 校验输入文件并提交单个流水线任务。
 func (a TaskAPI) createTask(c *gin.Context, in *task.CreateTaskInput) (*task.Task, error) {
+	if err := a.prepareTaskInput(in); err != nil {
+		return nil, err
+	}
+	t, err := a.taskCore.CreateTask(c.Request.Context(), in)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := a.taskCore.AppendTaskLog(
+		c.Request.Context(), t.ID, "info", "",
+		"任务创建，模式："+taskModeTitle(t.Mode),
+	); err != nil {
+		return nil, err
+	}
+	if err := a.scheduler.Submit(taskPipelineJob(t)); err != nil {
+		return nil, reason.ErrServer.Withf("提交流水线失败: %s", err)
+	}
+	return t, nil
+}
+
+// prepareTaskInput 校验输入并补齐不会随全局配置变化的任务参数。
+func (a TaskAPI) prepareTaskInput(in *task.CreateTaskInput) error {
 	if _, err := os.Stat(in.InputPath); err != nil {
-		return nil, reason.ErrBadRequest.SetMsg("视频文件不存在")
+		return reason.ErrBadRequest.SetMsg("视频文件不存在")
 	}
 	if in.Mode < pipeline.ModeSubtitle || in.Mode > pipeline.ModeDub {
-		return nil, reason.ErrBadRequest.SetMsg("无效的处理模式")
+		return reason.ErrBadRequest.SetMsg("无效的处理模式")
 	}
-
 	if in.OutputDir == "" {
 		baseName := strings.TrimSuffix(filepath.Base(in.InputPath), filepath.Ext(in.InputPath))
 		in.OutputDir = filepath.Join(filepath.Dir(in.InputPath), baseName+"_vdub")
 	}
 	if err := os.MkdirAll(in.OutputDir, 0o755); err != nil {
-		return nil, reason.ErrServer.Withf("创建输出目录失败: %s", err)
+		return reason.ErrServer.Withf("创建输出目录失败: %s", err)
 	}
 	if in.TargetLang == "" {
 		in.TargetLang = a.conf.Pipeline.DefaultTargetLang
+		if in.TargetLang == "" {
+			in.TargetLang = "zh-CN"
+		}
 	}
-
-	t, err := a.taskCore.CreateTask(c.Request.Context(), in)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := a.scheduler.Submit(pipeline.Job{
-		TaskID:     t.ID,
-		InputPath:  t.InputPath,
-		OutputDir:  t.OutputDir,
-		Mode:       t.Mode,
-		TargetLang: t.TargetLang,
-	}); err != nil {
-		return nil, reason.ErrServer.Withf("提交流水线失败: %s", err)
-	}
-
-	return t, nil
+	a.applyTaskDefaults(in)
+	return validateTaskParameters(in)
 }
 
+// applyTaskDefaults 把创建时的全局配置展开为任务快照。
+func (a TaskAPI) applyTaskDefaults(in *task.CreateTaskInput) {
+	if in.SourceLang == "" {
+		in.SourceLang = "auto"
+	}
+	if in.Translator == "" {
+		in.Translator = a.conf.LLM.Provider
+		if in.Translator == "" {
+			in.Translator = "bing"
+		}
+	}
+	if in.OutputContent == "" {
+		in.OutputContent = "bilingual"
+		if in.Mode == pipeline.ModeSubtitle {
+			in.OutputContent = "source"
+		}
+	}
+	if in.TTSEngine == "" {
+		in.TTSEngine = a.conf.TTS.Type
+		if in.TTSEngine == "" {
+			in.TTSEngine = "edge"
+		}
+	}
+	if in.TTSVoice == "" {
+		in.TTSVoice = a.conf.TTS.Voice
+	}
+	if in.SpeechRate == 0 {
+		in.SpeechRate = 1
+	}
+	if in.SubtitleOutput == "" {
+		in.SubtitleOutput = a.conf.Pipeline.SubtitleOutput
+		if in.SubtitleOutput == "" {
+			in.SubtitleOutput = "burn"
+		}
+	}
+}
+
+// validateTaskParameters 拒绝未知枚举与过长字符串，避免无效配方进入队列。
+func validateTaskParameters(in *task.CreateTaskInput) error {
+	if len(in.SourceLang) > maxLanguageCodeLength || len(in.TargetLang) > maxLanguageCodeLength {
+		return reason.ErrBadRequest.SetMsg("语言代码过长")
+	}
+	if len(in.TTSVoice) > maxVoiceNameLength || len(in.RecipeName) > maxRecipeNameLength {
+		return reason.ErrBadRequest.SetMsg("配方参数过长")
+	}
+	if !oneOf(in.Translator, "bing", "deeplx", "openai") {
+		return reason.ErrBadRequest.SetMsg("无效的翻译引擎")
+	}
+	if !oneOf(in.OutputContent, "source", "translated", "bilingual") {
+		return reason.ErrBadRequest.SetMsg("无效的输出内容")
+	}
+	if !oneOf(in.TTSEngine, "edge", "openai") {
+		return reason.ErrBadRequest.SetMsg("无效的配音引擎")
+	}
+	if !oneOf(in.SubtitleOutput, "burn", "file", "none") {
+		return reason.ErrBadRequest.SetMsg("无效的字幕方式")
+	}
+	if in.SpeechRate < 0.5 || in.SpeechRate > 2 {
+		return reason.ErrBadRequest.SetMsg("语速须在 0.5 到 2.0 之间")
+	}
+	return nil
+}
+
+// oneOf 判断配置枚举是否属于允许集合。
+func oneOf(value string, allowed ...string) bool {
+	for _, item := range allowed {
+		if value == item {
+			return true
+		}
+	}
+	return false
+}
+
+// taskModeTitle 返回 API 创建日志所需的中文模式名。
+func taskModeTitle(mode int) string {
+	switch mode {
+	case pipeline.ModeSubtitle:
+		return "原文字幕"
+	case pipeline.ModeTranslate:
+		return "双语字幕"
+	case pipeline.ModeDub:
+		return "配音成片"
+	default:
+		return "视频处理"
+	}
+}
+
+// taskPipelineJob 将任务模型转换为调度器输入。
+func taskPipelineJob(item *task.Task) pipeline.Job {
+	return pipeline.Job{
+		TaskID:         item.ID,
+		InputPath:      item.InputPath,
+		OutputDir:      item.OutputDir,
+		Mode:           item.Mode,
+		SourceLang:     item.SourceLang,
+		TargetLang:     item.TargetLang,
+		Translator:     item.Translator,
+		OutputContent:  item.OutputContent,
+		TTSEngine:      item.TTSEngine,
+		TTSVoice:       item.TTSVoice,
+		SpeechRate:     item.SpeechRate,
+		SubtitleOutput: item.SubtitleOutput,
+	}
+}
+
+// deleteTask 删除指定任务。
 func (a TaskAPI) deleteTask(c *gin.Context, in *task.DeleteTaskInput) (*task.Task, error) {
 	return a.taskCore.DeleteTask(c.Request.Context(), in.ID)
 }
 
-// pauseTask 暂停正在运行的任务
+// pauseTask 暂停正在运行的任务。
 func (a TaskAPI) pauseTask(_ *gin.Context, in *task.GetTaskInput) (any, error) {
 	if !a.scheduler.Pause(in.ID) {
 		return nil, reason.ErrBadRequest.SetMsg("任务未在运行中")
@@ -128,7 +255,7 @@ func (a TaskAPI) pauseTask(_ *gin.Context, in *task.GetTaskInput) (any, error) {
 	return gin.H{"ok": true}, nil
 }
 
-// resumeTask 恢复已暂停或已失败的任务，从上次中断步骤继续
+// resumeTask 从中断步骤恢复已暂停或失败的任务。
 func (a TaskAPI) resumeTask(c *gin.Context, in *task.GetTaskInput) (*task.Task, error) {
 	t, err := a.taskCore.GetTask(c.Request.Context(), in.ID)
 	if err != nil {
@@ -148,87 +275,109 @@ func (a TaskAPI) resumeTask(c *gin.Context, in *task.GetTaskInput) (*task.Task, 
 	}); err != nil {
 		return nil, err
 	}
-
-	if err := a.scheduler.Submit(pipeline.Job{
-		TaskID:     t.ID,
-		InputPath:  t.InputPath,
-		OutputDir:  t.OutputDir,
-		Mode:       t.Mode,
-		TargetLang: t.TargetLang,
-		ResumeFrom: resumeFrom,
-	}); err != nil {
+	job := taskPipelineJob(t)
+	job.ResumeFrom = resumeFrom
+	if err := a.scheduler.Submit(job); err != nil {
 		return nil, reason.ErrServer.Withf("提交流水线失败: %s", err)
 	}
-
 	return a.taskCore.GetTask(c.Request.Context(), t.ID)
 }
 
+// batchCreateInput 描述批量任务的共享参数。
 type batchCreateInput struct {
-	Videos     []string `json:"videos" binding:"required,min=1"`
-	Mode       int      `json:"mode" binding:"required,min=1,max=3"`
-	TargetLang string   `json:"target_lang"`
+	Videos         []string `json:"videos" binding:"required,min=1"`
+	Mode           int      `json:"mode" binding:"required,min=1,max=3"`
+	TargetLang     string   `json:"target_lang"`
+	SourceLang     string   `json:"source_lang"`
+	Translator     string   `json:"translator"`
+	OutputContent  string   `json:"output_content"`
+	TTSEngine      string   `json:"tts_engine"`
+	TTSVoice       string   `json:"tts_voice"`
+	SpeechRate     float64  `json:"speech_rate"`
+	SubtitleOutput string   `json:"subtitle_output"`
+	RecipeName     string   `json:"recipe_name"`
 }
 
-// batchCreateTasks 接收视频路径数组，为每个视频创建独立任务
+// batchCreateTasks 为每个有效视频创建独立任务。
 func (a TaskAPI) batchCreateTasks(c *gin.Context, in *batchCreateInput) (any, error) {
 	if in.TargetLang == "" {
 		in.TargetLang = a.conf.Pipeline.DefaultTargetLang
 	}
 
-	var tasks []*task.Task
+	tasks := make([]*task.Task, 0, len(in.Videos))
 	for _, inputPath := range in.Videos {
 		if _, err := os.Stat(inputPath); err != nil {
 			continue
 		}
-
 		baseName := strings.TrimSuffix(filepath.Base(inputPath), filepath.Ext(inputPath))
 		outputDir := filepath.Join(filepath.Dir(inputPath), baseName+"_vdub")
 		if err := os.MkdirAll(outputDir, 0o755); err != nil {
 			continue
 		}
-
-		t, err := a.taskCore.CreateTask(c.Request.Context(), &task.CreateTaskInput{
-			InputPath:  inputPath,
-			OutputDir:  outputDir,
-			Mode:       in.Mode,
-			TargetLang: in.TargetLang,
-		})
-		if err != nil {
-			continue
+		t, err := a.createBatchTask(c, inputPath, outputDir, in)
+		if err == nil {
+			tasks = append(tasks, t)
 		}
-
-		_ = a.scheduler.Submit(pipeline.Job{
-			TaskID:     t.ID,
-			InputPath:  t.InputPath,
-			OutputDir:  t.OutputDir,
-			Mode:       t.Mode,
-			TargetLang: t.TargetLang,
-		})
-		tasks = append(tasks, t)
 	}
-
 	return gin.H{"items": tasks, "total": len(tasks)}, nil
 }
 
-// >>> step >>>>>>>>>>>>>>>>>>>>
+// createBatchTask 创建并提交一个批量任务，避免主循环嵌套过深。
+func (a TaskAPI) createBatchTask(
+	c *gin.Context,
+	inputPath string,
+	outputDir string,
+	in *batchCreateInput,
+) (*task.Task, error) {
+	taskInput := &task.CreateTaskInput{
+		InputPath:      inputPath,
+		OutputDir:      outputDir,
+		Mode:           in.Mode,
+		TargetLang:     in.TargetLang,
+		SourceLang:     in.SourceLang,
+		Translator:     in.Translator,
+		OutputContent:  in.OutputContent,
+		TTSEngine:      in.TTSEngine,
+		TTSVoice:       in.TTSVoice,
+		SpeechRate:     in.SpeechRate,
+		SubtitleOutput: in.SubtitleOutput,
+		RecipeName:     in.RecipeName,
+	}
+	if err := a.prepareTaskInput(taskInput); err != nil {
+		return nil, err
+	}
+	t, err := a.taskCore.CreateTask(c.Request.Context(), taskInput)
+	if err != nil {
+		return nil, err
+	}
+	if err := a.scheduler.Submit(taskPipelineJob(t)); err != nil {
+		return nil, err
+	}
+	return t, nil
+}
 
+// listSteps 返回步骤列表。
 func (a TaskAPI) listSteps(c *gin.Context, in *task.ListStepInput) (any, error) {
 	items, total, err := a.taskCore.ListSteps(c.Request.Context(), in)
 	return gin.H{"items": items, "total": total}, err
 }
 
+// getStep 返回指定步骤。
 func (a TaskAPI) getStep(c *gin.Context, in *task.GetStepInput) (*task.Step, error) {
 	return a.taskCore.GetStep(c.Request.Context(), in.ID)
 }
 
+// updateStep 更新指定步骤。
 func (a TaskAPI) updateStep(c *gin.Context, in *task.UpdateStepInput) (*task.Step, error) {
 	return a.taskCore.UpdateStep(c.Request.Context(), in, in.ID)
 }
 
+// createStep 创建步骤记录。
 func (a TaskAPI) createStep(c *gin.Context, in *task.CreateStepInput) (*task.Step, error) {
 	return a.taskCore.CreateStep(c.Request.Context(), in)
 }
 
+// deleteStep 删除指定步骤。
 func (a TaskAPI) deleteStep(c *gin.Context, in *task.DeleteStepInput) (*task.Step, error) {
 	return a.taskCore.DeleteStep(c.Request.Context(), in.ID)
 }

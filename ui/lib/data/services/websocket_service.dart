@@ -15,7 +15,7 @@ class WebSocketService extends ChangeNotifier {
   final _eventController = StreamController<WsEvent>.broadcast();
 
   // ignore: prefer_initializing_formals
-  WebSocketService({String wsUrl = 'ws://localhost:9523/ws'}) : _wsUrl = wsUrl;
+  WebSocketService({String wsUrl = 'ws://127.0.0.1:9523/ws'}) : _wsUrl = wsUrl;
 
   bool get connected => _connected;
   Stream<WsEvent> get events => _eventController.stream;

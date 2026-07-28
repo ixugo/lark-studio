@@ -11,24 +11,45 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
 // Client OpenAI 兼容 API 客户端
 type Client struct {
-	baseURL string
-	apiKey  string
-	model   string
-	client  *http.Client
+	baseURL   string
+	apiKey    string
+	model     string
+	provider  string
+	deepLXURL string
+	client    *http.Client
+	token     string
+	tokenAt   time.Time
+	tokenMu   sync.Mutex
+	bingAuth  string
+	bingAPI   string
+}
+
+// NewRoutingClient 创建支持必应、DeepLX 与 OpenAI 的翻译客户端。
+func NewRoutingClient(baseURL, apiKey, model, provider, deepLXURL string) *Client {
+	client := NewClient(baseURL, apiKey, model)
+	if strings.TrimSpace(provider) == "" {
+		provider = "bing"
+	}
+	client.provider = provider
+	client.deepLXURL = strings.TrimRight(deepLXURL, "/")
+	return client
 }
 
 // NewClient 创建 LLM 客户端
 func NewClient(baseURL, apiKey, model string) *Client {
 	return &Client{
-		baseURL: strings.TrimRight(baseURL, "/"),
-		apiKey:  apiKey,
-		model:   model,
-		client:  &http.Client{Timeout: 120 * time.Second},
+		baseURL:  strings.TrimRight(baseURL, "/"),
+		apiKey:   apiKey,
+		model:    model,
+		client:   &http.Client{Timeout: 120 * time.Second},
+		bingAuth: bingAuthURL,
+		bingAPI:  bingTranslateURL,
 	}
 }
 
@@ -146,6 +167,27 @@ const (
 // systemPrompt 为空时使用内置默认提示词
 // contextBefore/contextAfter 作为上下文帮助 LLM 理解语境，不计入翻译输出
 func (c *Client) Translate(ctx context.Context, sentences []string, targetLang, systemPrompt string, contextBefore, contextAfter []string) ([]string, error) {
+	return c.TranslateWithProvider(
+		ctx, sentences, targetLang, systemPrompt, contextBefore, contextAfter, c.provider,
+	)
+}
+
+// TranslateWithProvider 使用任务快照指定的翻译引擎。
+func (c *Client) TranslateWithProvider(
+	ctx context.Context,
+	sentences []string,
+	targetLang string,
+	systemPrompt string,
+	contextBefore []string,
+	contextAfter []string,
+	provider string,
+) ([]string, error) {
+	switch strings.ToLower(provider) {
+	case "bing":
+		return c.translateBing(ctx, sentences, targetLang)
+	case "deeplx":
+		return c.translateDeepLX(ctx, sentences, targetLang)
+	}
 	numbered := make([]string, len(sentences))
 	for i, s := range sentences {
 		numbered[i] = fmt.Sprintf("%d. %s", i+1, s)
@@ -216,14 +258,19 @@ Rules:
 			"expected", expected, "got", len(translated), "attempt", attempt+1)
 	}
 
-	// 重试耗尽仍数量不符，做防御性对齐
-	for len(lastTranslated) < expected {
-		lastTranslated = append(lastTranslated, sentences[len(lastTranslated)])
+	return requireTranslationCount(lastTranslated, expected)
+}
+
+// requireTranslationCount 拒绝缺行译文，避免用原文补位后送入配音。
+func requireTranslationCount(translated []string, expected int) ([]string, error) {
+	if len(translated) != expected {
+		return nil, fmt.Errorf(
+			"翻译数量不符: 期望 %d 行，实际 %d 行",
+			expected,
+			len(translated),
+		)
 	}
-	if len(lastTranslated) > expected {
-		lastTranslated = lastTranslated[:expected]
-	}
-	return lastTranslated, nil
+	return translated, nil
 }
 
 // parseNumberedLines 解析 LLM 返回的编号行

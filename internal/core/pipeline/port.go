@@ -8,7 +8,14 @@ type WhisperRunner interface {
 	// audioPath: 输入音频路径
 	// outputSRT: 输出 SRT 文件路径
 	// lang: 源语言（如 "en", "auto"）
-	Transcribe(ctx context.Context, audioPath, outputSRT, lang string) error
+	Transcribe(
+		ctx context.Context,
+		audioPath string,
+		outputSRT string,
+		lang string,
+		onProgress func(int),
+		onLog func(string),
+	) error
 }
 
 // LLMClient 大模型翻译/分句接口
@@ -26,6 +33,19 @@ type LLMClient interface {
 	Translate(ctx context.Context, sentences []string, targetLang, systemPrompt string, contextBefore, contextAfter []string) ([]string, error)
 }
 
+// RoutedLLMClient 允许任务选择创建时已固定的翻译引擎。
+type RoutedLLMClient interface {
+	TranslateWithProvider(
+		ctx context.Context,
+		sentences []string,
+		targetLang string,
+		systemPrompt string,
+		contextBefore []string,
+		contextAfter []string,
+		provider string,
+	) ([]string, error)
+}
+
 // TTSClient 文本转语音接口
 type TTSClient interface {
 	// Synthesize 合成单句语音
@@ -33,6 +53,18 @@ type TTSClient interface {
 	// outputPath: 输出音频文件路径
 	// voice: 语音名称/ID
 	Synthesize(ctx context.Context, text, outputPath, voice string) error
+}
+
+// RoutedTTSClient 允许任务选择创建时已固定的配音引擎、音色和语速。
+type RoutedTTSClient interface {
+	SynthesizeWithOptions(
+		ctx context.Context,
+		text string,
+		outputPath string,
+		engine string,
+		voice string,
+		speed float64,
+	) error
 }
 
 // LipSyncClient 对口型/唇形同步接口

@@ -5,25 +5,28 @@ import '../services/api_client.dart';
 class TaskRepository {
   final ApiClient _api;
 
-  TaskRepository({required ApiClient api}) : _api = api;
+  TaskRepository({required this._api});
 
   Future<List<Task>> listTasks({int page = 1, int size = 50}) =>
       _api.listTasks(page: page, size: size);
 
   Future<Task> getTask(String id) => _api.getTask(id);
 
+  /// getTaskLogs 返回按时间正序排列的任务日志。
+  Future<List<TaskLog>> getTaskLogs(String id) => _api.getTaskLogs(id);
+
+  /// listTaskSteps 返回当前任务的步骤状态。
+  Future<List<TaskStep>> listTaskSteps(String id) => _api.listTaskSteps(id);
+
   Future<Task> createTask({
     required String inputPath,
-    required int mode,
+    required TaskRecipe recipe,
     String outputDir = '',
-    String targetLang = '',
-  }) =>
-      _api.createTask(
-        inputPath: inputPath,
-        mode: mode,
-        outputDir: outputDir,
-        targetLang: targetLang,
-      );
+  }) => _api.createTask(
+    inputPath: inputPath,
+    recipe: recipe,
+    outputDir: outputDir,
+  );
 
   Future<void> deleteTask(String id) => _api.deleteTask(id);
 
@@ -33,8 +36,6 @@ class TaskRepository {
 
   Future<List<Task>> batchCreateTasks({
     required List<String> videos,
-    required int mode,
-    String targetLang = '',
-  }) =>
-      _api.batchCreateTasks(videos: videos, mode: mode, targetLang: targetLang);
+    required TaskRecipe recipe,
+  }) => _api.batchCreateTasks(videos: videos, recipe: recipe);
 }

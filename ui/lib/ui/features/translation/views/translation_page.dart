@@ -82,14 +82,12 @@ class _ServiceList extends HookWidget {
           width: 260,
           decoration: BoxDecoration(
             color: c.barBg.withValues(alpha: 0.9),
-            border: Border(
-                right: BorderSide(color: c.borderLight, width: 0.5)),
+            border: Border(right: BorderSide(color: c.borderLight, width: 0.5)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildHeader(c),
-              _buildSearch(c),
               _buildFilter(c),
               Expanded(
                 child: ListView(
@@ -98,27 +96,33 @@ class _ServiceList extends HookWidget {
                     _buildOverviewItem(c),
                     if (custom.isNotEmpty) ...[
                       _sectionTitle('自定义服务商', c),
-                      ...custom.map((s) => _ServiceItem(
-                            service: s,
-                            selected: s.id == selectedId,
-                            onTap: () => onSelect(s.id),
-                          )),
+                      ...custom.map(
+                        (s) => _ServiceItem(
+                          service: s,
+                          selected: s.id == selectedId,
+                          onTap: () => onSelect(s.id),
+                        ),
+                      ),
                     ],
                     if (free.isNotEmpty) ...[
                       _sectionTitle('免费起步', c),
-                      ...free.map((s) => _ServiceItem(
-                            service: s,
-                            selected: s.id == selectedId,
-                            onTap: () => onSelect(s.id),
-                          )),
+                      ...free.map(
+                        (s) => _ServiceItem(
+                          service: s,
+                          selected: s.id == selectedId,
+                          onTap: () => onSelect(s.id),
+                        ),
+                      ),
                     ],
                     if (ai.isNotEmpty) ...[
                       _sectionTitle('AI 翻译', c),
-                      ...ai.map((s) => _ServiceItem(
-                            service: s,
-                            selected: s.id == selectedId,
-                            onTap: () => onSelect(s.id),
-                          )),
+                      ...ai.map(
+                        (s) => _ServiceItem(
+                          service: s,
+                          selected: s.id == selectedId,
+                          onTap: () => onSelect(s.id),
+                        ),
+                      ),
                     ],
                   ],
                 ),
@@ -135,34 +139,17 @@ class _ServiceList extends HookWidget {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       child: Row(
         children: [
-          Text('翻译服务',
-              style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: c.textPrimary)),
+          Text(
+            '翻译服务',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: c.textPrimary,
+            ),
+          ),
           const Spacer(),
           Icon(CupertinoIcons.plus, size: 16, color: c.textTertiary),
         ],
-      ),
-    );
-  }
-
-  Widget _buildSearch(AppColors c) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-      child: MacosTextField(
-        placeholder: '搜索服务商',
-        placeholderStyle: TextStyle(fontSize: 12, color: c.textPlaceholder),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: c.inputBg,
-          borderRadius: const BorderRadius.all(Radius.circular(8)),
-        ),
-        style: TextStyle(fontSize: 12, color: c.textPrimary),
-        prefix: Padding(
-          padding: const EdgeInsets.only(left: 8),
-          child: Icon(CupertinoIcons.search, size: 14, color: c.textPlaceholder),
-        ),
       ),
     );
   }
@@ -172,8 +159,7 @@ class _ServiceList extends HookWidget {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       child: Row(
         children: [
-          Text('仅显示已配置',
-              style: TextStyle(fontSize: 11, color: c.textTertiary)),
+          Text('仅显示已配置', style: TextStyle(fontSize: 11, color: c.textTertiary)),
           const Spacer(),
           GestureDetector(
             onTap: onToggleFilter,
@@ -181,9 +167,7 @@ class _ServiceList extends HookWidget {
               width: 34,
               height: 18,
               decoration: BoxDecoration(
-                color: showConfiguredOnly
-                    ? AppColors.blue
-                    : c.borderSubtle,
+                color: showConfiguredOnly ? AppColors.blue : c.borderSubtle,
                 borderRadius: BorderRadius.circular(9),
               ),
               child: AnimatedAlign(
@@ -223,14 +207,18 @@ class _ServiceList extends HookWidget {
         ),
         child: Row(
           children: [
-            Icon(CupertinoIcons.squares_below_rectangle,
-                size: 16, color: c.textTertiary),
+            Icon(
+              CupertinoIcons.squares_below_rectangle,
+              size: 16,
+              color: c.textTertiary,
+            ),
             const SizedBox(width: 10),
-            Text('总览',
-                style: TextStyle(fontSize: 13, color: c.textPrimary)),
+            Text('总览', style: TextStyle(fontSize: 13, color: c.textPrimary)),
             const SizedBox(width: 6),
-            Text('配置状态与起步建议',
-                style: TextStyle(fontSize: 10, color: c.textTertiary)),
+            Text(
+              '配置状态与起步建议',
+              style: TextStyle(fontSize: 10, color: c.textTertiary),
+            ),
           ],
         ),
       ),
@@ -242,14 +230,16 @@ class _ServiceList extends HookWidget {
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
       child: Row(
         children: [
-          Text(title,
-              style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: c.textTertiary)),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: c.textTertiary,
+            ),
+          ),
           const Spacer(),
-          Icon(CupertinoIcons.chevron_down,
-              size: 10, color: c.textTertiary),
+          Icon(CupertinoIcons.chevron_down, size: 10, color: c.textTertiary),
         ],
       ),
     );
@@ -260,8 +250,11 @@ class _ServiceItem extends HookWidget {
   final TranslationService service;
   final bool selected;
   final VoidCallback onTap;
-  const _ServiceItem(
-      {required this.service, required this.selected, required this.onTap});
+  const _ServiceItem({
+    required this.service,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -281,8 +274,8 @@ class _ServiceItem extends HookWidget {
             color: selected
                 ? AppColors.blue.withValues(alpha: 0.15)
                 : hovering.value
-                    ? c.cardBgHover
-                    : const Color(0x00000000),
+                ? c.cardBgHover
+                : const Color(0x00000000),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
@@ -290,27 +283,33 @@ class _ServiceItem extends HookWidget {
               Icon(service.icon, size: 16, color: service.color),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(service.name,
-                    style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                        color: selected
-                            ? AppColors.blue
-                            : c.textPrimary)),
+                child: Text(
+                  service.name,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                    color: selected ? AppColors.blue : c.textPrimary,
+                  ),
+                ),
               ),
               if (service.configured)
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.green.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: const Text('已配置',
-                      style: TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.green)),
+                  child: const Text(
+                    '已配置',
+                    style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.green,
+                    ),
+                  ),
                 ),
               const SizedBox(width: 6),
               Container(
@@ -318,9 +317,7 @@ class _ServiceItem extends HookWidget {
                 height: 7,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: service.configured
-                      ? AppColors.green
-                      : c.borderSubtle,
+                  color: service.configured ? AppColors.green : c.borderSubtle,
                 ),
               ),
             ],
@@ -344,25 +341,30 @@ class _OverviewPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('翻译服务 — 总览',
-              style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: c.textPrimary)),
+          Text(
+            '翻译服务 — 总览',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: c.textPrimary,
+            ),
+          ),
           const SizedBox(height: 8),
-          Text('配置状态与起步建议',
-              style: TextStyle(fontSize: 13, color: c.textSecondary)),
+          Text(
+            '默认使用必应，也可连接 DeepLX 或 OpenAI 兼容服务',
+            style: TextStyle(fontSize: 13, color: c.textSecondary),
+          ),
           const SizedBox(height: 24),
           _InfoCard(
             icon: CupertinoIcons.lightbulb,
             title: '快速起步',
-            content: '选择左侧任一翻译服务并配置 API Key 即可使用。\n推荐 OpenAI 兼容服务作为 AI 翻译主力。',
+            content: '必应无需配置即可使用；选择服务并保存后，后续任务会使用该翻译引擎。',
           ),
           const SizedBox(height: 12),
           _InfoCard(
             icon: CupertinoIcons.shield,
             title: '免费方案',
-            content: '必应翻译、DeepLX 均为免费服务，\n适合轻量级使用或作为备用方案。',
+            content: '必应是默认翻译服务；DeepLX 需要填写自行部署的接口地址。',
           ),
         ],
       ),
@@ -374,8 +376,11 @@ class _InfoCard extends StatelessWidget {
   final IconData icon;
   final String title;
   final String content;
-  const _InfoCard(
-      {required this.icon, required this.title, required this.content});
+  const _InfoCard({
+    required this.icon,
+    required this.title,
+    required this.content,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -396,17 +401,23 @@ class _InfoCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
-                    style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: c.textPrimary)),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: c.textPrimary,
+                  ),
+                ),
                 const SizedBox(height: 4),
-                Text(content,
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: c.textSecondary,
-                        height: 1.5)),
+                Text(
+                  content,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: c.textSecondary,
+                    height: 1.5,
+                  ),
+                ),
               ],
             ),
           ),
@@ -431,6 +442,8 @@ class _ServiceConfig extends HookConsumerWidget {
     final testing = useState(false);
     final testResult = useState<String?>(null);
     final c = AppColors.of(context);
+    final requiresEndpoint = service.id == 'deeplx';
+    final requiresOpenAIConfig = service.id != 'bing' && service.id != 'deeplx';
 
     return ListView(
       padding: const EdgeInsets.all(32),
@@ -439,14 +452,16 @@ class _ServiceConfig extends HookConsumerWidget {
           children: [
             Icon(service.icon, size: 24, color: service.color),
             const SizedBox(width: 12),
-            Text(service.name,
-                style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: c.textPrimary)),
+            Text(
+              service.name,
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: c.textPrimary,
+              ),
+            ),
             const SizedBox(width: 8),
-            Icon(CupertinoIcons.pencil,
-                size: 14, color: c.textTertiary),
+            Icon(CupertinoIcons.pencil, size: 14, color: c.textTertiary),
             const Spacer(),
             PushButton(
               controlSize: ControlSize.small,
@@ -467,14 +482,20 @@ class _ServiceConfig extends HookConsumerWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(CupertinoIcons.play_fill,
-                      size: 12, color: Color(0xFFFFFFFF)),
+                  const Icon(
+                    CupertinoIcons.play_fill,
+                    size: 12,
+                    color: Color(0xFFFFFFFF),
+                  ),
                   const SizedBox(width: 5),
-                  Text(testing.value ? '测试中...' : '测试翻译',
-                      style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFFFFFFFF))),
+                  Text(
+                    testing.value ? '测试中...' : '测试翻译',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFFFFFFFF),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -482,12 +503,15 @@ class _ServiceConfig extends HookConsumerWidget {
         ),
         if (testResult.value != null) ...[
           const SizedBox(height: 8),
-          Text(testResult.value!,
-              style: TextStyle(
-                  fontSize: 12,
-                  color: testResult.value!.startsWith('测试成功')
-                      ? AppColors.green
-                      : AppColors.red)),
+          Text(
+            testResult.value!,
+            style: TextStyle(
+              fontSize: 12,
+              color: testResult.value!.startsWith('测试成功')
+                  ? AppColors.green
+                  : AppColors.red,
+            ),
+          ),
         ],
         const SizedBox(height: 28),
         if (service.description.isNotEmpty) ...[
@@ -496,22 +520,33 @@ class _ServiceConfig extends HookConsumerWidget {
             decoration: BoxDecoration(
               color: AppColors.blue.withValues(alpha: 0.06),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                  color: AppColors.blue.withValues(alpha: 0.15)),
+              border: Border.all(color: AppColors.blue.withValues(alpha: 0.15)),
             ),
-            child: Text(service.description,
-                style: TextStyle(
-                    fontSize: 12,
-                    color: c.textSecondary,
-                    height: 1.5)),
+            child: Text(
+              service.description,
+              style: TextStyle(
+                fontSize: 12,
+                color: c.textSecondary,
+                height: 1.5,
+              ),
+            ),
           ),
           const SizedBox(height: 24),
         ],
-        _buildField('Base URL', baseUrlCtrl, 'https://api.openai.com/v1', c),
-        const SizedBox(height: 16),
-        _buildField('API Key', apiKeyCtrl, 'sk-...', c, obscure: true),
-        const SizedBox(height: 16),
-        _buildField('模型名称', modelCtrl, '如 gpt-4o-mini', c),
+        if (requiresEndpoint)
+          _buildField(
+            'DeepLX 接口地址',
+            baseUrlCtrl,
+            'http://127.0.0.1:1188/translate',
+            c,
+          ),
+        if (requiresOpenAIConfig) ...[
+          _buildField('Base URL', baseUrlCtrl, 'https://api.openai.com/v1', c),
+          const SizedBox(height: 16),
+          _buildField('API Key', apiKeyCtrl, 'sk-...', c, obscure: true),
+          const SizedBox(height: 16),
+          _buildField('模型名称', modelCtrl, '如 gpt-4o-mini', c),
+        ],
         const SizedBox(height: 24),
         Row(
           children: [
@@ -522,16 +557,19 @@ class _ServiceConfig extends HookConsumerWidget {
               onPressed: () {
                 notifier.saveServiceConfig(
                   service.id,
-                  baseUrl: baseUrlCtrl.text,
-                  apiKey: apiKeyCtrl.text,
-                  model: modelCtrl.text,
+                  baseUrl: service.id == 'bing' ? null : baseUrlCtrl.text,
+                  apiKey: requiresOpenAIConfig ? apiKeyCtrl.text : null,
+                  model: requiresOpenAIConfig ? modelCtrl.text : null,
                 );
               },
-              child: const Text('保存配置',
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFFFFFFFF))),
+              child: Text(
+                service.id == 'bing' ? '设为默认' : '保存并启用',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFFFFFFFF),
+                ),
+              ),
             ),
           ],
         ),
@@ -540,20 +578,29 @@ class _ServiceConfig extends HookConsumerWidget {
   }
 
   Widget _buildField(
-      String label, TextEditingController ctrl, String placeholder, AppColors c,
-      {bool obscure = false}) {
+    String label,
+    TextEditingController ctrl,
+    String placeholder,
+    AppColors c, {
+    bool obscure = false,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Text(label,
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: c.textPrimary)),
-            const Text(' *',
-                style: TextStyle(fontSize: 13, color: AppColors.red)),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: c.textPrimary,
+              ),
+            ),
+            const Text(
+              ' *',
+              style: TextStyle(fontSize: 13, color: AppColors.red),
+            ),
           ],
         ),
         const SizedBox(height: 8),
@@ -568,8 +615,7 @@ class _ServiceConfig extends HookConsumerWidget {
             border: Border.all(color: c.borderLight, width: 0.5),
           ),
           style: TextStyle(fontSize: 13, color: c.textPrimary),
-          placeholderStyle:
-              TextStyle(fontSize: 13, color: c.textPlaceholder),
+          placeholderStyle: TextStyle(fontSize: 13, color: c.textPlaceholder),
         ),
       ],
     );

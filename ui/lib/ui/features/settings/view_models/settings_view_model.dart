@@ -1,7 +1,10 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:async';
+
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../../data/models/config.dart';
 import '../../../../data/repositories/config_repository.dart';
+import '../../../../data/services/websocket_service.dart';
 import '../../../../providers.dart';
 
 /// 设置页状态
@@ -45,7 +48,40 @@ class SettingsNotifier extends Notifier<SettingsState> {
   @override
   SettingsState build() {
     _configRepo = ref.watch(configRepoProvider);
+    final subscription = ref
+        .watch(wsServiceProvider)
+        .events
+        .listen(_handleModelEvent);
+    ref.onDispose(subscription.cancel);
     return const SettingsState();
+  }
+
+  /// 处理模型下载事件，使下载百分比无需轮询即可更新。
+  void _handleModelEvent(WsEvent event) {
+    if (!event.type.startsWith('model_download_')) return;
+    final name = event.data['model'] as String? ?? '';
+    if (name.isEmpty) return;
+    if (event.type == 'model_download_progress') {
+      final progress = event.data['progress'] as int? ?? 0;
+      state = state.copyWith(
+        models: state.models
+            .map(
+              (model) => model['name'] == name
+                  ? {...model, 'downloading': true, 'progress': progress}
+                  : model,
+            )
+            .toList(),
+      );
+      return;
+    }
+    unawaited(_refreshModels());
+  }
+
+  /// 刷新模型磁盘状态，供下载完成和失败事件复用。
+  Future<void> _refreshModels() async {
+    try {
+      state = state.copyWith(models: await _configRepo.listModels());
+    } catch (_) {}
   }
 
   Future<void> loadConfig() async {
@@ -76,13 +112,18 @@ class SettingsNotifier extends Notifier<SettingsState> {
 
   Future<void> downloadModel(String name) async {
     await _configRepo.downloadModel(name);
-    await Future.delayed(const Duration(seconds: 2));
-    try {
-      final models = await _configRepo.listModels();
-      state = state.copyWith(models: models);
-    } catch (_) {}
+    state = state.copyWith(
+      models: state.models
+          .map(
+            (model) => model['name'] == name
+                ? {...model, 'downloading': true, 'progress': 0}
+                : model,
+          )
+          .toList(),
+    );
   }
 }
 
-final settingsProvider =
-    NotifierProvider<SettingsNotifier, SettingsState>(SettingsNotifier.new);
+final settingsProvider = NotifierProvider<SettingsNotifier, SettingsState>(
+  SettingsNotifier.new,
+);

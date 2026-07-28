@@ -39,16 +39,17 @@ func DefaultConfig() Bootstrap {
 		},
 		Pipeline: Pipeline{
 			Workers:            2,
-			WhisperMode:        "ffmpeg",
-			WhisperBin:         "whisper-cpp",
+			WhisperMode:        "whisper-cpp",
+			WhisperBin:         "whisper-cli",
 			DefaultTargetLang:  "zh-CN",
 			MaxSpeedFactor:     1.2,
 			TranslateChunkSize: 10,
 			TTSWorkers:         2,
 		},
 		LLM: LLM{
-			BaseURL: "http://localhost:11434/v1",
-			Model:   "qwen2.5:7b",
+			Provider: "bing",
+			BaseURL:  "http://localhost:11434/v1",
+			Model:    "qwen2.5:7b",
 		},
 		TTS: TTS{
 			Type:  "edge",

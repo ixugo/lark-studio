@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -10,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
+	whisperadapter "github.com/ixugo/vdub/internal/adapter/whisper"
 	"github.com/ixugo/vdub/internal/conf"
 	"github.com/ixugo/vdub/pkg/web"
 	"github.com/ixugo/vdub/pkg/ws"
@@ -46,28 +48,40 @@ var dlStatus = &modelDownloadStatus{
 	progress: make(map[string]int),
 }
 
+var runtimeInstallMu sync.Mutex
+var runtimeInstalling bool
+
+// start 记录模型开始下载，供多个请求读取一致状态。
 func (s *modelDownloadStatus) start(name string) {
 	s.mu.Lock()
 	s.active[name] = true
 	s.progress[name] = 0
 	s.mu.Unlock()
 }
+
+// finish 清理已结束的下载状态，文件状态由磁盘结果决定。
 func (s *modelDownloadStatus) finish(name string) {
 	s.mu.Lock()
 	delete(s.active, name)
 	delete(s.progress, name)
 	s.mu.Unlock()
 }
+
+// setProgress 保存模型下载百分比。
 func (s *modelDownloadStatus) setProgress(name string, p int) {
 	s.mu.Lock()
 	s.progress[name] = p
 	s.mu.Unlock()
 }
+
+// isActive 判断指定模型是否正在下载。
 func (s *modelDownloadStatus) isActive(name string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.active[name]
 }
+
+// getProgress 返回指定模型当前下载百分比。
 func (s *modelDownloadStatus) getProgress(name string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -84,13 +98,79 @@ func modelPath(name string) string {
 	return filepath.Join(modelsDir(), fmt.Sprintf("ggml-%s.bin", name))
 }
 
-// RegisterModel 注册模型管理路由
-func RegisterModel(r gin.IRouter, hub ws.Huber) {
+// RegisterModel 注册 Whisper 运行时与模型管理路由。
+func RegisterModel(r gin.IRouter, hub ws.Huber, cfg *conf.Bootstrap) {
 	g := r.Group("/models")
 	g.GET("", web.WrapH(listModels))
 	g.POST("/download", web.WrapH(func(c *gin.Context, in *modelDownloadInput) (any, error) {
 		return startDownload(in.Name, hub)
 	}))
+	g.GET("/runtime", web.WrapH(func(_ *gin.Context, _ *struct{}) (any, error) {
+		return inspectWhisperRuntime(cfg), nil
+	}))
+	g.POST("/runtime/install", web.WrapH(func(_ *gin.Context, _ *struct{}) (any, error) {
+		return startRuntimeInstall(hub, cfg)
+	}))
+}
+
+type whisperRuntimeOutput struct {
+	whisperadapter.RuntimeInfo
+	Installing bool `json:"installing"`
+}
+
+// inspectWhisperRuntime 返回真实运行时状态，避免界面使用固定假数据。
+func inspectWhisperRuntime(cfg *conf.Bootstrap) whisperRuntimeOutput {
+	runtimeInstallMu.Lock()
+	installing := runtimeInstalling
+	runtimeInstallMu.Unlock()
+	return whisperRuntimeOutput{
+		RuntimeInfo: whisperadapter.InspectRuntime(cfg.Pipeline.WhisperBin),
+		Installing:  installing,
+	}
+}
+
+// startRuntimeInstall 启动唯一安装任务，并把安装输出推送到界面。
+func startRuntimeInstall(hub ws.Huber, cfg *conf.Bootstrap) (any, error) {
+	if info := whisperadapter.InspectRuntime(cfg.Pipeline.WhisperBin); info.Installed {
+		return map[string]string{"status": "already_installed"}, nil
+	}
+
+	runtimeInstallMu.Lock()
+	if runtimeInstalling {
+		runtimeInstallMu.Unlock()
+		return map[string]string{"status": "installing"}, nil
+	}
+	runtimeInstalling = true
+	runtimeInstallMu.Unlock()
+
+	go func() {
+		defer func() {
+			runtimeInstallMu.Lock()
+			runtimeInstalling = false
+			runtimeInstallMu.Unlock()
+		}()
+
+		err := whisperadapter.InstallRuntime(context.Background(), func(line string) {
+			if hub != nil {
+				hub.Broadcast(ws.NewMessage("whisper_runtime_log", map[string]any{
+					"message": line,
+				}))
+			}
+		})
+		if err != nil {
+			slog.Error("whisper runtime install failed", "err", err)
+			if hub != nil {
+				hub.Broadcast(ws.NewMessage("whisper_runtime_failed", map[string]any{
+					"error": err.Error(),
+				}))
+			}
+			return
+		}
+		if hub != nil {
+			hub.Broadcast(ws.NewMessage("whisper_runtime_done", inspectWhisperRuntime(cfg)))
+		}
+	}()
+	return map[string]string{"status": "started"}, nil
 }
 
 type modelListOutput struct {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/google/uuid"
 	"github.com/ixugo/goddd/pkg/orm"
 	"github.com/ixugo/goddd/pkg/reason"
 	"github.com/jinzhu/copier"
@@ -55,11 +56,23 @@ func (c Core) CreateTask(ctx context.Context, in *CreateTaskInput) (*Task, error
 	if err := copier.Copy(&out, in); err != nil {
 		slog.ErrorContext(ctx, "Copy", "err", err)
 	}
+	if out.ID == "" {
+		out.ID = uuid.NewString()
+	}
 
 	if err := c.store.Task().Create(ctx, &out); err != nil {
 		return nil, reason.ErrDB.Withf(`Create err[%s]`, err.Error())
 	}
 	return &out, nil
+}
+
+// SetTaskStatus 精确更新任务的指定字段，避免零值覆盖其它进度信息。
+func (c Core) SetTaskStatus(ctx context.Context, id string, fn func(*Task)) error {
+	var out Task
+	if err := c.store.Task().Update(ctx, &out, fn, orm.Where("id=?", id)); err != nil {
+		return reason.ErrDB.Withf("SetTaskStatus id[%v] err[%s]", id, err.Error())
+	}
+	return nil
 }
 
 // UpdateTask Update object information
@@ -82,15 +95,4 @@ func (c Core) DeleteTask(ctx context.Context, id string) (*Task, error) {
 		return nil, reason.ErrDB.Withf(`Del id[%v] err[%s]`, id, err.Error())
 	}
 	return &out, nil
-}
-
-// SetTaskStatus 精确更新任务的指定字段，避免 copier 零值覆盖问题
-func (c Core) SetTaskStatus(ctx context.Context, id string, fn func(*Task)) error {
-	var out Task
-	if err := c.store.Task().Update(ctx, &out, func(b *Task) {
-		fn(b)
-	}, orm.Where("id=?", id)); err != nil {
-		return reason.ErrDB.Withf("SetTaskStatus id[%v] err[%s]", id, err.Error())
-	}
-	return nil
 }
