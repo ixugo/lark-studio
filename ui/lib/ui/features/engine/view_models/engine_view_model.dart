@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:ui' show Color;
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/widgets.dart' show IconData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../data/repositories/config_repository.dart';
+import '../../../../data/services/websocket_service.dart';
 import '../../../../providers.dart';
 
 /// 引擎定义
@@ -37,12 +39,18 @@ class EngineState {
   final String? selectedEngineId;
   final String whisperMode;
   final String whisperModel;
+  final Map<String, dynamic> whisperRuntime;
+  final bool installing;
+  final String installMessage;
 
   const EngineState({
     this.engines = const [],
     this.selectedEngineId,
     this.whisperMode = '',
     this.whisperModel = '',
+    this.whisperRuntime = const {},
+    this.installing = false,
+    this.installMessage = '',
   });
 
   EngineState copyWith({
@@ -51,13 +59,20 @@ class EngineState {
     bool clearSelection = false,
     String? whisperMode,
     String? whisperModel,
+    Map<String, dynamic>? whisperRuntime,
+    bool? installing,
+    String? installMessage,
   }) {
     return EngineState(
       engines: engines ?? this.engines,
-      selectedEngineId:
-          clearSelection ? null : (selectedEngineId ?? this.selectedEngineId),
+      selectedEngineId: clearSelection
+          ? null
+          : (selectedEngineId ?? this.selectedEngineId),
       whisperMode: whisperMode ?? this.whisperMode,
       whisperModel: whisperModel ?? this.whisperModel,
+      whisperRuntime: whisperRuntime ?? this.whisperRuntime,
+      installing: installing ?? this.installing,
+      installMessage: installMessage ?? this.installMessage,
     );
   }
 }
@@ -69,14 +84,44 @@ class EngineNotifier extends Notifier<EngineState> {
   @override
   EngineState build() {
     _configRepo = ref.watch(configRepoProvider);
+    final subscription = ref
+        .watch(wsServiceProvider)
+        .events
+        .listen(_handleRuntimeEvent);
+    ref.onDispose(subscription.cancel);
     return const EngineState();
+  }
+
+  /// 处理运行时安装输出，并在安装结束后重取真实状态。
+  void _handleRuntimeEvent(WsEvent event) {
+    switch (event.type) {
+      case 'whisper_runtime_log':
+        state = state.copyWith(
+          installing: true,
+          installMessage: event.data['message'] as String? ?? '',
+        );
+      case 'whisper_runtime_done':
+        state = state.copyWith(
+          whisperRuntime: event.data,
+          installing: false,
+          installMessage: '安装完成',
+        );
+        unawaited(load());
+      case 'whisper_runtime_failed':
+        state = state.copyWith(
+          installing: false,
+          installMessage: event.data['error'] as String? ?? '安装失败',
+        );
+    }
   }
 
   /// 加载引擎配置
   Future<void> load() async {
     try {
       final config = await _configRepo.getConfig();
+      final runtime = await _configRepo.getWhisperRuntime();
       final pipeline = config.pipeline;
+      final runtimeAvailable = runtime['installed'] as bool? ?? false;
 
       final engines = <EngineItem>[
         EngineItem(
@@ -85,9 +130,9 @@ class EngineNotifier extends Notifier<EngineState> {
           category: 'local',
           icon: CupertinoIcons.waveform,
           color: const Color(0xFF34C759),
-          description: '高性能本地语音识别引擎，支持 CoreML / Metal GPU 加速',
-          available: true,
-          tags: ['Apple 芯片', 'GPU 加速', '轻量'],
+          description: '高性能本地语音识别引擎，支持 Apple Metal 加速',
+          available: runtimeAvailable,
+          tags: const ['Apple 芯片', 'Metal', '本地'],
         ),
         const EngineItem(
           id: 'faster_whisper',
@@ -153,8 +198,21 @@ class EngineNotifier extends Notifier<EngineState> {
         engines: engines,
         whisperMode: pipeline.whisperMode,
         whisperModel: pipeline.whisperModel,
+        whisperRuntime: runtime,
+        installing: runtime['installing'] as bool? ?? false,
       );
     } catch (_) {}
+  }
+
+  /// 安装本地 Whisper 运行时，实际进度由 WebSocket 事件更新。
+  Future<void> installWhisper() async {
+    if (state.installing) return;
+    state = state.copyWith(installing: true, installMessage: '准备安装…');
+    try {
+      await _configRepo.installWhisperRuntime();
+    } catch (error) {
+      state = state.copyWith(installing: false, installMessage: '安装失败：$error');
+    }
   }
 
   /// 选中引擎
@@ -163,5 +221,6 @@ class EngineNotifier extends Notifier<EngineState> {
   }
 }
 
-final engineProvider =
-    NotifierProvider<EngineNotifier, EngineState>(EngineNotifier.new);
+final engineProvider = NotifierProvider<EngineNotifier, EngineState>(
+  EngineNotifier.new,
+);

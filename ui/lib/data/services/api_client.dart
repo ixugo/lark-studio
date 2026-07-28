@@ -210,9 +210,8 @@ class ApiClient {
   Future<List<Map<String, dynamic>>> listModels() async {
     final resp = await _client.get(Uri.parse('$baseUrl/models'));
     _checkStatus(resp);
-    final body = jsonDecode(resp.body) as Map<String, dynamic>;
-    final data = body['data'] as List<dynamic>? ?? [];
-    return data.cast<Map<String, dynamic>>();
+    final body = jsonDecode(resp.body) as List<dynamic>;
+    return body.cast<Map<String, dynamic>>();
   }
 
   Future<void> downloadModel(String name) async {
@@ -220,6 +219,23 @@ class ApiClient {
       Uri.parse('$baseUrl/models/download'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'name': name}),
+    );
+    _checkStatus(resp);
+  }
+
+  /// 查询本机实际可用的 whisper.cpp 运行时。
+  Future<Map<String, dynamic>> getWhisperRuntime() async {
+    final resp = await _client.get(Uri.parse('$baseUrl/models/runtime'));
+    _checkStatus(resp);
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  /// 请求后端安装 whisper.cpp，安装输出由 WebSocket 推送。
+  Future<void> installWhisperRuntime() async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/models/runtime/install'),
+      headers: {'Content-Type': 'application/json'},
+      body: '{}',
     );
     _checkStatus(resp);
   }

@@ -1,0 +1,65 @@
+openapi: 3.1.0
+info:
+  title: vdub Whisper 运行时与模型 API
+  version: 1.0.0
+paths:
+  /models:
+    get:
+      tags:
+        - admin/听写引擎
+      summary: 获取 Whisper 模型列表
+      responses:
+        '200':
+          description: 模型列表
+  /models/download:
+    post:
+      tags:
+        - admin/听写引擎
+      summary: 下载 Whisper 模型
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  description: 模型名称
+      responses:
+        '200':
+          description: 下载任务已启动
+  /models/runtime:
+    get:
+      tags:
+        - admin/听写引擎
+      summary: 获取 whisper.cpp 运行时状态
+      responses:
+        '200':
+          description: 运行时检测结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  installed:
+                    type: boolean
+                  binary:
+                    type: string
+                  version:
+                    type: string
+                  acceleration:
+                    type: string
+                  installing:
+                    type: boolean
+  /models/runtime/install:
+    post:
+      tags:
+        - admin/听写引擎
+      summary: 安装 whisper.cpp 运行时
+      description: 在 macOS 上通过 Homebrew 安装，过程日志经 WebSocket 推送。
+      responses:
+        '200':
+          description: 安装任务已启动或运行时已经安装

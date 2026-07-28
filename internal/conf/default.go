@@ -39,8 +39,8 @@ func DefaultConfig() Bootstrap {
 		},
 		Pipeline: Pipeline{
 			Workers:            2,
-			WhisperMode:        "ffmpeg",
-			WhisperBin:         "whisper-cpp",
+			WhisperMode:        "whisper-cpp",
+			WhisperBin:         "whisper-cli",
 			DefaultTargetLang:  "zh-CN",
 			MaxSpeedFactor:     1.2,
 			TranslateChunkSize: 10,

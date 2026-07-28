@@ -5,6 +5,7 @@ package whisper
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -20,13 +21,27 @@ type Runner struct {
 // bin: whisper.cpp 可执行文件路径
 // model: ggml 模型文件路径
 func NewRunner(bin, model string) *Runner {
-	return &Runner{bin: bin, model: model}
+	return &Runner{bin: ResolveBinary(bin), model: model}
+}
+
+// resolveRunnerBinary 兼容旧配置名，优先使用配置指定的 whisper.cpp 二进制。
+func resolveRunnerBinary(bin string, lookPath func(string) (string, error)) string {
+	if bin != "whisper-cpp" {
+		return bin
+	}
+	if _, err := lookPath(bin); err == nil {
+		return bin
+	}
+	if cli, err := lookPath("whisper-cli"); err == nil {
+		return cli
+	}
+	return bin
 }
 
 // Transcribe 执行语音识别
 func (r *Runner) Transcribe(ctx context.Context, audioPath, outputSRT, lang string) error {
-	if lang == "" || lang == "auto" {
-		lang = "en"
+	if lang == "" {
+		lang = "auto"
 	}
 
 	outputBase := strings.TrimSuffix(outputSRT, filepath.Ext(outputSRT))
@@ -39,12 +54,44 @@ func (r *Runner) Transcribe(ctx context.Context, audioPath, outputSRT, lang stri
 		"--no-timestamps",
 	}
 
-	cmd := exec.CommandContext(ctx, r.bin, args...)
-	output, err := cmd.CombinedOutput()
+	output, err := r.run(ctx, args)
+	if err != nil && shouldRetryWithoutGPU(output) {
+		args = append(args, "--no-gpu")
+		output, err = r.run(ctx, args)
+	}
 	if err != nil {
 		return fmt.Errorf("whisper.cpp 执行失败: %s\noutput: %s", err, string(output))
 	}
 	return nil
+}
+
+// run 执行一次 whisper.cpp 命令，保留标准输出供失败诊断与降级判断使用。
+func (r *Runner) run(ctx context.Context, args []string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, r.bin, args...)
+	if libDir := bundledLibraryDir(r.bin); libDir != "" {
+		cmd.Env = append(
+			os.Environ(),
+			"DYLD_LIBRARY_PATH="+libDir,
+			"GGML_BACKEND_PATH="+filepath.Join(libDir, "backends"),
+		)
+	}
+	return cmd.CombinedOutput()
+}
+
+// bundledLibraryDir 返回应用包内动态库目录，系统安装的命令无需修改环境。
+func bundledLibraryDir(binary string) string {
+	binDir := filepath.Dir(binary)
+	if filepath.Base(binDir) != "bin" || filepath.Base(filepath.Dir(binDir)) != "whisper" {
+		return ""
+	}
+	return filepath.Join(filepath.Dir(binDir), "lib")
+}
+
+// shouldRetryWithoutGPU 仅在 Metal 初始化失败时改用 CPU，避免掩盖模型和音频错误。
+func shouldRetryWithoutGPU(output []byte) bool {
+	text := string(output)
+	return strings.Contains(text, "ggml_metal_buffer_init") ||
+		strings.Contains(text, "failed to allocate buffer")
 }
 
 // FFmpegRunner 使用 ffmpeg 内置 whisper 滤镜做语音识别

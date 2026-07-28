@@ -7,6 +7,9 @@ GOOS        ?= $(shell go env GOOS)
 GOARCH      ?= $(shell go env GOARCH)
 BUILD_DIR   := build/$(GOOS)_$(GOARCH)
 FFMPEG_DIR  := vendor/ffmpeg
+WHISPER_PREFIX ?= $(shell brew --prefix whisper-cpp 2>/dev/null)
+GGML_PREFIX    ?= $(shell brew --prefix ggml 2>/dev/null)
+LIBOMP_PREFIX  ?= $(shell brew --prefix libomp 2>/dev/null)
 
 VERSION     := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 GIT_BRANCH  := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
@@ -24,7 +27,7 @@ FFMPEG_MACOS_URL  := https://github.com/eugeneware/ffmpeg-static/releases/downlo
 FFMPEG_WIN_URL    := https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip
 
 .PHONY: build build-release test e2e e2e-dub clip dev run \
-        ffmpeg-macos ffmpeg-windows bundle-macos bundle-windows \
+        ffmpeg-macos ffmpeg-windows whisper-macos bundle-macos bundle-windows \
         version clean help
 
 # ─── 帮助 ───────────────────────────────────────────────
@@ -96,15 +99,25 @@ ffmpeg-windows: ## 下载 Windows 静态 ffmpeg（不存在时自动下载）
 		echo "✓ ffmpeg.exe 已存在"; \
 	fi
 
+whisper-macos: ## 安装 macOS whisper.cpp 打包依赖
+	@command -v brew >/dev/null || { echo "未找到 Homebrew"; exit 1; }
+	@brew list whisper-cpp >/dev/null 2>&1 || brew install whisper-cpp
+
 # ─── 打包 ───────────────────────────────────────────────
 
-bundle-macos: ffmpeg-macos build-release ## 打包 macOS .dmg（Go + ffmpeg 内嵌）
+bundle-macos: ffmpeg-macos whisper-macos build-release ## 打包 macOS .dmg（Go + ffmpeg + whisper.cpp 内嵌）
 	cd $(UI_DIR) && flutter build macos --release --split-debug-info=../build/debug-info --obfuscate
 	$(eval APP := $(UI_DIR)/build/macos/Build/Products/Release/vdub_ui.app)
 	@mkdir -p "$(APP)/Contents/Resources"
 	@rm -f "$(APP)/Contents/Resources/ffprobe"
 	install -m 755 $(BUILD_DIR)/$(BINARY)       "$(APP)/Contents/Resources/$(BINARY)"
 	install -m 755 $(FFMPEG_DIR)/darwin/ffmpeg   "$(APP)/Contents/Resources/ffmpeg"
+	@mkdir -p "$(APP)/Contents/Resources/whisper/bin" "$(APP)/Contents/Resources/whisper/lib/backends"
+	install -m 755 "$(WHISPER_PREFIX)/bin/whisper-cli" "$(APP)/Contents/Resources/whisper/bin/whisper-cli"
+	cp "$(WHISPER_PREFIX)"/lib/*.dylib "$(APP)/Contents/Resources/whisper/lib/"
+	cp "$(GGML_PREFIX)"/lib/*.dylib "$(APP)/Contents/Resources/whisper/lib/"
+	cp "$(GGML_PREFIX)"/libexec/*.so "$(APP)/Contents/Resources/whisper/lib/backends/"
+	cp "$(LIBOMP_PREFIX)"/lib/libomp.dylib "$(APP)/Contents/Resources/whisper/lib/"
 	@echo "✓ $(APP)"
 	@echo "⚙ 生成 DMG..."
 	@rm -f build/vdub.dmg
