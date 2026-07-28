@@ -5,20 +5,28 @@ import "time"
 
 // Task domain model
 type Task struct {
-	ID            string     `gorm:"primaryKey" json:"id"`
-	InputPath     string     `gorm:"column:input_path;notNull;default:''" json:"input_path"`
-	OutputDir     string     `gorm:"column:output_dir;notNull;default:''" json:"output_dir"`
-	Mode          int        `gorm:"column:mode;notNull;default:0;comment:1=仅字幕, 2=字幕+翻译, 3=字幕+翻译+配音" json:"mode"`           // 1=仅字幕, 2=字幕+翻译, 3=字幕+翻译+配音
-	Status        int        `gorm:"column:status;notNull;default:0;comment:0=待处理, 1=进行中, 2=已暂停, 3=已完成, 4=失败" json:"status"` // 0=待处理, 1=进行中, 2=已暂停, 3=已完成, 4=失败
-	CurrentStep   string     `gorm:"column:current_step;notNull;default:''" json:"current_step"`
-	Progress      int        `gorm:"column:progress;notNull;default:0;comment:整条流水线的总进度" json:"progress"` // 整条流水线的总进度
-	StepProgress  int        `gorm:"column:step_progress;notNull;default:0" json:"step_progress"`
-	CurrentDetail string     `gorm:"column:current_detail;notNull;default:''" json:"current_detail"`
-	StepStartedAt *time.Time `gorm:"column:step_started_at" json:"step_started_at"`
-	Error         string     `gorm:"column:error;notNull;default:''" json:"error"`
-	TargetLang    string     `gorm:"column:target_lang;notNull;default:''" json:"target_lang"`
-	CreatedAt     time.Time  `gorm:"column:created_at;notNull;default:CURRENT_TIMESTAMP" json:"created_at"`
-	UpdatedAt     time.Time  `gorm:"column:updated_at;notNull;default:CURRENT_TIMESTAMP" json:"updated_at"`
+	ID             string     `gorm:"primaryKey" json:"id"`
+	InputPath      string     `gorm:"column:input_path;notNull;default:''" json:"input_path"`
+	OutputDir      string     `gorm:"column:output_dir;notNull;default:''" json:"output_dir"`
+	Mode           int        `gorm:"column:mode;notNull;default:0;comment:1=仅字幕, 2=字幕+翻译, 3=字幕+翻译+配音" json:"mode"`           // 1=仅字幕, 2=字幕+翻译, 3=字幕+翻译+配音
+	Status         int        `gorm:"column:status;notNull;default:0;comment:0=待处理, 1=进行中, 2=已暂停, 3=已完成, 4=失败" json:"status"` // 0=待处理, 1=进行中, 2=已暂停, 3=已完成, 4=失败
+	CurrentStep    string     `gorm:"column:current_step;notNull;default:''" json:"current_step"`
+	Progress       int        `gorm:"column:progress;notNull;default:0;comment:整条流水线的总进度" json:"progress"` // 整条流水线的总进度
+	StepProgress   int        `gorm:"column:step_progress;notNull;default:0" json:"step_progress"`
+	CurrentDetail  string     `gorm:"column:current_detail;notNull;default:''" json:"current_detail"`
+	StepStartedAt  *time.Time `gorm:"column:step_started_at" json:"step_started_at"`
+	Error          string     `gorm:"column:error;notNull;default:''" json:"error"`
+	TargetLang     string     `gorm:"column:target_lang;notNull;default:''" json:"target_lang"`
+	SourceLang     string     `gorm:"column:source_lang;notNull;default:'auto'" json:"source_lang"`
+	Translator     string     `gorm:"column:translator;notNull;default:'bing'" json:"translator"`
+	OutputContent  string     `gorm:"column:output_content;notNull;default:'bilingual'" json:"output_content"`
+	TTSEngine      string     `gorm:"column:tts_engine;notNull;default:'edge'" json:"tts_engine"`
+	TTSVoice       string     `gorm:"column:tts_voice;notNull;default:''" json:"tts_voice"`
+	SpeechRate     float64    `gorm:"column:speech_rate;notNull;default:1" json:"speech_rate"`
+	SubtitleOutput string     `gorm:"column:subtitle_output;notNull;default:'burn'" json:"subtitle_output"`
+	RecipeName     string     `gorm:"column:recipe_name;notNull;default:''" json:"recipe_name"`
+	CreatedAt      time.Time  `gorm:"column:created_at;notNull;default:CURRENT_TIMESTAMP" json:"created_at"`
+	UpdatedAt      time.Time  `gorm:"column:updated_at;notNull;default:CURRENT_TIMESTAMP" json:"updated_at"`
 }
 
 // TableName database table name

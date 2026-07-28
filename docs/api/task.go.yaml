@@ -3,6 +3,27 @@ info:
   title: vdub Task API
   version: 1.0.0
 paths:
+  /tasks:
+    post:
+      tags:
+        - admin/任务管理
+      summary: 创建确定参数的处理任务
+      description: 创建时展开当前配置并写入 SQLite，任务恢复时继续使用同一组参数。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaskInput'
+      responses:
+        '200':
+          description: 任务创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '400':
+          description: 文件、模式或配方参数无效
   /tasks/{id}/logs:
     get:
       tags:
@@ -46,3 +67,76 @@ paths:
                           format: date-time
         '404':
           description: 任务不存在
+components:
+  schemas:
+    CreateTaskInput:
+      type: object
+      required:
+        - input_path
+        - mode
+      properties:
+        input_path:
+          type: string
+        output_dir:
+          type: string
+        mode:
+          type: integer
+          minimum: 1
+          maximum: 3
+        source_lang:
+          type: string
+          default: auto
+        target_lang:
+          type: string
+          default: zh-CN
+        translator:
+          type: string
+          enum: [bing, deeplx, openai]
+          default: bing
+        output_content:
+          type: string
+          enum: [source, translated, bilingual]
+          default: bilingual
+        tts_engine:
+          type: string
+          enum: [edge, openai]
+          default: edge
+        tts_voice:
+          type: string
+        speech_rate:
+          type: number
+          minimum: 0.5
+          maximum: 2
+          default: 1
+        subtitle_output:
+          type: string
+          enum: [burn, file, none]
+          default: burn
+        recipe_name:
+          type: string
+          maxLength: 64
+    Task:
+      allOf:
+        - $ref: '#/components/schemas/CreateTaskInput'
+        - type: object
+          properties:
+            id:
+              type: string
+            status:
+              type: integer
+            current_step:
+              type: string
+            progress:
+              type: integer
+            step_progress:
+              type: integer
+            current_detail:
+              type: string
+            error:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time

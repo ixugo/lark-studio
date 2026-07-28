@@ -17,6 +17,12 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	maxLanguageCodeLength = 16
+	maxVoiceNameLength    = 128
+	maxRecipeNameLength   = 64
+)
+
 // TaskAPI 为 HTTP 层提供任务操作。
 type TaskAPI struct {
 	taskCore  task.Core
@@ -107,7 +113,7 @@ func (a TaskAPI) createTask(c *gin.Context, in *task.CreateTaskInput) (*task.Tas
 	return t, nil
 }
 
-// prepareTaskInput 校验输入并补齐输出目录与目标语言。
+// prepareTaskInput 校验输入并补齐不会随全局配置变化的任务参数。
 func (a TaskAPI) prepareTaskInput(in *task.CreateTaskInput) error {
 	if _, err := os.Stat(in.InputPath); err != nil {
 		return reason.ErrBadRequest.SetMsg("视频文件不存在")
@@ -124,8 +130,85 @@ func (a TaskAPI) prepareTaskInput(in *task.CreateTaskInput) error {
 	}
 	if in.TargetLang == "" {
 		in.TargetLang = a.conf.Pipeline.DefaultTargetLang
+		if in.TargetLang == "" {
+			in.TargetLang = "zh-CN"
+		}
+	}
+	a.applyTaskDefaults(in)
+	return validateTaskParameters(in)
+}
+
+// applyTaskDefaults 把创建时的全局配置展开为任务快照。
+func (a TaskAPI) applyTaskDefaults(in *task.CreateTaskInput) {
+	if in.SourceLang == "" {
+		in.SourceLang = "auto"
+	}
+	if in.Translator == "" {
+		in.Translator = a.conf.LLM.Provider
+		if in.Translator == "" {
+			in.Translator = "bing"
+		}
+	}
+	if in.OutputContent == "" {
+		in.OutputContent = "bilingual"
+		if in.Mode == pipeline.ModeSubtitle {
+			in.OutputContent = "source"
+		}
+	}
+	if in.TTSEngine == "" {
+		in.TTSEngine = a.conf.TTS.Type
+		if in.TTSEngine == "" {
+			in.TTSEngine = "edge"
+		}
+	}
+	if in.TTSVoice == "" {
+		in.TTSVoice = a.conf.TTS.Voice
+	}
+	if in.SpeechRate == 0 {
+		in.SpeechRate = 1
+	}
+	if in.SubtitleOutput == "" {
+		in.SubtitleOutput = a.conf.Pipeline.SubtitleOutput
+		if in.SubtitleOutput == "" {
+			in.SubtitleOutput = "burn"
+		}
+	}
+}
+
+// validateTaskParameters 拒绝未知枚举与过长字符串，避免无效配方进入队列。
+func validateTaskParameters(in *task.CreateTaskInput) error {
+	if len(in.SourceLang) > maxLanguageCodeLength || len(in.TargetLang) > maxLanguageCodeLength {
+		return reason.ErrBadRequest.SetMsg("语言代码过长")
+	}
+	if len(in.TTSVoice) > maxVoiceNameLength || len(in.RecipeName) > maxRecipeNameLength {
+		return reason.ErrBadRequest.SetMsg("配方参数过长")
+	}
+	if !oneOf(in.Translator, "bing", "deeplx", "openai") {
+		return reason.ErrBadRequest.SetMsg("无效的翻译引擎")
+	}
+	if !oneOf(in.OutputContent, "source", "translated", "bilingual") {
+		return reason.ErrBadRequest.SetMsg("无效的输出内容")
+	}
+	if !oneOf(in.TTSEngine, "edge", "openai") {
+		return reason.ErrBadRequest.SetMsg("无效的配音引擎")
+	}
+	if !oneOf(in.SubtitleOutput, "burn", "file", "none") {
+		return reason.ErrBadRequest.SetMsg("无效的字幕方式")
+	}
+	if in.SpeechRate < 0.5 || in.SpeechRate > 2 {
+		return reason.ErrBadRequest.SetMsg("语速须在 0.5 到 2.0 之间")
 	}
 	return nil
+}
+
+// oneOf 判断配置枚举是否属于允许集合。
+func oneOf(value string, allowed ...string) bool {
+	for _, item := range allowed {
+		if value == item {
+			return true
+		}
+	}
+	return false
 }
 
 // taskModeTitle 返回 API 创建日志所需的中文模式名。
@@ -201,9 +284,17 @@ func (a TaskAPI) resumeTask(c *gin.Context, in *task.GetTaskInput) (*task.Task, 
 
 // batchCreateInput 描述批量任务的共享参数。
 type batchCreateInput struct {
-	Videos     []string `json:"videos" binding:"required,min=1"`
-	Mode       int      `json:"mode" binding:"required,min=1,max=3"`
-	TargetLang string   `json:"target_lang"`
+	Videos         []string `json:"videos" binding:"required,min=1"`
+	Mode           int      `json:"mode" binding:"required,min=1,max=3"`
+	TargetLang     string   `json:"target_lang"`
+	SourceLang     string   `json:"source_lang"`
+	Translator     string   `json:"translator"`
+	OutputContent  string   `json:"output_content"`
+	TTSEngine      string   `json:"tts_engine"`
+	TTSVoice       string   `json:"tts_voice"`
+	SpeechRate     float64  `json:"speech_rate"`
+	SubtitleOutput string   `json:"subtitle_output"`
+	RecipeName     string   `json:"recipe_name"`
 }
 
 // batchCreateTasks 为每个有效视频创建独立任务。
@@ -237,12 +328,24 @@ func (a TaskAPI) createBatchTask(
 	outputDir string,
 	in *batchCreateInput,
 ) (*task.Task, error) {
-	t, err := a.taskCore.CreateTask(c.Request.Context(), &task.CreateTaskInput{
-		InputPath:  inputPath,
-		OutputDir:  outputDir,
-		Mode:       in.Mode,
-		TargetLang: in.TargetLang,
-	})
+	taskInput := &task.CreateTaskInput{
+		InputPath:      inputPath,
+		OutputDir:      outputDir,
+		Mode:           in.Mode,
+		TargetLang:     in.TargetLang,
+		SourceLang:     in.SourceLang,
+		Translator:     in.Translator,
+		OutputContent:  in.OutputContent,
+		TTSEngine:      in.TTSEngine,
+		TTSVoice:       in.TTSVoice,
+		SpeechRate:     in.SpeechRate,
+		SubtitleOutput: in.SubtitleOutput,
+		RecipeName:     in.RecipeName,
+	}
+	if err := a.prepareTaskInput(taskInput); err != nil {
+		return nil, err
+	}
+	t, err := a.taskCore.CreateTask(c.Request.Context(), taskInput)
 	if err != nil {
 		return nil, err
 	}

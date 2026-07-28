@@ -10,17 +10,25 @@ import (
 
 type ListTaskInput struct {
 	web.PagerFilter
-	InputPath     string     `form:"input_path"`
-	OutputDir     string     `form:"output_dir"`
-	Mode          int        `form:"mode"`   // 1=仅字幕, 2=字幕+翻译, 3=字幕+翻译+配音
-	Status        int        `form:"status"` // 0=待处理, 1=进行中, 2=已暂停, 3=已完成, 4=失败
-	CurrentStep   string     `form:"current_step"`
-	Progress      int        `form:"progress"` // 整条流水线的总进度
-	StepProgress  int        `form:"step_progress"`
-	CurrentDetail string     `form:"current_detail"`
-	StepStartedAt *time.Time `form:"step_started_at"`
-	Error         string     `form:"error"`
-	TargetLang    string     `form:"target_lang"`
+	InputPath      string     `form:"input_path"`
+	OutputDir      string     `form:"output_dir"`
+	Mode           int        `form:"mode"`   // 1=仅字幕, 2=字幕+翻译, 3=字幕+翻译+配音
+	Status         int        `form:"status"` // 0=待处理, 1=进行中, 2=已暂停, 3=已完成, 4=失败
+	CurrentStep    string     `form:"current_step"`
+	Progress       int        `form:"progress"` // 整条流水线的总进度
+	StepProgress   int        `form:"step_progress"`
+	CurrentDetail  string     `form:"current_detail"`
+	StepStartedAt  *time.Time `form:"step_started_at"`
+	Error          string     `form:"error"`
+	TargetLang     string     `form:"target_lang"`
+	SourceLang     string     `form:"source_lang"`
+	Translator     string     `form:"translator"`
+	OutputContent  string     `form:"output_content"`
+	TTSEngine      string     `form:"tts_engine"`
+	TTSVoice       string     `form:"tts_voice"`
+	SpeechRate     float64    `form:"speech_rate"`
+	SubtitleOutput string     `form:"subtitle_output"`
+	RecipeName     string     `form:"recipe_name"`
 }
 
 func (i *ListTaskInput) ToQuery() *orm.Query {
@@ -29,32 +37,48 @@ func (i *ListTaskInput) ToQuery() *orm.Query {
 }
 
 type UpdateTaskInput struct {
-	ID            string     `uri:"id"`
-	InputPath     string     `json:"input_path"`
-	OutputDir     string     `json:"output_dir"`
-	Mode          int        `json:"mode"`   // 1=仅字幕, 2=字幕+翻译, 3=字幕+翻译+配音
-	Status        int        `json:"status"` // 0=待处理, 1=进行中, 2=已暂停, 3=已完成, 4=失败
-	CurrentStep   string     `json:"current_step"`
-	Progress      int        `json:"progress"` // 整条流水线的总进度
-	StepProgress  int        `json:"step_progress"`
-	CurrentDetail string     `json:"current_detail"`
-	StepStartedAt *time.Time `json:"step_started_at"`
-	Error         string     `json:"error"`
-	TargetLang    string     `json:"target_lang"`
+	ID             string     `uri:"id"`
+	InputPath      string     `json:"input_path"`
+	OutputDir      string     `json:"output_dir"`
+	Mode           int        `json:"mode"`   // 1=仅字幕, 2=字幕+翻译, 3=字幕+翻译+配音
+	Status         int        `json:"status"` // 0=待处理, 1=进行中, 2=已暂停, 3=已完成, 4=失败
+	CurrentStep    string     `json:"current_step"`
+	Progress       int        `json:"progress"` // 整条流水线的总进度
+	StepProgress   int        `json:"step_progress"`
+	CurrentDetail  string     `json:"current_detail"`
+	StepStartedAt  *time.Time `json:"step_started_at"`
+	Error          string     `json:"error"`
+	TargetLang     string     `json:"target_lang"`
+	SourceLang     string     `json:"source_lang"`
+	Translator     string     `json:"translator"`
+	OutputContent  string     `json:"output_content"`
+	TTSEngine      string     `json:"tts_engine"`
+	TTSVoice       string     `json:"tts_voice"`
+	SpeechRate     float64    `json:"speech_rate"`
+	SubtitleOutput string     `json:"subtitle_output"`
+	RecipeName     string     `json:"recipe_name"`
 }
 
 type CreateTaskInput struct {
-	InputPath     string     `json:"input_path"`
-	OutputDir     string     `json:"output_dir"`
-	Mode          int        `json:"mode"`   // 1=仅字幕, 2=字幕+翻译, 3=字幕+翻译+配音
-	Status        int        `json:"status"` // 0=待处理, 1=进行中, 2=已暂停, 3=已完成, 4=失败
-	CurrentStep   string     `json:"current_step"`
-	Progress      int        `json:"progress"` // 整条流水线的总进度
-	StepProgress  int        `json:"step_progress"`
-	CurrentDetail string     `json:"current_detail"`
-	StepStartedAt *time.Time `json:"step_started_at"`
-	Error         string     `json:"error"`
-	TargetLang    string     `json:"target_lang"`
+	InputPath      string     `json:"input_path"`
+	OutputDir      string     `json:"output_dir"`
+	Mode           int        `json:"mode"`   // 1=仅字幕, 2=字幕+翻译, 3=字幕+翻译+配音
+	Status         int        `json:"status"` // 0=待处理, 1=进行中, 2=已暂停, 3=已完成, 4=失败
+	CurrentStep    string     `json:"current_step"`
+	Progress       int        `json:"progress"` // 整条流水线的总进度
+	StepProgress   int        `json:"step_progress"`
+	CurrentDetail  string     `json:"current_detail"`
+	StepStartedAt  *time.Time `json:"step_started_at"`
+	Error          string     `json:"error"`
+	TargetLang     string     `json:"target_lang"`
+	SourceLang     string     `json:"source_lang"`
+	Translator     string     `json:"translator"`
+	OutputContent  string     `json:"output_content"`
+	TTSEngine      string     `json:"tts_engine"`
+	TTSVoice       string     `json:"tts_voice"`
+	SpeechRate     float64    `json:"speech_rate"`
+	SubtitleOutput string     `json:"subtitle_output"`
+	RecipeName     string     `json:"recipe_name"`
 }
 
 type GetTaskInput struct {
