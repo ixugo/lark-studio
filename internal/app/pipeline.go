@@ -50,13 +50,13 @@ func NewPipelineCore(bc *conf.Bootstrap, opts ...pipeline.Option) *pipeline.Core
 		bc.LLM.DeepLXURL,
 	)
 
-	var tc pipeline.TTSClient
-	switch bc.TTS.Type {
-	case "openai":
-		tc = tts.NewOpenAITTS(bc.TTS.BaseURL, bc.TTS.APIKey, bc.TTS.Model, bc.TTS.Voice)
-	default:
-		tc = tts.NewEdgeTTS(bc.TTS.Voice)
-	}
+	tc := tts.NewRouter(
+		bc.TTS.Type,
+		bc.TTS.Voice,
+		bc.TTS.BaseURL,
+		bc.TTS.APIKey,
+		bc.TTS.Model,
+	)
 
 	if bc.LipSync.Enabled && bc.LipSync.BaseURL != "" {
 		ls := lipsync.NewMuseTalkClient(bc.LipSync.BaseURL, bc.LipSync.APIKey)
@@ -138,7 +138,6 @@ type dbNotifier struct {
 	taskCore      task.Core
 	hub           ws.Huber
 	details       map[string]string
-	subtitleFile  bool
 	lipSync       bool
 	mu            sync.Mutex
 	stepProgress  map[string]map[string]int
@@ -159,7 +158,6 @@ func newDBNotifier(taskCore task.Core, hub ws.Huber, bc *conf.Bootstrap) *dbNoti
 			pipeline.StepLipSync:   "MuseTalk",
 			pipeline.StepBurn:      "ffmpeg",
 		},
-		subtitleFile:  bc.Pipeline.SubtitleOutput == "file",
 		lipSync:       bc.LipSync.Enabled,
 		stepProgress:  make(map[string]map[string]int),
 		stepStartTime: make(map[string]map[string]time.Time),
@@ -193,6 +191,7 @@ func (n *dbNotifier) OnStepStart(taskID, step string) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	now := time.Now()
+	detail := n.taskStepDetail(taskID, step)
 	if n.stepStartTime[taskID] == nil {
 		n.stepStartTime[taskID] = make(map[string]time.Time)
 	}
@@ -201,7 +200,7 @@ func (n *dbNotifier) OnStepStart(taskID, step string) {
 	}
 	if err := n.taskCore.UpsertStep(context.Background(), taskID, step, func(item *task.Step) {
 		item.Status = pipeline.StepRunning
-		item.Detail = n.details[step]
+		item.Detail = detail
 		if item.StartedAt == nil {
 			item.StartedAt = &now
 		}
@@ -209,8 +208,31 @@ func (n *dbNotifier) OnStepStart(taskID, step string) {
 		slog.Error("start step failed", "task_id", taskID, "step", step, "err", err)
 	}
 	n.broadcast("task_step_started", map[string]any{
-		"task_id": taskID, "step": step, "detail": n.details[step],
+		"task_id": taskID, "step": step, "detail": detail,
 	})
+}
+
+// taskStepDetail 优先显示任务创建时固定的引擎名称。
+func (n *dbNotifier) taskStepDetail(taskID, step string) string {
+	item, err := n.taskCore.GetTask(context.Background(), taskID)
+	if err != nil {
+		return n.details[step]
+	}
+	switch step {
+	case pipeline.StepSplit:
+		if item.Translator == "bing" || item.Translator == "deeplx" {
+			return "原始时间轴"
+		}
+	case pipeline.StepTranslate:
+		if item.Translator != "" {
+			return item.Translator
+		}
+	case pipeline.StepTTS:
+		if item.TTSEngine != "" {
+			return item.TTSEngine
+		}
+	}
+	return n.details[step]
 }
 
 // OnProgress 保存步骤百分比，并按权重计算只增不减的总进度。
@@ -236,7 +258,7 @@ func (n *dbNotifier) OnProgress(taskID, step string, progress int) {
 		slog.Error("update step progress failed", "task_id", taskID, "step", step, "err", err)
 	}
 	n.broadcast("task_progress", map[string]any{
-		"task_id": taskID, "step": step, "detail": n.details[step],
+		"task_id": taskID, "step": step, "detail": n.taskStepDetail(taskID, step),
 		"step_progress": progress, "total_progress": totalProgress,
 		"progress": totalProgress,
 	})
@@ -251,12 +273,16 @@ func (n *dbNotifier) updateTaskProgress(
 	startedAt time.Time,
 ) (int, error) {
 	totalProgress := 0
+	detail := n.taskStepDetail(taskID, step)
 	err := n.taskCore.SetTaskStatus(ctx, taskID, func(item *task.Task) {
-		totalProgress = max(n.totalProgress(item.Mode, n.stepProgress[taskID]), item.Progress)
+		totalProgress = max(
+			n.totalProgress(item.Mode, item.SubtitleOutput, n.stepProgress[taskID]),
+			item.Progress,
+		)
 		item.Status = 1
 		if stepRank(step) >= stepRank(item.CurrentStep) {
 			item.CurrentStep = step
-			item.CurrentDetail = n.details[step]
+			item.CurrentDetail = detail
 			item.StepStartedAt = &startedAt
 			item.StepProgress = progress
 		}
@@ -273,10 +299,11 @@ func (n *dbNotifier) updateStepProgress(
 	progress int,
 	startedAt time.Time,
 ) error {
+	detail := n.taskStepDetail(taskID, step)
 	return n.taskCore.UpsertStep(ctx, taskID, step, func(item *task.Step) {
 		item.Status = pipeline.StepRunning
 		item.Progress = max(item.Progress, progress)
-		item.Detail = n.details[step]
+		item.Detail = detail
 		if item.StartedAt == nil {
 			item.StartedAt = &startedAt
 		}
@@ -379,8 +406,8 @@ func (n *dbNotifier) clearTask(taskID string) {
 }
 
 // totalProgress 按任务模式权重汇总所有步骤进度。
-func (n *dbNotifier) totalProgress(mode int, progress map[string]int) int {
-	weights := n.progressWeights(mode)
+func (n *dbNotifier) totalProgress(mode int, subtitleOutput string, progress map[string]int) int {
+	weights := n.progressWeights(mode, subtitleOutput)
 	totalWeight := 0
 	weightedProgress := 0
 	for step, weight := range weights {
@@ -394,7 +421,10 @@ func (n *dbNotifier) totalProgress(mode int, progress map[string]int) int {
 }
 
 // progressWeights 返回当前模式实际执行步骤的进度权重。
-func (n *dbNotifier) progressWeights(mode int) map[string]int {
+func (n *dbNotifier) progressWeights(mode int, subtitleOutput string) map[string]int {
+	if subtitleOutput == "" {
+		subtitleOutput = "burn"
+	}
 	weights := map[string]int{pipeline.StepWhisper: 25}
 	switch mode {
 	case pipeline.ModeSubtitle:
@@ -412,7 +442,7 @@ func (n *dbNotifier) progressWeights(mode int) map[string]int {
 	if n.lipSync && mode == pipeline.ModeDub {
 		weights[pipeline.StepLipSync] = 10
 	}
-	if !n.subtitleFile {
+	if subtitleOutput == "burn" || mode == pipeline.ModeDub {
 		weights[pipeline.StepBurn] = 35
 		if mode == pipeline.ModeDub {
 			weights[pipeline.StepBurn] = 15

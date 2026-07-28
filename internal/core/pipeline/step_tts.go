@@ -69,7 +69,7 @@ func (c *Core) runTTS(ctx context.Context, job Job) error {
 			continue
 		}
 
-		if err := c.tts.Synthesize(ctx, text, outputPath, ""); err != nil {
+		if err := c.synthesizeWithJob(ctx, job, text, outputPath); err != nil {
 			return fmt.Errorf("TTS 第 %d 句失败: %w", i+1, err)
 		}
 

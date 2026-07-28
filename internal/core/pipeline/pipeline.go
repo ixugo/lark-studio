@@ -116,12 +116,19 @@ func NewCore(cfg Config, whisper WhisperRunner, llm LLMClient, tts TTSClient, op
 
 // Job 描述一个待处理的视频任务
 type Job struct {
-	TaskID     string
-	InputPath  string // 视频文件路径
-	OutputDir  string // 输出目录
-	Mode       int    // 处理模式
-	TargetLang string // 目标语言
-	ResumeFrom string // 断点恢复：从此步骤开始（空=从头）
+	TaskID         string
+	InputPath      string  // 视频文件路径
+	OutputDir      string  // 输出目录
+	Mode           int     // 处理模式
+	SourceLang     string  // 源语言
+	TargetLang     string  // 目标语言
+	Translator     string  // 翻译引擎
+	OutputContent  string  // source / translated / bilingual
+	TTSEngine      string  // edge / openai
+	TTSVoice       string  // 音色名称
+	SpeechRate     float64 // 语速倍率
+	SubtitleOutput string  // burn / file / none
+	ResumeFrom     string  // 断点恢复：从此步骤开始（空=从头）
 }
 
 const (
@@ -139,7 +146,7 @@ func (c *Core) Run(ctx context.Context, job Job) error {
 	defer tl.Close()
 	tl.Write("pipeline started: task=%s mode=%d resume=%q", job.TaskID, job.Mode, job.ResumeFrom)
 
-	steps := c.buildSteps(job.Mode)
+	steps := c.buildSteps(job)
 	pipeStart := time.Now()
 	if err := c.runSteps(ctx, job, steps, resumeStepIndex(steps, job.ResumeFrom), tl); err != nil {
 		return err
@@ -310,10 +317,9 @@ func formatDuration(duration time.Duration) string {
 	return fmt.Sprintf("%d 分 %02d 秒", int(duration.Minutes()), int(duration.Seconds())%60)
 }
 
-// buildSteps 根据模式构建步骤列表
-// SubtitleOutput=="file" 时跳过 burn 步骤，仅输出独立字幕文件
-func (c *Core) buildSteps(mode int) []string {
-	skipBurn := c.cfg.SubtitleOutput == "file"
+// buildSteps 根据任务模式和字幕方式构建步骤列表。
+func (c *Core) buildSteps(job Job) []string {
+	mode := job.Mode
 	var steps []string
 	switch mode {
 	case ModeSubtitle:
@@ -329,7 +335,14 @@ func (c *Core) buildSteps(mode int) []string {
 	default:
 		steps = []string{StepWhisper, StepBurn}
 	}
-	if skipBurn {
+	subtitleOutput := job.SubtitleOutput
+	if subtitleOutput == "" {
+		subtitleOutput = c.cfg.SubtitleOutput
+		if subtitleOutput == "" {
+			subtitleOutput = "burn"
+		}
+	}
+	if mode != ModeDub && subtitleOutput != "burn" {
 		filtered := steps[:0]
 		for _, s := range steps {
 			if s != StepBurn {

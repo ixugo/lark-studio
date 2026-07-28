@@ -228,11 +228,18 @@ func taskModeTitle(mode int) string {
 // taskPipelineJob 将任务模型转换为调度器输入。
 func taskPipelineJob(item *task.Task) pipeline.Job {
 	return pipeline.Job{
-		TaskID:     item.ID,
-		InputPath:  item.InputPath,
-		OutputDir:  item.OutputDir,
-		Mode:       item.Mode,
-		TargetLang: item.TargetLang,
+		TaskID:         item.ID,
+		InputPath:      item.InputPath,
+		OutputDir:      item.OutputDir,
+		Mode:           item.Mode,
+		SourceLang:     item.SourceLang,
+		TargetLang:     item.TargetLang,
+		Translator:     item.Translator,
+		OutputContent:  item.OutputContent,
+		TTSEngine:      item.TTSEngine,
+		TTSVoice:       item.TTSVoice,
+		SpeechRate:     item.SpeechRate,
+		SubtitleOutput: item.SubtitleOutput,
 	}
 }
 
@@ -269,14 +276,9 @@ func (a TaskAPI) resumeTask(c *gin.Context, in *task.GetTaskInput) (*task.Task, 
 	}); err != nil {
 		return nil, err
 	}
-	if err := a.scheduler.Submit(pipeline.Job{
-		TaskID:     t.ID,
-		InputPath:  t.InputPath,
-		OutputDir:  t.OutputDir,
-		Mode:       t.Mode,
-		TargetLang: t.TargetLang,
-		ResumeFrom: resumeFrom,
-	}); err != nil {
+	job := taskPipelineJob(t)
+	job.ResumeFrom = resumeFrom
+	if err := a.scheduler.Submit(job); err != nil {
 		return nil, reason.ErrServer.Withf("提交流水线失败: %s", err)
 	}
 	return a.taskCore.GetTask(c.Request.Context(), t.ID)

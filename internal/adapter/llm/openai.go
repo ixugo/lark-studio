@@ -167,7 +167,22 @@ const (
 // systemPrompt 为空时使用内置默认提示词
 // contextBefore/contextAfter 作为上下文帮助 LLM 理解语境，不计入翻译输出
 func (c *Client) Translate(ctx context.Context, sentences []string, targetLang, systemPrompt string, contextBefore, contextAfter []string) ([]string, error) {
-	switch strings.ToLower(c.provider) {
+	return c.TranslateWithProvider(
+		ctx, sentences, targetLang, systemPrompt, contextBefore, contextAfter, c.provider,
+	)
+}
+
+// TranslateWithProvider 使用任务快照指定的翻译引擎。
+func (c *Client) TranslateWithProvider(
+	ctx context.Context,
+	sentences []string,
+	targetLang string,
+	systemPrompt string,
+	contextBefore []string,
+	contextAfter []string,
+	provider string,
+) ([]string, error) {
+	switch strings.ToLower(provider) {
 	case "bing":
 		return c.translateBing(ctx, sentences, targetLang)
 	case "deeplx":

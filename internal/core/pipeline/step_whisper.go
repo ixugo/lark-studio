@@ -55,7 +55,7 @@ func (c *Core) transcribeAudio(ctx context.Context, job Job, audioPath, workSRT 
 		ctx,
 		audioPath,
 		workSRT,
-		"auto",
+		sourceLanguage(job),
 		func(progress int) {
 			c.notifier.OnProgress(job.TaskID, StepWhisper, 20+progress*80/100)
 		},
@@ -71,6 +71,14 @@ func (c *Core) transcribeAudio(ctx context.Context, job Job, audioPath, workSRT 
 		c.logEvent(job.TaskID, "success", StepWhisper, "听写完成：%d 条字幕", len(parseSRT(string(data))))
 	}
 	return nil
+}
+
+// sourceLanguage 返回 Whisper 可直接使用的任务源语言。
+func sourceLanguage(job Job) string {
+	if strings.TrimSpace(job.SourceLang) == "" {
+		return "auto"
+	}
+	return job.SourceLang
 }
 
 // extractAudio 用 ffmpeg 从视频提取音频

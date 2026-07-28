@@ -2,6 +2,7 @@ package tts
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -33,19 +34,36 @@ func NewOpenAITTS(baseURL, apiKey, model, voice string) *OpenAITTS {
 
 // Synthesize 调用 OpenAI TTS API 合成语音
 func (t *OpenAITTS) Synthesize(ctx context.Context, text, outputPath, voice string) error {
+	return t.SynthesizeWithSpeed(ctx, text, outputPath, voice, 1)
+}
+
+// SynthesizeWithSpeed 使用任务指定的音色与语速调用 OpenAI 兼容接口。
+func (t *OpenAITTS) SynthesizeWithSpeed(
+	ctx context.Context,
+	text string,
+	outputPath string,
+	voice string,
+	speed float64,
+) error {
 	if voice == "" {
 		voice = t.voice
 	}
-
-	body := fmt.Sprintf(`{"model":"%s","input":"%s","voice":"%s"}`,
-		t.model,
-		strings.ReplaceAll(text, `"`, `\"`),
-		voice,
-	)
+	if speed <= 0 {
+		speed = 1
+	}
+	body, err := json.Marshal(map[string]any{
+		"model": t.model,
+		"input": text,
+		"voice": voice,
+		"speed": speed,
+	})
+	if err != nil {
+		return err
+	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST",
 		t.baseURL+"/audio/speech",
-		strings.NewReader(body),
+		strings.NewReader(string(body)),
 	)
 	if err != nil {
 		return err

@@ -54,6 +54,11 @@ func (c *Core) runBurn(ctx context.Context, job Job) error {
 	srcSRT := filepath.Join(job.OutputDir, "src.srt")
 	dubAudio := filepath.Join(job.OutputDir, "dub.mp3")
 	videoSrc := resolveSourceVideo(job)
+	subtitleOutput := job.SubtitleOutput
+	if subtitleOutput == "" {
+		subtitleOutput = c.cfg.SubtitleOutput
+	}
+	primarySRT, secondarySRT := selectedSubtitleFiles(job.OutputContent, transSRT, srcSRT)
 
 	switch job.Mode {
 	case ModeSubtitle:
@@ -64,19 +69,37 @@ func (c *Core) runBurn(ctx context.Context, job Job) error {
 
 	case ModeTranslate:
 		outputVideo := filepath.Join(job.OutputDir, baseName+".trans.mp4")
-		if err := c.burnSubtitle(ctx, ffmpeg, job.InputPath, transSRT, srcSRT, outputVideo, job.TaskID); err != nil {
+		if err := c.burnSubtitle(ctx, ffmpeg, job.InputPath, primarySRT, secondarySRT, outputVideo, job.TaskID); err != nil {
 			return err
 		}
 
 	case ModeDub:
 		outputVideo := filepath.Join(job.OutputDir, baseName+".final.mp4")
-		if err := c.burnWithDub(ctx, ffmpeg, videoSrc, transSRT, srcSRT, dubAudio, outputVideo, job.TaskID); err != nil {
-			return err
+		if subtitleOutput == "burn" {
+			if err := c.burnWithDub(ctx, ffmpeg, videoSrc, primarySRT, secondarySRT, dubAudio, outputVideo, job.TaskID); err != nil {
+				return err
+			}
+		} else {
+			if err := c.mergeDubVideo(ctx, ffmpeg, videoSrc, dubAudio, outputVideo, job.TaskID); err != nil {
+				return err
+			}
 		}
 	}
 
 	c.notifier.OnProgress(job.TaskID, StepBurn, 100)
 	return nil
+}
+
+// selectedSubtitleFiles 根据输出内容选择烧录的主副字幕。
+func selectedSubtitleFiles(content, transSRT, srcSRT string) (string, string) {
+	switch content {
+	case "source":
+		return srcSRT, ""
+	case "translated":
+		return transSRT, ""
+	default:
+		return transSRT, srcSRT
+	}
 }
 
 // burnSubtitle 烧录字幕（双语或单语），带 ffmpeg 进度回调
@@ -180,6 +203,34 @@ func (c *Core) burnWithDub(ctx context.Context, ffmpeg, videoPath, transSRT, src
 	}, args...)
 	if err != nil {
 		return fmt.Errorf("合成配音视频失败: %w", err)
+	}
+	return nil
+}
+
+// mergeDubVideo 合成配音视频但不把字幕写入画面。
+func (c *Core) mergeDubVideo(
+	ctx context.Context,
+	ffmpeg string,
+	videoPath string,
+	dubAudio string,
+	outputPath string,
+	taskID string,
+) error {
+	totalDuration := probeMediaDuration(ffmpeg, videoPath)
+	args := []string{
+		ffmpeg, "-y", "-i", videoPath, "-i", dubAudio,
+		"-filter_complex",
+		"[0:a]volume=0.15[bg];[bg][1:a]amix=inputs=2:duration=first:dropout_transition=3[a]",
+		"-map", "0:v:0", "-map", "[a]", "-c:v", "copy",
+		"-c:a", "aac", "-b:a", "128k", outputPath,
+	}
+	err := runFFmpegWithProgress(ctx, totalDuration, func(progress int) {
+		c.notifier.OnProgress(taskID, StepBurn, progress)
+	}, func(line string) {
+		c.logEvent(taskID, "info", StepBurn, "ffmpeg：%s", line)
+	}, args...)
+	if err != nil {
+		return fmt.Errorf("合成无字幕配音视频失败: %w", err)
 	}
 	return nil
 }

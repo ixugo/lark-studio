@@ -185,7 +185,7 @@ func (c *Core) synthesizePair(cfg ttsWorkerConfig, pair ttsPair) error {
 	if err := removeStaleAudio(outputPath); err != nil {
 		return fmt.Errorf("清理第 %d 句旧配音失败: %w", pair.index+1, err)
 	}
-	if err := c.tts.Synthesize(cfg.ctx, pair.text, outputPath, ""); err != nil {
+	if err := c.synthesizeWithJob(cfg.ctx, cfg.job, pair.text, outputPath); err != nil {
 		return fmt.Errorf("TTS 第 %d 句失败: %w", pair.index+1, err)
 	}
 	if err := writeAudioTextFingerprint(outputPath, pair.text); err != nil {
@@ -296,10 +296,10 @@ func (c *Core) translateChunk(
 	start, end := chunkRange.start, chunkRange.end
 	contextStart := max(0, start-contextWindow)
 	contextEnd := min(len(sentences), end+contextWindow)
-	return c.llm.Translate(
+	return c.translateWithJob(
 		ctx,
+		job,
 		sentences[start:end],
-		job.TargetLang,
 		prompt,
 		sentences[contextStart:start],
 		sentences[end:contextEnd],
