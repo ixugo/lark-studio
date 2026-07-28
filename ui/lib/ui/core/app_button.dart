@@ -1,10 +1,10 @@
 import 'package:flutter/widgets.dart';
 import 'app_colors.dart';
 
-/// 统一按钮样式
-/// primary: 蓝色/绿色等填充按钮
-/// secondary: 带边框无填充按钮
-/// 所有按钮保证：最小高度 32、水平内边距 16、文字居中、圆角 8
+/// 统一按钮样式（Liquid Glass 胶囊形）
+/// primary: 强调色填充，带顶部高光渐变
+/// secondary: 玻璃底 + 细描边
+/// 所有按钮保证：最小高度 32、水平内边距 16、文字居中、胶囊圆角
 enum AppButtonStyle { primary, secondary }
 
 class AppButton extends StatefulWidget {
@@ -44,18 +44,41 @@ class _AppButtonState extends State<AppButton> {
     final c = AppColors.of(context);
     final enabled = widget.onPressed != null;
     final isPrimary = widget.style == AppButtonStyle.primary;
+    final base = widget.color ?? c.accent;
 
-    final bgColor = !enabled
-        ? (isPrimary ? (widget.color ?? AppColors.blue).withValues(alpha: 0.4) : c.inputBg)
-        : isPrimary
-            ? (widget.color ?? AppColors.blue)
-            : _hovering
-                ? c.cardBgHover
-                : const Color(0x00000000);
+    // 主按钮用纵向渐变模拟玻璃受光，hover 时整体提亮
+    final primaryDecoration = BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Color.lerp(
+            base,
+            const Color(0xFFFFFFFF),
+            _hovering && enabled ? 0.34 : 0.22,
+          )!,
+          Color.lerp(
+            base,
+            const Color(0xFFFFFFFF),
+            _hovering && enabled ? 0.08 : 0.0,
+          )!,
+        ],
+      ),
+      borderRadius: BorderRadius.circular(999),
+      border: Border.all(color: c.glassTopLine, width: 0.5),
+    );
 
-    final borderColor = isPrimary
-        ? const Color(0x00000000)
-        : c.borderLight;
+    final secondaryBase = widget.color;
+    final secondaryDecoration = BoxDecoration(
+      color: secondaryBase == null
+          ? (_hovering && enabled ? c.glassCardHover : c.glassCardBg)
+          : secondaryBase.withValues(alpha: _hovering && enabled ? 0.16 : 0.09),
+      borderRadius: BorderRadius.circular(999),
+      border: Border.all(
+        color: secondaryBase?.withValues(alpha: 0.28) ?? c.glassStroke,
+        width: 0.5,
+      ),
+    );
 
     return MouseRegion(
       cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
@@ -63,7 +86,12 @@ class _AppButtonState extends State<AppButton> {
       onExit: (_) => setState(() => _hovering = false),
       child: GestureDetector(
         onTapDown: enabled ? (_) => setState(() => _pressing = true) : null,
-        onTapUp: enabled ? (_) { setState(() => _pressing = false); widget.onPressed?.call(); } : null,
+        onTapUp: enabled
+            ? (_) {
+                setState(() => _pressing = false);
+                widget.onPressed?.call();
+              }
+            : null,
         onTapCancel: () => setState(() => _pressing = false),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 100),
@@ -72,13 +100,17 @@ class _AppButtonState extends State<AppButton> {
             minWidth: widget.minWidth ?? 60,
           ),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          transform: _pressing ? (Matrix4.identity()..scale(0.97, 0.97)) : Matrix4.identity(),
+          transform: _pressing
+              ? (Matrix4.identity()..scaleByDouble(0.97, 0.97, 1.0, 1.0))
+              : Matrix4.identity(),
           transformAlignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: bgColor,
-            borderRadius: BorderRadius.circular(8),
-            border: isPrimary ? null : Border.all(color: borderColor, width: 0.5),
-          ),
+          decoration: isPrimary ? primaryDecoration : secondaryDecoration,
+          foregroundDecoration: !enabled
+              ? BoxDecoration(
+                  color: c.bg.withValues(alpha: 0.45),
+                  borderRadius: BorderRadius.circular(999),
+                )
+              : null,
           child: DefaultTextStyle.merge(
             textAlign: TextAlign.center,
             style: TextStyle(
@@ -86,14 +118,14 @@ class _AppButtonState extends State<AppButton> {
               fontWeight: FontWeight.w500,
               color: isPrimary
                   ? const Color(0xFFFFFFFF)
-                  : c.textPrimary,
+                  : secondaryBase ?? c.textPrimary,
             ),
             child: IconTheme.merge(
               data: IconThemeData(
                 size: 14,
                 color: isPrimary
                     ? const Color(0xFFFFFFFF)
-                    : c.textSecondary,
+                    : secondaryBase ?? c.textSecondary,
               ),
               child: Center(
                 widthFactor: 1,
