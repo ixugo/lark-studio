@@ -28,8 +28,7 @@ class DashboardPage extends HookConsumerWidget {
 
     return Column(
       children: [
-        _DashboardToolbar(
-            onRefresh: () => ref.read(dashboardProvider.notifier).load()),
+        _buildToolbar(() => ref.read(dashboardProvider.notifier).load()),
         Expanded(
           child: ds.loading && !backend.online
               ? const Center(child: CupertinoActivityIndicator(radius: 14))
@@ -118,7 +117,7 @@ class DashboardPage extends HookConsumerWidget {
                     style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF1D1D1F),
+                        color: Color(0xFFE5E5EA),
                         letterSpacing: -0.3)),
               ],
             ),
@@ -181,7 +180,7 @@ class DashboardPage extends HookConsumerWidget {
                     style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF1D1D1F),
+                        color: Color(0xFFE5E5EA),
                         letterSpacing: -0.3)),
                 const Spacer(),
                 if (allReady) _ReadyBadge(),
@@ -230,7 +229,7 @@ class DashboardPage extends HookConsumerWidget {
                 style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
-                    color: Color(0xFF3A3A3C)),
+                    color: Color(0xFFE5E5EA)),
                 overflow: TextOverflow.ellipsis),
           ),
         ],
@@ -404,7 +403,7 @@ class _WorkflowDetailPage extends HookConsumerWidget {
     }
 
     return CupertinoPageScaffold(
-      backgroundColor: const Color(0xFFF5F5F7),
+      backgroundColor: const Color(0xFF0A0A0A),
       navigationBar: CupertinoNavigationBar(
           middle: Text(wf.title), previousPageTitle: '主页'),
       child: SafeArea(
@@ -415,7 +414,7 @@ class _WorkflowDetailPage extends HookConsumerWidget {
                 style: const TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF1D1D1F),
+                    color: Color(0xFFE5E5EA),
                     letterSpacing: -0.8)),
             const SizedBox(height: 6),
             Text(wf.subtitle,
@@ -456,7 +455,7 @@ class _WorkflowDetailPage extends HookConsumerWidget {
                 style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF1D1D1F))),
+                    color: Color(0xFFE5E5EA))),
             const SizedBox(height: 6),
             const Text('支持 MP4、MKV、AVI、MOV 等格式',
                 style:
@@ -529,7 +528,7 @@ class _StepRow extends StatelessWidget {
               style: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w500,
-                  color: Color(0xFF1D1D1F))),
+                  color: Color(0xFFE5E5EA))),
         ),
       ],
     );
@@ -573,51 +572,33 @@ class _ReadyBadge extends StatelessWidget {
   }
 }
 
-class _DashboardToolbar extends StatelessWidget {
-  final VoidCallback onRefresh;
-  const _DashboardToolbar({required this.onRefresh});
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-        child: Container(
-          height: 52,
-          padding: const EdgeInsets.symmetric(horizontal: 28),
-          decoration: BoxDecoration(
-            color: const Color(0xFFFFFFFF).withValues(alpha: 0.65),
-            border: const Border(
-                bottom: BorderSide(color: Color(0x1A000000), width: 0.5)),
+  Widget _buildToolbar(VoidCallback onRefresh) {
+    return Container(
+      height: 52,
+      padding: const EdgeInsets.symmetric(horizontal: 28),
+      decoration: const BoxDecoration(
+        color: Color(0xFF0D0D0D),
+        border: Border(bottom: BorderSide(color: Color(0xFF1F1F1F), width: 0.5)),
+      ),
+      child: Row(
+        children: [
+          const Text('启动台',
+              style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFFE5E5EA),
+                  letterSpacing: -0.5)),
+          const Spacer(),
+          CupertinoButton(
+            padding: EdgeInsets.zero,
+            onPressed: onRefresh,
+            child: const Icon(CupertinoIcons.refresh,
+                size: 16, color: Color(0xFF8E8E93)),
           ),
-          child: Row(
-            children: [
-              const Text('vdub',
-                  style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF1D1D1F),
-                      letterSpacing: -0.8)),
-              const SizedBox(width: 8),
-              const Text('视频翻译配音',
-                  style: TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF8E8E93),
-                      letterSpacing: 0.1)),
-              const Spacer(),
-              CupertinoButton(
-                padding: EdgeInsets.zero,
-                onPressed: onRefresh,
-                child: const Icon(CupertinoIcons.refresh,
-                    size: 16, color: Color(0xFF8E8E93)),
-              ),
-            ],
-          ),
-        ),
+        ],
       ),
     );
   }
-}
 
 class _RecentTaskRow extends HookWidget {
   final Task task;
@@ -656,7 +637,7 @@ class _RecentTaskRow extends HookWidget {
                         style: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
-                            color: Color(0xFF1D1D1F)),
+                            color: Color(0xFFE5E5EA)),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis),
                     const SizedBox(height: 1),

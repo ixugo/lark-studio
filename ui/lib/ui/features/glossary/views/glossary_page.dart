@@ -268,7 +268,7 @@ class _GlossaryDetail extends HookConsumerWidget {
     final glossaryId = (glossary['id'] as num?)?.toInt() ?? 0;
 
     return Container(
-      color: const Color(0xFF000000).withValues(alpha: 0.02),
+      color: const Color(0xFF0A0A0A),
       child: Column(
         children: [
           _buildDetailHeader(context, name, enabled, glossaryId),
