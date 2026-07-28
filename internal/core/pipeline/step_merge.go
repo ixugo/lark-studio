@@ -42,7 +42,7 @@ func (c *Core) runMerge(ctx context.Context, job Job) error {
 
 	trimmed := c.trimTrailingSilence(ctx, audioFiles, job)
 	if trimmed > 0 {
-		c.notifier.OnLog(job.TaskID, fmt.Sprintf("裁掉 %d 段音频尾部静音", trimmed))
+		c.logEvent(job.TaskID, "info", StepMerge, "裁掉 %d 段音频尾部静音", trimmed)
 	}
 
 	c.adjustAudioSpeeds(ctx, audioFiles, srtEntries, job)
@@ -144,7 +144,7 @@ func (c *Core) adjustAudioSpeeds(ctx context.Context, audioFiles []string, entri
 	}
 
 	if adjusted > 0 {
-		c.notifier.OnLog(job.TaskID, fmt.Sprintf("调速 %d 段音频 (上限 %.1fx)", adjusted, maxFactor))
+		c.logEvent(job.TaskID, "info", StepMerge, "调速 %d 段音频（上限 %.1fx）", adjusted, maxFactor)
 	}
 }
 

@@ -31,7 +31,7 @@ func (c *Core) runSplit(ctx context.Context, job Job) error {
 	sentences, err := c.llm.SplitSentences(ctx, fullText, "en")
 	c.llmMu.Unlock()
 	if err != nil {
-		c.notifier.OnLog(job.TaskID, fmt.Sprintf("LLM 分句失败，保留原始字幕: %v", err))
+		c.logEvent(job.TaskID, "warn", StepSplit, "语义分句失败，保留原始字幕：%v", err)
 		c.notifier.OnProgress(job.TaskID, StepSplit, 100)
 		return nil
 	}
@@ -40,7 +40,7 @@ func (c *Core) runSplit(ctx context.Context, job Job) error {
 
 	newEntries := alignSentences(fullRunes, charTimes, sentences)
 	if len(newEntries) == 0 {
-		c.notifier.OnLog(job.TaskID, "句子对齐失败，保留原始字幕")
+		c.logEvent(job.TaskID, "warn", StepSplit, "时间轴对齐失败，保留原始字幕")
 		c.notifier.OnProgress(job.TaskID, StepSplit, 100)
 		return nil
 	}
@@ -62,7 +62,7 @@ func (c *Core) runSplit(ctx context.Context, job Job) error {
 		return fmt.Errorf("写入重分段字幕失败: %w", err)
 	}
 
-	c.notifier.OnLog(job.TaskID, fmt.Sprintf("重分段完成: %d 条 → %d 句", len(entries), len(newEntries)))
+	c.logEvent(job.TaskID, "success", StepSplit, "语义分句完成：%d 条 → %d 句", len(entries), len(newEntries))
 	c.notifier.OnProgress(job.TaskID, StepSplit, 100)
 	return nil
 }

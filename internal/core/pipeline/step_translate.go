@@ -19,6 +19,31 @@ type ttsPair struct {
 	text  string
 }
 
+// ttsPipelineState 汇总并发配音 worker 的进度和首个错误。
+type ttsPipelineState struct {
+	done   atomic.Int32
+	logged atomic.Int32
+	err    error
+	once   sync.Once
+	wg     sync.WaitGroup
+}
+
+// ttsWorkerConfig 收拢 worker 的共享输入，避免并发函数参数过多。
+type ttsWorkerConfig struct {
+	ctx      context.Context
+	job      Job
+	input    <-chan ttsPair
+	audioDir string
+	total    int
+	state    *ttsPipelineState
+}
+
+// translationRange 描述当前翻译分块的半开区间。
+type translationRange struct {
+	start int
+	end   int
+}
+
 // runTranslate 翻译步骤
 // ModeDub 模式下同时启动 TTS goroutine，实现翻译与 TTS 真流水线并行
 func (c *Core) runTranslate(ctx context.Context, job Job) error {
@@ -49,28 +74,25 @@ func (c *Core) translateOnly(ctx context.Context, job Job, entries []srtEntry, s
 	c.llmMu.Lock()
 	defer c.llmMu.Unlock()
 
-	c.notifier.OnLog(job.TaskID, fmt.Sprintf("翻译 %d 句到 %s", len(sentences), job.TargetLang))
+	c.logEvent(job.TaskID, "info", StepTranslate, "翻译开始：%d 句 → %s", len(sentences), job.TargetLang)
 
 	translated, err := c.translateAllChunks(ctx, job, sentences, nil)
 	if err != nil {
 		return err
 	}
 
-	return c.writeTranslationOutputs(entries, translated, job.OutputDir)
+	if err := c.writeTranslationOutputs(entries, translated, job.OutputDir); err != nil {
+		return err
+	}
+	c.logEvent(job.TaskID, "success", StepTranslate, "翻译完成，时间轴 1:1 对齐")
+	return nil
 }
 
 // translateAndTTS 翻译与 TTS 真流水线并行（ModeDub 用）
 // 翻译每完成一个 chunk，立即将结果推入 channel；N 个 TTS worker 并发消费
 // 有序性靠文件名 {index}.wav 保证，不会朗读两遍（已存在的文件自动跳过）
 func (c *Core) translateAndTTS(ctx context.Context, job Job, entries []srtEntry, sentences []string) error {
-	ttsWorkers := c.cfg.TTSWorkers
-	if ttsWorkers <= 0 {
-		ttsWorkers = 2
-	}
-	if ttsWorkers > 4 {
-		ttsWorkers = 4
-	}
-
+	ttsWorkers := normalizedTTSWorkers(c.cfg.TTSWorkers)
 	ttsCh := make(chan ttsPair, 300)
 	audioDir := filepath.Join(job.OutputDir, "audio_segs")
 	if err := os.MkdirAll(audioDir, 0o755); err != nil {
@@ -78,66 +100,73 @@ func (c *Core) translateAndTTS(ctx context.Context, job Job, entries []srtEntry,
 	}
 
 	total := len(sentences)
-	c.notifier.OnLog(job.TaskID, fmt.Sprintf("翻译+TTS 流水线: %d 句, TTS 并发 %d", total, ttsWorkers))
-
-	var ttsDone atomic.Int32
-	var ttsErr error
-	var ttsOnce sync.Once
-	var ttsWg sync.WaitGroup
-
-	// TTS 消费者——持有 ttsMu 阻止其他任务同时使用 TTS 资源
+	c.logEvent(job.TaskID, "info", StepTranslate, "翻译开始：%d 句 → %s", total, job.TargetLang)
+	c.logEvent(job.TaskID, "info", StepTTS, "配音准备：%d 句，并发 %d", total, ttsWorkers)
+	state := new(ttsPipelineState)
 	c.ttsMu.Lock()
-	for w := range ttsWorkers {
-		ttsWg.Add(1)
-		go func(workerID int) {
-			defer ttsWg.Done()
-			for pair := range ttsCh {
-				if ctx.Err() != nil {
-					ttsOnce.Do(func() { ttsErr = ctx.Err() })
-					for range ttsCh {
-					}
-					return
-				}
-
-				outputPath := filepath.Join(audioDir, fmt.Sprintf("%d.wav", pair.index))
-
-				if info, e := os.Stat(outputPath); e == nil && info.Size() > 0 {
-					done := int(ttsDone.Add(1))
-					c.notifier.OnProgress(job.TaskID, StepTTS, (done*100)/total)
-					continue
-				}
-
-				if err := c.tts.Synthesize(ctx, pair.text, outputPath, ""); err != nil {
-					ttsOnce.Do(func() {
-						ttsErr = fmt.Errorf("TTS 第 %d 句失败: %w", pair.index+1, err)
-					})
-					for range ttsCh {
-					}
-					return
-				}
-				done := int(ttsDone.Add(1))
-				c.notifier.OnProgress(job.TaskID, StepTTS, (done*100)/total)
-			}
-		}(w)
+	workerConfig := ttsWorkerConfig{
+		ctx: ctx, job: job, input: ttsCh, audioDir: audioDir, total: total, state: state,
 	}
+	c.startTTSWorkers(ttsWorkers, workerConfig)
 
-	// 翻译生产者：逐块翻译，每完成一块立即推入 channel
 	c.llmMu.Lock()
 	translated, translateErr := c.translateAllChunks(ctx, job, sentences, ttsCh)
 	c.llmMu.Unlock()
-
 	close(ttsCh)
-	ttsWg.Wait()
+	state.wg.Wait()
 	c.ttsMu.Unlock()
 
 	if translateErr != nil {
 		return translateErr
 	}
-	if ttsErr != nil {
-		return ttsErr
+	if state.err != nil {
+		return state.err
 	}
+	if err := c.writeTranslationOutputs(entries, translated, job.OutputDir); err != nil {
+		return err
+	}
+	c.logEvent(job.TaskID, "success", StepTranslate, "翻译完成，时间轴 1:1 对齐")
+	c.logEvent(job.TaskID, "success", StepTTS, "配音完成：%d 段", state.done.Load())
+	return nil
+}
 
-	return c.writeTranslationOutputs(entries, translated, job.OutputDir)
+// normalizedTTSWorkers 将旧配置零值恢复为默认并限制并发上限。
+func normalizedTTSWorkers(workers int) int {
+	if workers <= 0 {
+		return 2
+	}
+	return min(4, workers)
+}
+
+// startTTSWorkers 启动固定数量的配音消费者。
+func (c *Core) startTTSWorkers(workers int, cfg ttsWorkerConfig) {
+	for range workers {
+		cfg.state.wg.Add(1)
+		go c.consumeTTS(cfg)
+	}
+}
+
+// consumeTTS 合成队列中的字幕，并只保存第一个错误。
+func (c *Core) consumeTTS(cfg ttsWorkerConfig) {
+	defer cfg.state.wg.Done()
+	for pair := range cfg.input {
+		if cfg.ctx.Err() != nil {
+			cfg.state.once.Do(func() { cfg.state.err = cfg.ctx.Err() })
+			continue
+		}
+		outputPath := filepath.Join(cfg.audioDir, fmt.Sprintf("%d.wav", pair.index))
+		if info, err := os.Stat(outputPath); err == nil && info.Size() > 0 {
+			c.reportTTSProgress(cfg.job, int(cfg.state.done.Add(1)), cfg.total, &cfg.state.logged)
+			continue
+		}
+		if err := c.tts.Synthesize(cfg.ctx, pair.text, outputPath, ""); err != nil {
+			cfg.state.once.Do(func() {
+				cfg.state.err = fmt.Errorf("TTS 第 %d 句失败: %w", pair.index+1, err)
+			})
+			continue
+		}
+		c.reportTTSProgress(cfg.job, int(cfg.state.done.Add(1)), cfg.total, &cfg.state.logged)
+	}
 }
 
 // translateAllChunks 分块翻译全部句子（调用方须持有 llmMu 锁）
@@ -163,26 +192,24 @@ func (c *Core) translateAllChunks(
 		}
 
 		end := min(i+chunkSize, total)
-		chunk := sentences[i:end]
-
-		ctxStart := max(0, i-contextWindow)
-		ctxEnd := min(total, end+contextWindow)
-		before := sentences[ctxStart:i]
-		after := sentences[end:ctxEnd]
-
-		result, err := c.llm.Translate(ctx, chunk, job.TargetLang, prompt, before, after)
+		chunkRange := translationRange{start: i, end: end}
+		result, err := c.translateChunk(ctx, job, sentences, prompt, chunkRange)
 		if err != nil {
 			return nil, fmt.Errorf("翻译第 %d-%d 句失败: %w", i+1, end, err)
 		}
 		translated = append(translated, result...)
 
-		if streamTo != nil {
-			for j, t := range result {
-				streamTo <- ttsPair{index: i + j, text: t}
-			}
-		}
-
+		streamTranslationChunk(streamTo, i, result)
 		c.notifier.OnProgress(job.TaskID, StepTranslate, (end*100)/total)
+		c.logEvent(
+			job.TaskID,
+			"info",
+			StepTranslate,
+			"翻译进度 %d%%（%d/%d）",
+			(end*100)/total,
+			end,
+			total,
+		)
 	}
 
 	for len(translated) < total {
@@ -194,6 +221,61 @@ func (c *Core) translateAllChunks(
 
 	c.notifier.OnProgress(job.TaskID, StepTranslate, 100)
 	return translated, nil
+}
+
+// translateChunk 翻译一个分块，并携带前后文供模型理解语境。
+func (c *Core) translateChunk(
+	ctx context.Context,
+	job Job,
+	sentences []string,
+	prompt string,
+	chunkRange translationRange,
+) ([]string, error) {
+	start, end := chunkRange.start, chunkRange.end
+	contextStart := max(0, start-contextWindow)
+	contextEnd := min(len(sentences), end+contextWindow)
+	return c.llm.Translate(
+		ctx,
+		sentences[start:end],
+		job.TargetLang,
+		prompt,
+		sentences[contextStart:start],
+		sentences[end:contextEnd],
+	)
+}
+
+// streamTranslationChunk 将刚翻译的分块立即送入配音队列。
+func streamTranslationChunk(output chan<- ttsPair, start int, translated []string) {
+	if output == nil {
+		return
+	}
+	for index, text := range translated {
+		output <- ttsPair{index: start + index, text: text}
+	}
+}
+
+// reportTTSProgress 推送配音百分比，并确保同一百分比只写一行日志。
+func (c *Core) reportTTSProgress(job Job, done, total int, logged *atomic.Int32) {
+	progress := done * 100 / total
+	c.notifier.OnProgress(job.TaskID, StepTTS, progress)
+	for {
+		previous := logged.Load()
+		if int32(progress) <= previous {
+			return
+		}
+		if logged.CompareAndSwap(previous, int32(progress)) {
+			c.logEvent(
+				job.TaskID,
+				"info",
+				StepTTS,
+				"配音进度 %d%%（%d/%d）",
+				progress,
+				done,
+				total,
+			)
+			return
+		}
+	}
 }
 
 // injectTermsIntoPrompt 查询术语表，将与当前字幕匹配的术语映射注入翻译 prompt

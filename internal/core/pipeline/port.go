@@ -8,7 +8,14 @@ type WhisperRunner interface {
 	// audioPath: 输入音频路径
 	// outputSRT: 输出 SRT 文件路径
 	// lang: 源语言（如 "en", "auto"）
-	Transcribe(ctx context.Context, audioPath, outputSRT, lang string) error
+	Transcribe(
+		ctx context.Context,
+		audioPath string,
+		outputSRT string,
+		lang string,
+		onProgress func(int),
+		onLog func(string),
+	) error
 }
 
 // LLMClient 大模型翻译/分句接口

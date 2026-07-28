@@ -88,38 +88,69 @@ func (a TaskAPI) updateTask(c *gin.Context, in *task.UpdateTaskInput) (*task.Tas
 
 // createTask 校验输入文件并提交单个流水线任务。
 func (a TaskAPI) createTask(c *gin.Context, in *task.CreateTaskInput) (*task.Task, error) {
+	if err := a.prepareTaskInput(in); err != nil {
+		return nil, err
+	}
+	t, err := a.taskCore.CreateTask(c.Request.Context(), in)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := a.taskCore.AppendTaskLog(
+		c.Request.Context(), t.ID, "info", "",
+		"任务创建，模式："+taskModeTitle(t.Mode),
+	); err != nil {
+		return nil, err
+	}
+	if err := a.scheduler.Submit(taskPipelineJob(t)); err != nil {
+		return nil, reason.ErrServer.Withf("提交流水线失败: %s", err)
+	}
+	return t, nil
+}
+
+// prepareTaskInput 校验输入并补齐输出目录与目标语言。
+func (a TaskAPI) prepareTaskInput(in *task.CreateTaskInput) error {
 	if _, err := os.Stat(in.InputPath); err != nil {
-		return nil, reason.ErrBadRequest.SetMsg("视频文件不存在")
+		return reason.ErrBadRequest.SetMsg("视频文件不存在")
 	}
 	if in.Mode < pipeline.ModeSubtitle || in.Mode > pipeline.ModeDub {
-		return nil, reason.ErrBadRequest.SetMsg("无效的处理模式")
+		return reason.ErrBadRequest.SetMsg("无效的处理模式")
 	}
-
 	if in.OutputDir == "" {
 		baseName := strings.TrimSuffix(filepath.Base(in.InputPath), filepath.Ext(in.InputPath))
 		in.OutputDir = filepath.Join(filepath.Dir(in.InputPath), baseName+"_vdub")
 	}
 	if err := os.MkdirAll(in.OutputDir, 0o755); err != nil {
-		return nil, reason.ErrServer.Withf("创建输出目录失败: %s", err)
+		return reason.ErrServer.Withf("创建输出目录失败: %s", err)
 	}
 	if in.TargetLang == "" {
 		in.TargetLang = a.conf.Pipeline.DefaultTargetLang
 	}
+	return nil
+}
 
-	t, err := a.taskCore.CreateTask(c.Request.Context(), in)
-	if err != nil {
-		return nil, err
+// taskModeTitle 返回 API 创建日志所需的中文模式名。
+func taskModeTitle(mode int) string {
+	switch mode {
+	case pipeline.ModeSubtitle:
+		return "原文字幕"
+	case pipeline.ModeTranslate:
+		return "双语字幕"
+	case pipeline.ModeDub:
+		return "配音成片"
+	default:
+		return "视频处理"
 	}
-	if err := a.scheduler.Submit(pipeline.Job{
-		TaskID:     t.ID,
-		InputPath:  t.InputPath,
-		OutputDir:  t.OutputDir,
-		Mode:       t.Mode,
-		TargetLang: t.TargetLang,
-	}); err != nil {
-		return nil, reason.ErrServer.Withf("提交流水线失败: %s", err)
+}
+
+// taskPipelineJob 将任务模型转换为调度器输入。
+func taskPipelineJob(item *task.Task) pipeline.Job {
+	return pipeline.Job{
+		TaskID:     item.ID,
+		InputPath:  item.InputPath,
+		OutputDir:  item.OutputDir,
+		Mode:       item.Mode,
+		TargetLang: item.TargetLang,
 	}
-	return t, nil
 }
 
 // deleteTask 删除指定任务。
@@ -215,13 +246,7 @@ func (a TaskAPI) createBatchTask(
 	if err != nil {
 		return nil, err
 	}
-	if err := a.scheduler.Submit(pipeline.Job{
-		TaskID:     t.ID,
-		InputPath:  t.InputPath,
-		OutputDir:  t.OutputDir,
-		Mode:       t.Mode,
-		TargetLang: t.TargetLang,
-	}); err != nil {
+	if err := a.scheduler.Submit(taskPipelineJob(t)); err != nil {
 		return nil, err
 	}
 	return t, nil

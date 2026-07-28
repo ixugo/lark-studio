@@ -58,3 +58,17 @@ func TestBundledLibraryDir(t *testing.T) {
 		t.Fatalf("system binary library dir = %q, want empty", got)
 	}
 }
+
+// TestNotifyWhisperOutputClampsProgress 验证异常百分比不会进入任务进度和日志。
+func TestNotifyWhisperOutputClampsProgress(t *testing.T) {
+	progress := -1
+	logLine := ""
+	notifyWhisperOutput(
+		"whisper_print_progress_callback: progress = 150%",
+		func(value int) { progress = value },
+		func(line string) { logLine = line },
+	)
+	if progress != 100 || logLine != "听写进度 100%" {
+		t.Fatalf("progress=%d log=%q", progress, logLine)
+	}
+}

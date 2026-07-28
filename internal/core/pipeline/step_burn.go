@@ -119,6 +119,8 @@ func (c *Core) burnSubtitle(ctx context.Context, ffmpeg, videoPath, transSRT, sr
 	args := []string{ffmpeg, "-y", "-i", videoPath, "-vf", vf, "-c:a", "copy", outputPath}
 	err := runFFmpegWithProgress(ctx, totalDur, func(pct int) {
 		c.notifier.OnProgress(taskID, StepBurn, pct)
+	}, func(line string) {
+		c.logEvent(taskID, "info", StepBurn, "ffmpeg：%s", line)
 	}, args...)
 	if err != nil {
 		return fmt.Errorf("烧录字幕失败: %w", err)
@@ -173,6 +175,8 @@ func (c *Core) burnWithDub(ctx context.Context, ffmpeg, videoPath, transSRT, src
 	}
 	err := runFFmpegWithProgress(ctx, totalDur, func(pct int) {
 		c.notifier.OnProgress(taskID, StepBurn, pct)
+	}, func(line string) {
+		c.logEvent(taskID, "info", StepBurn, "ffmpeg：%s", line)
 	}, args...)
 	if err != nil {
 		return fmt.Errorf("合成配音视频失败: %w", err)

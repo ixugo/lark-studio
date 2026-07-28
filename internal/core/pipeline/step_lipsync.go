@@ -17,7 +17,7 @@ func (c *Core) runLipSync(ctx context.Context, job Job) error {
 	dubAudio := filepath.Join(job.OutputDir, "dub.mp3")
 	outputVideo := filepath.Join(job.OutputDir, "lipsync.mp4")
 
-	c.notifier.OnLog(job.TaskID, "开始对口型处理（MuseTalk）")
+	c.logEvent(job.TaskID, "info", StepLipSync, "对口型开始：MuseTalk")
 	c.notifier.OnProgress(job.TaskID, StepLipSync, 10)
 
 	if err := c.lipSync.Generate(ctx, job.InputPath, dubAudio, outputVideo); err != nil {

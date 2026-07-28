@@ -3,13 +3,20 @@
 package whisper
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
+	"sync"
 )
+
+var whisperProgressPattern = regexp.MustCompile(`progress\s*=\s*(\d+)%`)
 
 // Runner whisper.cpp 命令行调用实现
 type Runner struct {
@@ -39,7 +46,14 @@ func resolveRunnerBinary(bin string, lookPath func(string) (string, error)) stri
 }
 
 // Transcribe 执行语音识别
-func (r *Runner) Transcribe(ctx context.Context, audioPath, outputSRT, lang string) error {
+func (r *Runner) Transcribe(
+	ctx context.Context,
+	audioPath string,
+	outputSRT string,
+	lang string,
+	onProgress func(int),
+	onLog func(string),
+) error {
 	if lang == "" {
 		lang = "auto"
 	}
@@ -52,12 +66,16 @@ func (r *Runner) Transcribe(ctx context.Context, audioPath, outputSRT, lang stri
 		"--output-srt",
 		"-of", outputBase,
 		"--no-timestamps",
+		"--print-progress",
 	}
 
-	output, err := r.run(ctx, args)
+	output, err := r.run(ctx, args, onProgress, onLog)
 	if err != nil && shouldRetryWithoutGPU(output) {
+		if onLog != nil {
+			onLog("Metal 初始化失败，切换 CPU 兼容模式")
+		}
 		args = append(args, "--no-gpu")
-		output, err = r.run(ctx, args)
+		output, err = r.run(ctx, args, onProgress, onLog)
 	}
 	if err != nil {
 		return fmt.Errorf("whisper.cpp 执行失败: %s\noutput: %s", err, string(output))
@@ -66,7 +84,48 @@ func (r *Runner) Transcribe(ctx context.Context, audioPath, outputSRT, lang stri
 }
 
 // run 执行一次 whisper.cpp 命令，保留标准输出供失败诊断与降级判断使用。
-func (r *Runner) run(ctx context.Context, args []string) ([]byte, error) {
+func (r *Runner) run(
+	ctx context.Context,
+	args []string,
+	onProgress func(int),
+	onLog func(string),
+) ([]byte, error) {
+	cmd := r.command(ctx, args)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+
+	var output bytes.Buffer
+	var outputMu sync.Mutex
+	var wg sync.WaitGroup
+	scanErrors := make(chan error, 2)
+	wg.Add(2)
+	go consumeOutput(stdout, &output, &outputMu, onProgress, onLog, scanErrors, &wg)
+	go consumeOutput(stderr, &output, &outputMu, onProgress, onLog, scanErrors, &wg)
+	waitErr := cmd.Wait()
+	wg.Wait()
+	close(scanErrors)
+	if waitErr == nil {
+		for scanErr := range scanErrors {
+			if scanErr != nil {
+				waitErr = scanErr
+				break
+			}
+		}
+	}
+	return output.Bytes(), waitErr
+}
+
+// command 创建 Whisper 命令，并为应用包内运行时补齐动态库环境。
+func (r *Runner) command(ctx context.Context, args []string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, r.bin, args...)
 	if libDir := bundledLibraryDir(r.bin); libDir != "" {
 		cmd.Env = append(
@@ -75,7 +134,61 @@ func (r *Runner) run(ctx context.Context, args []string) ([]byte, error) {
 			"GGML_BACKEND_PATH="+filepath.Join(libDir, "backends"),
 		)
 	}
-	return cmd.CombinedOutput()
+	return cmd
+}
+
+// consumeOutput 逐行收集命令输出，同时提取 whisper.cpp 百分比。
+func consumeOutput(
+	reader interface{ Read([]byte) (int, error) },
+	output *bytes.Buffer,
+	outputMu *sync.Mutex,
+	onProgress func(int),
+	onLog func(string),
+	errCh chan<- error,
+	wg *sync.WaitGroup,
+) {
+	defer wg.Done()
+	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		appendCommandOutput(output, outputMu, line)
+		notifyWhisperOutput(line, onProgress, onLog)
+	}
+	errCh <- scanner.Err()
+}
+
+// appendCommandOutput 加锁保存双管道输出，供失败诊断和 GPU 降级判断使用。
+func appendCommandOutput(output *bytes.Buffer, outputMu *sync.Mutex, line string) {
+	outputMu.Lock()
+	defer outputMu.Unlock()
+	output.WriteString(line)
+	output.WriteByte('\n')
+}
+
+// notifyWhisperOutput 推送原始日志，并从进度行解析百分比。
+func notifyWhisperOutput(line string, onProgress func(int), onLog func(string)) {
+	matches := whisperProgressPattern.FindStringSubmatch(line)
+	if len(matches) != 2 {
+		if onLog != nil {
+			onLog(line)
+		}
+		return
+	}
+	progress, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return
+	}
+	progress = max(0, min(100, progress))
+	if onProgress != nil {
+		onProgress(progress)
+	}
+	if onLog != nil {
+		onLog(fmt.Sprintf("听写进度 %d%%", progress))
+	}
 }
 
 // bundledLibraryDir 返回应用包内动态库目录，系统安装的命令无需修改环境。
@@ -110,7 +223,14 @@ func NewFFmpegRunner(ffmpegBin, model string) *FFmpegRunner {
 }
 
 // Transcribe 通过 ffmpeg whisper 滤镜转写音频为 SRT
-func (r *FFmpegRunner) Transcribe(ctx context.Context, audioPath, outputSRT, lang string) error {
+func (r *FFmpegRunner) Transcribe(
+	ctx context.Context,
+	audioPath string,
+	outputSRT string,
+	lang string,
+	onProgress func(int),
+	onLog func(string),
+) error {
 	if lang == "" {
 		lang = "auto"
 	}
@@ -124,9 +244,20 @@ func (r *FFmpegRunner) Transcribe(ctx context.Context, audioPath, outputSRT, lan
 		"-af", filter,
 		"-f", "null", "-",
 	)
+	if onProgress != nil {
+		onProgress(5)
+	}
 	output, err := cmd.CombinedOutput()
+	if onLog != nil && len(output) > 0 {
+		for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+			onLog(line)
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("ffmpeg whisper 转写失败: %s\noutput: %s", err, string(output))
+	}
+	if onProgress != nil {
+		onProgress(100)
 	}
 	return nil
 }

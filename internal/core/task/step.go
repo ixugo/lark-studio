@@ -5,6 +5,7 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/google/uuid"
 	"github.com/ixugo/goddd/pkg/orm"
 	"github.com/ixugo/goddd/pkg/reason"
 	"github.com/jinzhu/copier"
@@ -82,4 +83,28 @@ func (c Core) DeleteStep(ctx context.Context, id string) (*Step, error) {
 		return nil, reason.ErrDB.Withf(`Del id[%v] err[%s]`, id, err.Error())
 	}
 	return &out, nil
+}
+
+// UpsertStep 按任务和步骤生成稳定 ID，使重试与断点恢复更新同一条记录。
+func (c Core) UpsertStep(
+	ctx context.Context,
+	taskID string,
+	name string,
+	changeFn func(*Step),
+) error {
+	id := uuid.NewSHA1(uuid.NameSpaceOID, []byte(taskID+"/"+name)).String()
+	current := Step{ID: id}
+	err := c.store.Step().Get(ctx, &current, orm.Where("id=?", id))
+	if err == nil {
+		return c.store.Step().Update(ctx, &current, changeFn, orm.Where("id=?", id))
+	}
+	if !orm.IsErrRecordNotFound(err) {
+		return reason.ErrDB.Withf("GetStep task_id[%s] name[%s] err[%s]", taskID, name, err.Error())
+	}
+	current = Step{ID: id, TaskID: taskID, Name: name}
+	changeFn(&current)
+	if err := c.store.Step().Create(ctx, &current); err != nil {
+		return reason.ErrDB.Withf("CreateStep task_id[%s] name[%s] err[%s]", taskID, name, err.Error())
+	}
+	return nil
 }
