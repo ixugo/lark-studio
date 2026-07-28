@@ -101,11 +101,7 @@ class HomePage extends HookConsumerWidget {
                       child: Column(
                         children: [
                           _TopBar(
-                            title: showSettings.value
-                                ? '设置'
-                                : selectedIndex.value <= 1
-                                ? null
-                                : _navSections[selectedIndex.value].label,
+                            title: null,
                             themeMode: themeMode,
                             onToggleTheme: () =>
                                 ref.read(themeProvider.notifier).toggle(),
