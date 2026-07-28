@@ -220,7 +220,8 @@ class _GlossaryItem extends HookWidget {
       onExit: (_) => hovering.value = false,
       child: GestureDetector(
         onTap: onTap,
-        onSecondaryTap: onDelete,
+        onSecondaryTapDown: (details) =>
+            _showGlossaryContextMenu(context, details.globalPosition, onDelete),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           margin: const EdgeInsets.symmetric(vertical: 2),
@@ -401,7 +402,7 @@ class _GlossaryDetail extends HookConsumerWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                'AI 翻译自动使用已启用词库中的词条。多个启用词库时，按列表中最上的优先。',
+                'AI 翻译会自动使用所有已启用词库中的词条。',
                 style: TextStyle(fontSize: 12, color: c.textSecondary),
               ),
             ),
@@ -607,6 +608,68 @@ class _GlossaryDetail extends HookConsumerWidget {
       ),
     );
   }
+}
+
+/// _showGlossaryContextMenu 在鼠标附近显示单项菜单，避免右键直接触发删除。
+void _showGlossaryContextMenu(
+  BuildContext context,
+  Offset position,
+  VoidCallback onDelete,
+) {
+  final overlay = Overlay.of(context);
+  final size = MediaQuery.sizeOf(context);
+  final c = AppColors.of(context);
+  late final OverlayEntry entry;
+  entry = OverlayEntry(
+    builder: (_) => Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: entry.remove,
+          ),
+        ),
+        Positioned(
+          left: position.dx.clamp(8, size.width - 152).toDouble(),
+          top: position.dy.clamp(8, size.height - 48).toDouble(),
+          child: GestureDetector(
+            onTap: () {
+              entry.remove();
+              onDelete();
+            },
+            child: Container(
+              width: 144,
+              height: 38,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: c.cardBg,
+                borderRadius: BorderRadius.circular(9),
+                border: Border.all(color: c.borderLight),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x26000000),
+                    blurRadius: 18,
+                    offset: Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: const Row(
+                children: [
+                  Icon(CupertinoIcons.trash, size: 15, color: AppColors.red),
+                  SizedBox(width: 8),
+                  Text(
+                    '删除词库',
+                    style: TextStyle(fontSize: 13, color: AppColors.red),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+  overlay.insert(entry);
 }
 
 /// 词条行（支持 hover 编辑/删除）
