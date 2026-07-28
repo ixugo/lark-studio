@@ -109,10 +109,10 @@ class ApiClient {
         .toList();
   }
 
-  // ---- Term API ----
+  // ---- Glossary API ----
 
-  Future<List<Map<String, dynamic>>> listTerms() async {
-    final resp = await _client.get(Uri.parse('$baseUrl/terms'));
+  Future<List<Map<String, dynamic>>> listGlossaries() async {
+    final resp = await _client.get(Uri.parse('$baseUrl/glossaries'));
     _checkStatus(resp);
     final body = jsonDecode(resp.body) as Map<String, dynamic>;
     final data = body['data'] as Map<String, dynamic>? ?? {};
@@ -120,14 +120,63 @@ class ApiClient {
     return items.cast<Map<String, dynamic>>();
   }
 
-  Future<Map<String, dynamic>> createTerm(String text,
-      {String translation = ''}) async {
+  Future<Map<String, dynamic>> createGlossary(String name) async {
     final resp = await _client.post(
-      Uri.parse('$baseUrl/terms'),
+      Uri.parse('$baseUrl/glossaries'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'name': name}),
+    );
+    _checkStatus(resp);
+    final body = jsonDecode(resp.body) as Map<String, dynamic>;
+    return body['data'] as Map<String, dynamic>? ?? {};
+  }
+
+  Future<Map<String, dynamic>> updateGlossary(int id, {String? name, bool? enabled, int? priority}) async {
+    final updates = <String, dynamic>{};
+    if (name != null) updates['name'] = name;
+    if (enabled != null) updates['enabled'] = enabled;
+    if (priority != null) updates['priority'] = priority;
+    final resp = await _client.put(
+      Uri.parse('$baseUrl/glossaries/$id'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(updates),
+    );
+    _checkStatus(resp);
+    final body = jsonDecode(resp.body) as Map<String, dynamic>;
+    return body['data'] as Map<String, dynamic>? ?? {};
+  }
+
+  Future<void> deleteGlossary(int id) async {
+    final resp = await _client.delete(Uri.parse('$baseUrl/glossaries/$id'));
+    _checkStatus(resp);
+  }
+
+  // ---- Term API (per glossary) ----
+
+  Future<List<Map<String, dynamic>>> listTerms({required int glossaryId, String query = ''}) async {
+    var url = '$baseUrl/glossaries/$glossaryId/terms';
+    if (query.isNotEmpty) url += '?q=${Uri.encodeComponent(query)}';
+    final resp = await _client.get(Uri.parse(url));
+    _checkStatus(resp);
+    final body = jsonDecode(resp.body) as Map<String, dynamic>;
+    final data = body['data'] as Map<String, dynamic>? ?? {};
+    final items = data['items'] as List<dynamic>? ?? [];
+    return items.cast<Map<String, dynamic>>();
+  }
+
+  Future<Map<String, dynamic>> createTerm({
+    required int glossaryId,
+    required String text,
+    String translation = '',
+    String note = '',
+  }) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/glossaries/$glossaryId/terms'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'text': text,
         if (translation.isNotEmpty) 'translation': translation,
+        if (note.isNotEmpty) 'note': note,
       }),
     );
     _checkStatus(resp);
@@ -135,8 +184,8 @@ class ApiClient {
     return body['data'] as Map<String, dynamic>? ?? {};
   }
 
-  Future<void> deleteTerm(int id) async {
-    final resp = await _client.delete(Uri.parse('$baseUrl/terms/$id'));
+  Future<void> deleteTerm({required int glossaryId, required int id}) async {
+    final resp = await _client.delete(Uri.parse('$baseUrl/glossaries/$glossaryId/terms/$id'));
     _checkStatus(resp);
   }
 

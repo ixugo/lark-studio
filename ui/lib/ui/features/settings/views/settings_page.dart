@@ -19,8 +19,6 @@ class SettingsPage extends HookConsumerWidget {
     final ss = ref.watch(settingsProvider);
     final notifier = ref.read(settingsProvider.notifier);
 
-    final newTermController = useTextEditingController();
-    final newTransController = useTextEditingController();
     final llmBaseUrl = useTextEditingController();
     final llmApiKey = useTextEditingController();
     final llmModel = useTextEditingController();
@@ -130,27 +128,6 @@ class SettingsPage extends HookConsumerWidget {
       }
     }
 
-    Future<void> addTerm() async {
-      final text = newTermController.text.trim();
-      if (text.isEmpty) return;
-      final trans = newTransController.text.trim();
-      try {
-        await notifier.addTerm(text, translation: trans);
-        newTermController.clear();
-        newTransController.clear();
-      } catch (e) {
-        if (context.mounted) _showToast(context, '添加失败: $e');
-      }
-    }
-
-    Future<void> deleteTerm(int id) async {
-      try {
-        await notifier.deleteTerm(id);
-      } catch (e) {
-        if (context.mounted) _showToast(context, '删除失败: $e');
-      }
-    }
-
     return Column(
       children: [
         _SettingsToolbar(
@@ -192,10 +169,6 @@ class SettingsPage extends HookConsumerWidget {
                       translatePrompt,
                       lipSyncBaseUrl,
                       lipSyncApiKey,
-                      newTermController,
-                      newTransController,
-                      addTerm,
-                      deleteTerm,
                       notifier,
                     ),
         ),
@@ -230,10 +203,6 @@ class SettingsPage extends HookConsumerWidget {
     TextEditingController translatePrompt,
     TextEditingController lipSyncBaseUrl,
     TextEditingController lipSyncApiKey,
-    TextEditingController newTermController,
-    TextEditingController newTransController,
-    Future<void> Function() addTerm,
-    Future<void> Function(int) deleteTerm,
     SettingsNotifier notifier,
   ) {
     return ListView(
@@ -327,41 +296,6 @@ class SettingsPage extends HookConsumerWidget {
         const SizedBox(height: 20),
         _GlassSection(title: '翻译提示词', children: [
           _GlassMultiLine(controller: translatePrompt, placeholder: '留空使用内置默认模板。\n可用变量: {{target_lang}} {{count}}'),
-        ]),
-        const SizedBox(height: 20),
-        _GlassSection(title: '术语锁定', children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 12, 18, 6),
-            child: Text('翻译时保持原文不翻译的专有名词（不区分大小写）', style: TextStyle(fontSize: 11, color: const Color(0xFF8E8E93))),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
-            child: Row(
-              children: [
-                Expanded(flex: 3, child: CupertinoTextField(controller: newTermController, placeholder: '源词 (如 Golang)', padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), style: const TextStyle(fontSize: 13), onSubmitted: (_) => addTerm(), decoration: BoxDecoration(color: const Color(0xFF000000).withValues(alpha: 0.03), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF000000).withValues(alpha: 0.06))))),
-                const Padding(padding: EdgeInsets.symmetric(horizontal: 6), child: Text('→', style: TextStyle(fontSize: 14, color: Color(0xFF8E8E93)))),
-                Expanded(flex: 3, child: CupertinoTextField(controller: newTransController, placeholder: '译文 (留空=保持原文)', padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), style: const TextStyle(fontSize: 13), onSubmitted: (_) => addTerm(), decoration: BoxDecoration(color: const Color(0xFF000000).withValues(alpha: 0.03), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF000000).withValues(alpha: 0.06))))),
-                const SizedBox(width: 8),
-                CupertinoButton(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6), color: const Color(0xFF007AFF), borderRadius: BorderRadius.circular(8), minimumSize: Size.zero, onPressed: addTerm, child: const Text('添加', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: CupertinoColors.white))),
-              ],
-            ),
-          ),
-          if (ss.terms.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 4, 18, 12),
-              child: Wrap(
-                spacing: 6, runSpacing: 6,
-                children: ss.terms.map((t) {
-                  final id = t['id'] as int;
-                  final text = t['text'] as String? ?? '';
-                  final trans = t['translation'] as String? ?? text;
-                  final label = text == trans ? text : '$text → $trans';
-                  return _TermChip(text: label, onDelete: () => deleteTerm(id));
-                }).toList(),
-              ),
-            ),
-          if (ss.terms.isEmpty)
-            const Padding(padding: EdgeInsets.only(bottom: 12), child: Center(child: Text('暂无术语', style: TextStyle(fontSize: 12, color: Color(0xFFAEAEB2))))),
         ]),
       ],
     );
@@ -503,25 +437,6 @@ class _GlassMultiLine extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
       child: CupertinoTextField(controller: controller, placeholder: placeholder, maxLines: 6, minLines: 3, padding: const EdgeInsets.all(12), style: const TextStyle(fontSize: 12, fontFamily: 'monospace'), decoration: BoxDecoration(color: const Color(0xFF000000).withValues(alpha: 0.03), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF000000).withValues(alpha: 0.06)))),
-    );
-  }
-}
-
-class _TermChip extends StatelessWidget {
-  final String text;
-  final VoidCallback onDelete;
-  const _TermChip({required this.text, required this.onDelete});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(color: const Color(0xFF007AFF).withValues(alpha: 0.08), borderRadius: BorderRadius.circular(6), border: Border.all(color: const Color(0xFF007AFF).withValues(alpha: 0.2))),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Text(text, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Color(0xFF007AFF))),
-        const SizedBox(width: 4),
-        GestureDetector(onTap: onDelete, child: Icon(CupertinoIcons.xmark_circle_fill, size: 14, color: const Color(0xFF007AFF).withValues(alpha: 0.6))),
-      ]),
     );
   }
 }
