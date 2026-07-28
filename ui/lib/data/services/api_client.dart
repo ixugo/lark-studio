@@ -71,18 +71,16 @@ class ApiClient {
 
   Future<Task> createTask({
     required String inputPath,
-    required int mode,
+    required TaskRecipe recipe,
     String outputDir = '',
-    String targetLang = '',
   }) async {
     final resp = await _client.post(
       Uri.parse('$baseUrl/tasks'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'input_path': inputPath,
-        'mode': mode,
+        ...recipe.toJson(),
         if (outputDir.isNotEmpty) 'output_dir': outputDir,
-        if (targetLang.isNotEmpty) 'target_lang': targetLang,
       }),
     );
     _checkStatus(resp);
@@ -109,17 +107,12 @@ class ApiClient {
 
   Future<List<Task>> batchCreateTasks({
     required List<String> videos,
-    required int mode,
-    String targetLang = '',
+    required TaskRecipe recipe,
   }) async {
     final resp = await _client.post(
       Uri.parse('$baseUrl/tasks/batch'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'videos': videos,
-        'mode': mode,
-        if (targetLang.isNotEmpty) 'target_lang': targetLang,
-      }),
+      body: jsonEncode({'videos': videos, ...recipe.toJson()}),
     );
     _checkStatus(resp);
     final body = jsonDecode(resp.body) as Map<String, dynamic>;

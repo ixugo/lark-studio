@@ -1,4 +1,4 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../../data/models/task.dart';
 import '../../../../data/repositories/task_repository.dart';
@@ -59,11 +59,26 @@ class TaskListNotifier extends Notifier<TaskListState> {
     String outputDir = '',
     String targetLang = '',
   }) async {
+    await createRecipeTask(
+      inputPath: inputPath,
+      recipe: TaskRecipe(
+        mode: mode,
+        targetLang: targetLang.isEmpty ? 'zh-CN' : targetLang,
+      ),
+      outputDir: outputDir,
+    );
+  }
+
+  /// createRecipeTask 使用任务链页面确定的完整配方创建任务。
+  Future<void> createRecipeTask({
+    required String inputPath,
+    required TaskRecipe recipe,
+    String outputDir = '',
+  }) async {
     await _repo.createTask(
       inputPath: inputPath,
-      mode: mode,
+      recipe: recipe,
       outputDir: outputDir,
-      targetLang: targetLang,
     );
     await refresh();
   }
@@ -88,15 +103,16 @@ class TaskListNotifier extends Notifier<TaskListState> {
     required int mode,
     String targetLang = '',
   }) async {
-    final tasks = await _repo.batchCreateTasks(
-      videos: videos,
+    final recipe = TaskRecipe(
       mode: mode,
-      targetLang: targetLang,
+      targetLang: targetLang.isEmpty ? 'zh-CN' : targetLang,
     );
+    final tasks = await _repo.batchCreateTasks(videos: videos, recipe: recipe);
     await refresh();
     return tasks.length;
   }
 }
 
-final taskListProvider =
-    NotifierProvider<TaskListNotifier, TaskListState>(TaskListNotifier.new);
+final taskListProvider = NotifierProvider<TaskListNotifier, TaskListState>(
+  TaskListNotifier.new,
+);

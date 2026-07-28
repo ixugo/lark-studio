@@ -3,7 +3,15 @@ class Task {
   final String inputPath;
   final String outputDir;
   final int mode;
+  final String sourceLang;
   final String targetLang;
+  final String translator;
+  final String outputContent;
+  final String ttsEngine;
+  final String ttsVoice;
+  final double speechRate;
+  final String subtitleOutput;
+  final String recipeName;
   final int status;
   final String currentStep;
   final int progress;
@@ -19,7 +27,15 @@ class Task {
     required this.inputPath,
     required this.outputDir,
     required this.mode,
+    required this.sourceLang,
     required this.targetLang,
+    required this.translator,
+    required this.outputContent,
+    required this.ttsEngine,
+    required this.ttsVoice,
+    required this.speechRate,
+    required this.subtitleOutput,
+    required this.recipeName,
     required this.status,
     required this.currentStep,
     required this.progress,
@@ -37,7 +53,15 @@ class Task {
       inputPath: json['input_path'] as String? ?? '',
       outputDir: json['output_dir'] as String? ?? '',
       mode: json['mode'] as int? ?? 0,
+      sourceLang: json['source_lang'] as String? ?? 'auto',
       targetLang: json['target_lang'] as String? ?? '',
+      translator: json['translator'] as String? ?? 'bing',
+      outputContent: json['output_content'] as String? ?? 'bilingual',
+      ttsEngine: json['tts_engine'] as String? ?? 'edge',
+      ttsVoice: json['tts_voice'] as String? ?? '',
+      speechRate: (json['speech_rate'] as num?)?.toDouble() ?? 1,
+      subtitleOutput: json['subtitle_output'] as String? ?? 'burn',
+      recipeName: json['recipe_name'] as String? ?? '',
       status: json['status'] as int? ?? 0,
       currentStep: json['current_step'] as String? ?? '',
       progress: (json['progress'] as num?)?.toInt() ?? 0,
@@ -112,6 +136,66 @@ class Task {
     final parts = inputPath.split('/');
     return parts.isNotEmpty ? parts.last : inputPath;
   }
+}
+
+/// TaskRecipe 保存可复用且会随任务写入 SQLite 的确定参数。
+class TaskRecipe {
+  final String name;
+  final int mode;
+  final String sourceLang;
+  final String targetLang;
+  final String translator;
+  final String outputContent;
+  final String ttsEngine;
+  final String ttsVoice;
+  final double speechRate;
+  final String subtitleOutput;
+
+  const TaskRecipe({
+    this.name = '',
+    this.mode = 3,
+    this.sourceLang = 'auto',
+    this.targetLang = 'zh-CN',
+    this.translator = 'bing',
+    this.outputContent = 'bilingual',
+    this.ttsEngine = 'edge',
+    this.ttsVoice = 'zh-CN-XiaoxiaoNeural',
+    this.speechRate = 1,
+    this.subtitleOutput = 'burn',
+  });
+
+  /// fromJson 从本地配方存储恢复参数。
+  factory TaskRecipe.fromJson(Map<String, dynamic> json) {
+    return TaskRecipe(
+      name: json['name'] as String? ?? '',
+      mode: (json['mode'] as num?)?.toInt() ?? 3,
+      sourceLang: json['source_lang'] as String? ?? 'auto',
+      targetLang: json['target_lang'] as String? ?? 'zh-CN',
+      translator: json['translator'] as String? ?? 'bing',
+      outputContent: json['output_content'] as String? ?? 'bilingual',
+      ttsEngine: json['tts_engine'] as String? ?? 'edge',
+      ttsVoice: json['tts_voice'] as String? ?? 'zh-CN-XiaoxiaoNeural',
+      speechRate: (json['speech_rate'] as num?)?.toDouble() ?? 1,
+      subtitleOutput: json['subtitle_output'] as String? ?? 'burn',
+    );
+  }
+
+  /// toJson 同时用于本地配方持久化与任务创建请求。
+  Map<String, dynamic> toJson() => {
+    if (name.isNotEmpty) 'recipe_name': name,
+    'mode': mode,
+    'source_lang': sourceLang,
+    'target_lang': targetLang,
+    'translator': translator,
+    'output_content': outputContent,
+    'tts_engine': ttsEngine,
+    'tts_voice': ttsVoice,
+    'speech_rate': speechRate,
+    'subtitle_output': subtitleOutput,
+  };
+
+  /// toStorageJson 使用稳定字段名保存配方名称。
+  Map<String, dynamic> toStorageJson() => {...toJson(), 'name': name};
 }
 
 /// TaskStep 保存单个处理步骤的模型、进度与耗时。

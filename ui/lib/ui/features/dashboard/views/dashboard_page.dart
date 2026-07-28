@@ -4,20 +4,20 @@ import 'package:flutter/cupertino.dart'
         CupertinoAlertDialog,
         CupertinoDialogAction,
         CupertinoIcons,
+        CupertinoPageRoute,
         CupertinoPageScaffold,
-        showCupertinoDialog,
-        showCupertinoModalPopup;
+        showCupertinoDialog;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:macos_ui/macos_ui.dart';
 
+import '../../../../data/models/task.dart';
 import '../../../../providers.dart';
 import '../../../core/app_button.dart';
 import '../../../core/app_colors.dart';
 import '../../../core/desktop_dropdown.dart';
 import '../../task/view_models/task_list_view_model.dart';
-import '../../task/views/create_task_page.dart';
 import '../view_models/dashboard_view_model.dart';
 
 class DashboardPage extends HookConsumerWidget {
@@ -44,8 +44,6 @@ class DashboardPage extends HookConsumerWidget {
         const _Greeting(),
         const SizedBox(height: 24),
         _WorkflowGrid(ref: ref),
-        const SizedBox(height: 20),
-        _QuickTools(),
       ],
     );
   }
@@ -128,7 +126,23 @@ class _WorkflowGrid extends StatelessWidget {
   }
 
   Widget _buildGrid(BuildContext context) {
-    final workflows = _allWorkflows;
+    final savedRecipes = ref.watch(
+      dashboardProvider.select((state) => state.customWorkflows),
+    );
+    final workflows = [
+      ..._allWorkflows,
+      ...savedRecipes.map(
+        (recipe) => WorkflowTemplate(
+          id: 'recipe_${recipe.name}',
+          title: recipe.name,
+          subtitle: _recipeSubtitle(recipe),
+          gradientColors: const ['007AFF', '5AC8FA'],
+          steps: _stepsForMode(recipe.mode),
+          mode: recipe.mode,
+          recipe: recipe,
+        ),
+      ),
+    ];
     final rows = <Widget>[];
     for (var i = 0; i < workflows.length; i += 3) {
       final end = (i + 3).clamp(0, workflows.length);
@@ -159,10 +173,30 @@ class _WorkflowGrid extends StatelessWidget {
   }
 
   void _handleTap(BuildContext context, WorkflowTemplate wf) {
-    showCupertinoModalPopup(
-      context: context,
-      builder: (_) => CreateTaskPage(initialMode: wf.mode == 0 ? 3 : wf.mode),
+    Navigator.of(context).push(
+      CupertinoPageRoute(builder: (_) => _WorkflowDetailPage(workflow: wf)),
     );
+  }
+
+  static String _recipeSubtitle(TaskRecipe recipe) {
+    final subtitle = switch (recipe.subtitleOutput) {
+      'file' => '独立字幕',
+      'none' => '无字幕',
+      _ => '烧录字幕',
+    };
+    return '${recipe.translator} · ${recipe.ttsEngine} · $subtitle';
+  }
+
+  static List<WorkflowStep> _stepsForMode(int mode) {
+    return [
+      const WorkflowStep(id: 'whisper', label: '听写', icon: 'waveform'),
+      if (mode >= 2)
+        const WorkflowStep(id: 'translate', label: '翻译', icon: 'globe'),
+      if (mode >= 3) ...[
+        const WorkflowStep(id: 'tts', label: '配音', icon: 'mic'),
+        const WorkflowStep(id: 'merge', label: '合成', icon: 'film'),
+      ],
+    ];
   }
 
   static final _allWorkflows = <WorkflowTemplate>[
@@ -322,76 +356,6 @@ class _LaunchCard extends HookWidget {
   }
 }
 
-// ---- 快捷工具栏 ----
-
-class _QuickTools extends StatelessWidget {
-  static const _tools = <_ToolDef>[
-    _ToolDef('工具', CupertinoIcons.wrench, null),
-    _ToolDef('视频下载', CupertinoIcons.cloud_download, null),
-    _ToolDef('校对字幕', CupertinoIcons.pencil_ellipsis_rectangle, null),
-    _ToolDef('合成到视频', CupertinoIcons.film, null),
-    _ToolDef('配音', CupertinoIcons.mic, null),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: _tools.map((t) {
-        return Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: _ToolChip(tool: t),
-        );
-      }).toList(),
-    );
-  }
-}
-
-class _ToolDef {
-  final String label;
-  final IconData icon;
-  final VoidCallback? onTap;
-  const _ToolDef(this.label, this.icon, this.onTap);
-}
-
-class _ToolChip extends HookWidget {
-  final _ToolDef tool;
-  const _ToolChip({required this.tool});
-
-  @override
-  Widget build(BuildContext context) {
-    final hovering = useState(false);
-    final c = AppColors.of(context);
-
-    return MouseRegion(
-      onEnter: (_) => hovering.value = true,
-      onExit: (_) => hovering.value = false,
-      child: GestureDetector(
-        onTap: tool.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: hovering.value ? c.inputBg : c.cardBgHover,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: c.borderSubtle, width: 0.5),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(tool.icon, size: 13, color: c.textSecondary),
-              const SizedBox(width: 6),
-              Text(
-                tool.label,
-                style: TextStyle(fontSize: 12, color: c.textPrimary),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 // ── 工作流详情页（SmartSub 完整向导：配置栏 + 目标产物 + 步骤链 + 文件导入 + 日志） ──
 
 // ignore: unused_element
@@ -405,24 +369,35 @@ class _WorkflowDetailPage extends HookConsumerWidget {
     final creating = useState(false);
     final wf = workflow;
     final color = Color(int.parse('FF${wf.gradientColors[0]}', radix: 16));
-    final logExpanded = useState(false);
     final importedFiles = useState<List<String>>([]);
 
-    // 配置项：从后端 config 读取当前值
     final ds = ref.watch(dashboardProvider);
     final cfg = ds.config;
-    final videoLang = useState('英语');
-    final targetLang = useState(cfg?.pipeline.defaultTargetLang ?? 'zh-CN');
-    final whisperModel = useState(cfg?.pipeline.whisperMode ?? 'ffmpeg');
-    final translateService = useState(
-      cfg?.llm.model.isNotEmpty == true ? cfg!.llm.model : 'local',
+    final saved = wf.recipe;
+    final videoLang = useState(saved?.sourceLang ?? 'auto');
+    final targetLang = useState(
+      saved?.targetLang ?? cfg?.pipeline.defaultTargetLang ?? 'zh-CN',
     );
-    final subtitleOutput = useState(cfg?.pipeline.subtitleOutput ?? 'burn');
+    final translateService = useState(
+      saved?.translator ?? cfg?.llm.provider ?? 'bing',
+    );
+    final outputContent = useState(saved?.outputContent ?? 'bilingual');
+    final ttsEngine = useState(saved?.ttsEngine ?? cfg?.tts.type ?? 'edge');
+    final ttsVoice = useState(
+      saved?.ttsVoice ??
+          (cfg?.tts.voice.isNotEmpty == true
+              ? cfg!.tts.voice
+              : 'zh-CN-XiaoxiaoNeural'),
+    );
+    final speechRate = useState(saved?.speechRate ?? 1.0);
+    final subtitleOutput = useState(
+      saved?.subtitleOutput ?? cfg?.pipeline.subtitleOutput ?? 'burn',
+    );
 
-    // 目标产物 toggle
-    final doTranslate = useState(wf.mode >= 2);
-    final doDub = useState(wf.mode >= 3);
-    final doVideo = useState(wf.mode >= 3);
+    final initialMode = saved?.mode ?? (wf.mode == 0 ? 3 : wf.mode);
+    final doTranslate = useState(initialMode >= 2);
+    final doDub = useState(initialMode >= 3);
+    final doVideo = useState(initialMode >= 3);
 
     List<String> activeSteps() {
       final steps = <String>['语音识别'];
@@ -437,6 +412,52 @@ class _WorkflowDetailPage extends HookConsumerWidget {
       if (doVideo.value && doDub.value) return 3;
       if (doTranslate.value) return 2;
       return 1;
+    }
+
+    TaskRecipe currentRecipe([String? name]) {
+      return TaskRecipe(
+        name: name ?? saved?.name ?? '',
+        mode: resolvedMode(),
+        sourceLang: videoLang.value,
+        targetLang: targetLang.value,
+        translator: translateService.value,
+        outputContent: outputContent.value,
+        ttsEngine: ttsEngine.value,
+        ttsVoice: ttsVoice.value,
+        speechRate: speechRate.value,
+        subtitleOutput: subtitleOutput.value,
+      );
+    }
+
+    Future<void> saveRecipe() async {
+      final controller = TextEditingController(text: saved?.name ?? wf.title);
+      final name = await showCupertinoDialog<String>(
+        context: context,
+        builder: (dialogContext) => CupertinoAlertDialog(
+          title: const Text('保存配方'),
+          content: Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: MacosTextField(controller: controller, placeholder: '配方名称'),
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('取消'),
+            ),
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () =>
+                  Navigator.pop(dialogContext, controller.text.trim()),
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      );
+      controller.dispose();
+      if (name == null || name.isEmpty) return;
+      await ref
+          .read(dashboardProvider.notifier)
+          .saveCustomWorkflow(currentRecipe(name));
     }
 
     Future<void> pickFiles() async {
@@ -477,7 +498,10 @@ class _WorkflowDetailPage extends HookConsumerWidget {
       try {
         final notifier = ref.read(taskListProvider.notifier);
         for (final path in importedFiles.value) {
-          await notifier.createTask(inputPath: path, mode: resolvedMode());
+          await notifier.createRecipeTask(
+            inputPath: path,
+            recipe: currentRecipe(),
+          );
         }
         if (context.mounted) Navigator.pop(context);
       } catch (e) {
@@ -505,7 +529,6 @@ class _WorkflowDetailPage extends HookConsumerWidget {
       backgroundColor: c.contentBg,
       child: Column(
         children: [
-          // ─── 顶部标题栏（← 返回 + 标题 + 工具按钮组） ───
           Container(
             padding: const EdgeInsets.fromLTRB(8, 8, 12, 6),
             decoration: BoxDecoration(
@@ -543,44 +566,22 @@ class _WorkflowDetailPage extends HookConsumerWidget {
                 ),
                 const Spacer(),
                 _SmallButton(
+                  icon: CupertinoIcons.square_arrow_down,
+                  label: '保存配方',
+                  c: c,
+                  onTap: saveRecipe,
+                ),
+                const SizedBox(width: 6),
+                _SmallButton(
                   icon: CupertinoIcons.doc_fill,
-                  label: '导入',
+                  label: '导入文件',
                   c: c,
                   onTap: pickFiles,
-                ),
-                const SizedBox(width: 6),
-                _SmallButton(
-                  icon: CupertinoIcons.list_bullet,
-                  label: null,
-                  c: c,
-                  onTap: () {},
-                ),
-                const SizedBox(width: 6),
-                _SmallButton(
-                  icon: CupertinoIcons.square_grid_2x2,
-                  label: null,
-                  c: c,
-                  onTap: () {},
-                ),
-                const SizedBox(width: 6),
-                _SmallButton(
-                  icon: CupertinoIcons.trash,
-                  label: '清空列表',
-                  c: c,
-                  onTap: () => importedFiles.value = [],
-                ),
-                const SizedBox(width: 6),
-                _SmallButton(
-                  icon: CupertinoIcons.slider_horizontal_3,
-                  label: '高级选项',
-                  c: c,
-                  onTap: () {},
                 ),
               ],
             ),
           ),
 
-          // ─── InlineConfigBar（配置栏：语音模型 / 视频语言 / 翻译 / 输出） ───
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
@@ -595,37 +596,14 @@ class _WorkflowDetailPage extends HookConsumerWidget {
                   runSpacing: 8,
                   children: [
                     _ConfigDropdown(
-                      label: '语音模型',
-                      value: whisperModel.value == 'ffmpeg'
-                          ? 'Whisper (FFmpeg)'
-                          : whisperModel.value,
-                      icon: CupertinoIcons.waveform,
-                      iconColor: const Color(0xFF34C759),
-                      c: c,
-                      items: const [
-                        'Whisper (FFmpeg)',
-                        'whisper-cpp',
-                        'Faster Whisper',
-                      ],
-                      onChanged: (v) =>
-                          whisperModel.value = v ?? whisperModel.value,
-                    ),
-                    _ConfigDropdown(
-                      label: '视频语言',
-                      value: videoLang.value,
+                      label: '源语言',
+                      value: _langDisplayName(videoLang.value),
                       icon: CupertinoIcons.globe,
                       iconColor: c.textSecondary,
                       c: c,
-                      items: const [
-                        '英语',
-                        '日语',
-                        '韩语',
-                        '法语',
-                        '德语',
-                        '西班牙语',
-                        '自动检测',
-                      ],
-                      onChanged: (v) => videoLang.value = v ?? videoLang.value,
+                      items: const ['自动检测', '英语', '日语', '韩语', '法语', '德语'],
+                      onChanged: (v) =>
+                          videoLang.value = _langCode(v ?? '自动检测'),
                     ),
                     _ConfigDropdown(
                       label: '翻译成',
@@ -638,29 +616,71 @@ class _WorkflowDetailPage extends HookConsumerWidget {
                     ),
                     _ConfigDropdown(
                       label: '翻译服务',
-                      value: translateService.value,
+                      value: _translatorName(translateService.value),
                       icon: CupertinoIcons.text_bubble,
                       iconColor: c.textSecondary,
                       c: c,
-                      items: const ['local', 'OpenAI', 'DeepL', 'Google'],
+                      items: const ['必应', 'DeepLX', 'OpenAI'],
                       onChanged: (v) =>
-                          translateService.value = v ?? translateService.value,
+                          translateService.value = _translatorCode(v ?? '必应'),
                     ),
                     _ConfigDropdown(
                       label: '输出内容',
-                      value: subtitleOutput.value == 'burn'
-                          ? '烧录到视频'
-                          : '仅输出字幕文件',
+                      value: _contentName(outputContent.value),
                       icon: CupertinoIcons.doc_text,
                       iconColor: c.textSecondary,
                       c: c,
-                      items: const ['烧录到视频', '仅输出字幕文件', '仅输出翻译字幕'],
-                      onChanged: (v) {
-                        if (v == '烧录到视频')
-                          subtitleOutput.value = 'burn';
-                        else
-                          subtitleOutput.value = 'file';
-                      },
+                      items: const ['双语字幕', '仅译文', '仅原文'],
+                      onChanged: (v) =>
+                          outputContent.value = _contentCode(v ?? '双语字幕'),
+                    ),
+                    _ConfigDropdown(
+                      label: '配音引擎',
+                      value: ttsEngine.value == 'openai'
+                          ? 'OpenAI TTS'
+                          : 'Edge TTS',
+                      icon: CupertinoIcons.mic,
+                      iconColor: c.textSecondary,
+                      c: c,
+                      items: const ['Edge TTS', 'OpenAI TTS'],
+                      onChanged: (v) => ttsEngine.value = v == 'OpenAI TTS'
+                          ? 'openai'
+                          : 'edge',
+                    ),
+                    _ConfigDropdown(
+                      label: '音色',
+                      value: ttsVoice.value,
+                      icon: CupertinoIcons.person_crop_circle,
+                      iconColor: c.textSecondary,
+                      c: c,
+                      items: const [
+                        'zh-CN-XiaoxiaoNeural',
+                        'zh-CN-XiaoyiNeural',
+                        'zh-CN-YunjianNeural',
+                        'alloy',
+                      ],
+                      onChanged: (v) => ttsVoice.value = v ?? ttsVoice.value,
+                    ),
+                    _ConfigDropdown(
+                      label: '语速',
+                      value: '${speechRate.value.toStringAsFixed(1)}×',
+                      icon: CupertinoIcons.speedometer,
+                      iconColor: c.textSecondary,
+                      c: c,
+                      items: const ['0.8×', '1.0×', '1.1×', '1.2×'],
+                      onChanged: (v) => speechRate.value =
+                          double.tryParse((v ?? '1.0×').replaceAll('×', '')) ??
+                          1,
+                    ),
+                    _ConfigDropdown(
+                      label: '字幕方式',
+                      value: _subtitleModeName(subtitleOutput.value),
+                      icon: CupertinoIcons.rectangle_badge_checkmark,
+                      iconColor: c.textSecondary,
+                      c: c,
+                      items: const ['烧录', '独立文件', '无字幕仅配音'],
+                      onChanged: (v) =>
+                          subtitleOutput.value = _subtitleModeCode(v ?? '烧录'),
                     ),
                   ],
                 ),
@@ -674,7 +694,13 @@ class _WorkflowDetailPage extends HookConsumerWidget {
                       active: doTranslate.value,
                       color: const Color(0xFF30D158),
                       c: c,
-                      onTap: () => doTranslate.value = !doTranslate.value,
+                      onTap: () {
+                        doTranslate.value = !doTranslate.value;
+                        if (!doTranslate.value) {
+                          doDub.value = false;
+                          doVideo.value = false;
+                        }
+                      },
                     ),
                     const SizedBox(width: 8),
                     _GoalToggle(
@@ -685,8 +711,12 @@ class _WorkflowDetailPage extends HookConsumerWidget {
                       c: c,
                       onTap: () {
                         doDub.value = !doDub.value;
-                        if (doDub.value && !doTranslate.value)
+                        if (doDub.value && !doTranslate.value) {
                           doTranslate.value = true;
+                        }
+                        if (!doDub.value) {
+                          doVideo.value = false;
+                        }
                       },
                     ),
                     const SizedBox(width: 8),
@@ -757,7 +787,6 @@ class _WorkflowDetailPage extends HookConsumerWidget {
             ),
           ),
 
-          // ─── 文件导入区 / 已导入列表 ───
           Expanded(
             child: importedFiles.value.isEmpty
                 ? _EmptyImportArea(color: color, c: c, onImport: pickFiles)
@@ -771,87 +800,45 @@ class _WorkflowDetailPage extends HookConsumerWidget {
                   ),
           ),
 
-          // ─── 底部日志面板 + 开始任务 ───
-          GestureDetector(
-            onTap: () => logExpanded.value = !logExpanded.value,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                border: Border(
-                  top: BorderSide(color: c.borderLight, width: 0.5),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              border: Border(top: BorderSide(color: c.borderLight, width: 0.5)),
+            ),
+            child: Row(
+              children: [
+                Icon(CupertinoIcons.link, size: 13, color: color),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    steps.join('  →  '),
+                    style: TextStyle(fontSize: 11, color: c.textSecondary),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-              ),
-              child: Column(
-                children: [
-                  Row(
+                if (importedFiles.value.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 10),
+                    child: Text(
+                      '${importedFiles.value.length} 个文件',
+                      style: TextStyle(fontSize: 11, color: c.textSecondary),
+                    ),
+                  ),
+                AppButton(
+                  onPressed: creating.value ? null : startTask,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        logExpanded.value
-                            ? CupertinoIcons.chevron_down
-                            : CupertinoIcons.chevron_right,
-                        size: 12,
-                        color: c.textTertiary,
-                      ),
-                      const SizedBox(width: 4),
+                      const Icon(CupertinoIcons.play_fill, size: 12),
+                      const SizedBox(width: 6),
                       Text(
-                        '运行日志（本任务）',
-                        style: TextStyle(fontSize: 11, color: c.textTertiary),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '暂无日志',
-                        style: TextStyle(fontSize: 11, color: c.textTertiary),
-                      ),
-                      const Spacer(),
-                      if (importedFiles.value.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: Text(
-                            '${importedFiles.value.length} 个文件',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: c.textSecondary,
-                            ),
-                          ),
-                        ),
-                      AppButton(
-                        onPressed: creating.value ? null : startTask,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(CupertinoIcons.play_fill, size: 12),
-                            const SizedBox(width: 6),
-                            Text(
-                              creating.value ? '创建中...' : '开始任务',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
+                        creating.value ? '创建中...' : '开始任务',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                     ],
                   ),
-                  if (logExpanded.value)
-                    Container(
-                      height: 120,
-                      margin: const EdgeInsets.only(top: 8),
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: c.isDark
-                            ? const Color(0xFF0A0A0A)
-                            : const Color(0xFFF5F5F5),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Center(
-                        child: Text(
-                          '暂无日志',
-                          style: TextStyle(fontSize: 12, color: c.textTertiary),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ],
@@ -861,6 +848,7 @@ class _WorkflowDetailPage extends HookConsumerWidget {
 
   static String _langDisplayName(String code) {
     const map = {
+      'auto': '自动检测',
       'zh-CN': '中文',
       'en': '英语',
       'ja': '日语',
@@ -873,6 +861,7 @@ class _WorkflowDetailPage extends HookConsumerWidget {
 
   static String _langCode(String name) {
     const map = {
+      '自动检测': 'auto',
       '中文': 'zh-CN',
       '英语': 'en',
       '日语': 'ja',
@@ -881,6 +870,54 @@ class _WorkflowDetailPage extends HookConsumerWidget {
       '德语': 'de',
     };
     return map[name] ?? name;
+  }
+
+  static String _translatorName(String code) {
+    return switch (code) {
+      'deeplx' => 'DeepLX',
+      'openai' => 'OpenAI',
+      _ => '必应',
+    };
+  }
+
+  static String _translatorCode(String name) {
+    return switch (name) {
+      'DeepLX' => 'deeplx',
+      'OpenAI' => 'openai',
+      _ => 'bing',
+    };
+  }
+
+  static String _contentName(String code) {
+    return switch (code) {
+      'source' => '仅原文',
+      'translated' => '仅译文',
+      _ => '双语字幕',
+    };
+  }
+
+  static String _contentCode(String name) {
+    return switch (name) {
+      '仅原文' => 'source',
+      '仅译文' => 'translated',
+      _ => 'bilingual',
+    };
+  }
+
+  static String _subtitleModeName(String code) {
+    return switch (code) {
+      'file' => '独立文件',
+      'none' => '无字幕仅配音',
+      _ => '烧录',
+    };
+  }
+
+  static String _subtitleModeCode(String name) {
+    return switch (name) {
+      '独立文件' => 'file',
+      '无字幕仅配音' => 'none',
+      _ => 'burn',
+    };
   }
 }
 

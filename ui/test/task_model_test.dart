@@ -38,6 +38,27 @@ void main() {
         '5 分钟前',
       );
     });
+
+    test('配方可完整持久化并恢复', () {
+      const recipe = TaskRecipe(
+        name: '英文配音',
+        sourceLang: 'en',
+        targetLang: 'zh-CN',
+        translator: 'bing',
+        outputContent: 'translated',
+        ttsEngine: 'edge',
+        ttsVoice: 'zh-CN-XiaoxiaoNeural',
+        speechRate: 1.2,
+        subtitleOutput: 'none',
+      );
+
+      final restored = TaskRecipe.fromJson(recipe.toStorageJson());
+      expect(restored.name, '英文配音');
+      expect(restored.sourceLang, 'en');
+      expect(restored.outputContent, 'translated');
+      expect(restored.speechRate, 1.2);
+      expect(restored.subtitleOutput, 'none');
+    });
   });
 
   group('任务步骤与日志', () {

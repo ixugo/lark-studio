@@ -5,7 +5,7 @@ import '../services/api_client.dart';
 class TaskRepository {
   final ApiClient _api;
 
-  TaskRepository({required ApiClient api}) : _api = api;
+  TaskRepository({required this._api});
 
   Future<List<Task>> listTasks({int page = 1, int size = 50}) =>
       _api.listTasks(page: page, size: size);
@@ -20,14 +20,12 @@ class TaskRepository {
 
   Future<Task> createTask({
     required String inputPath,
-    required int mode,
+    required TaskRecipe recipe,
     String outputDir = '',
-    String targetLang = '',
   }) => _api.createTask(
     inputPath: inputPath,
-    mode: mode,
+    recipe: recipe,
     outputDir: outputDir,
-    targetLang: targetLang,
   );
 
   Future<void> deleteTask(String id) => _api.deleteTask(id);
@@ -38,8 +36,6 @@ class TaskRepository {
 
   Future<List<Task>> batchCreateTasks({
     required List<String> videos,
-    required int mode,
-    String targetLang = '',
-  }) =>
-      _api.batchCreateTasks(videos: videos, mode: mode, targetLang: targetLang);
+    required TaskRecipe recipe,
+  }) => _api.batchCreateTasks(videos: videos, recipe: recipe);
 }
