@@ -31,10 +31,6 @@ class SettingsPage extends HookConsumerWidget {
     final llmBaseUrl = useTextEditingController();
     final llmApiKey = useTextEditingController();
     final llmModel = useTextEditingController();
-    final ttsVoice = useTextEditingController();
-    final ttsBaseUrl = useTextEditingController();
-    final ttsApiKey = useTextEditingController();
-    final ttsModel = useTextEditingController();
     final whisperModel = useTextEditingController();
     final ffmpegBin = useTextEditingController();
     final targetLang = useTextEditingController();
@@ -42,7 +38,6 @@ class SettingsPage extends HookConsumerWidget {
     final lipSyncBaseUrl = useTextEditingController();
     final lipSyncApiKey = useTextEditingController();
 
-    final ttsType = useState('edge');
     final whisperMode = useState('ffmpeg');
     final workers = useState(2);
     final maxSpeedFactor = useState(0.0);
@@ -56,11 +51,6 @@ class SettingsPage extends HookConsumerWidget {
       llmBaseUrl.text = cfg.llm.baseUrl;
       llmApiKey.text = cfg.llm.apiKey;
       llmModel.text = cfg.llm.model;
-      ttsType.value = cfg.tts.type;
-      ttsVoice.text = cfg.tts.voice;
-      ttsBaseUrl.text = cfg.tts.baseUrl;
-      ttsApiKey.text = cfg.tts.apiKey;
-      ttsModel.text = cfg.tts.model;
       whisperMode.value = cfg.pipeline.whisperMode;
       whisperModel.text = cfg.pipeline.whisperModel;
       ffmpegBin.text = cfg.pipeline.ffmpegBin;
@@ -104,14 +94,6 @@ class SettingsPage extends HookConsumerWidget {
             if (!llmApiKey.text.contains('****'))
               'api_key': llmApiKey.text.trim(),
             'model': llmModel.text.trim(),
-          },
-          'tts': {
-            'type': ttsType.value,
-            'voice': ttsVoice.text.trim(),
-            'base_url': ttsBaseUrl.text.trim(),
-            if (!ttsApiKey.text.contains('****'))
-              'api_key': ttsApiKey.text.trim(),
-            'model': ttsModel.text.trim(),
           },
           'pipeline': {
             'workers': workers.value,
@@ -165,7 +147,6 @@ class SettingsPage extends HookConsumerWidget {
                   backend,
                   wsService,
                   ss,
-                  ttsType,
                   whisperMode,
                   workers,
                   maxSpeedFactor,
@@ -177,10 +158,6 @@ class SettingsPage extends HookConsumerWidget {
                   llmBaseUrl,
                   llmApiKey,
                   llmModel,
-                  ttsVoice,
-                  ttsBaseUrl,
-                  ttsApiKey,
-                  ttsModel,
                   whisperModel,
                   ffmpegBin,
                   targetLang,
@@ -199,7 +176,6 @@ class SettingsPage extends HookConsumerWidget {
     dynamic backend,
     dynamic wsService,
     SettingsState ss,
-    ValueNotifier<String> ttsType,
     ValueNotifier<String> whisperMode,
     ValueNotifier<int> workers,
     ValueNotifier<double> maxSpeedFactor,
@@ -211,10 +187,6 @@ class SettingsPage extends HookConsumerWidget {
     TextEditingController llmBaseUrl,
     TextEditingController llmApiKey,
     TextEditingController llmModel,
-    TextEditingController ttsVoice,
-    TextEditingController ttsBaseUrl,
-    TextEditingController ttsApiKey,
-    TextEditingController ttsModel,
     TextEditingController whisperModel,
     TextEditingController ffmpegBin,
     TextEditingController targetLang,
@@ -258,50 +230,6 @@ class SettingsPage extends HookConsumerWidget {
               controller: llmModel,
               placeholder: 'qwen2.5:7b',
             ),
-          ],
-        ),
-        const SizedBox(height: 20),
-        _GlassSection(
-          title: 'TTS 语音合成',
-          children: [
-            _segmentRow(
-              'TTS 类型',
-              {'edge': 'Edge TTS', 'openai': 'OpenAI TTS'},
-              ttsType.value,
-              (v) => ttsType.value = v,
-              c,
-            ),
-            _GlassField(
-              label: '语音名称',
-              controller: ttsVoice,
-              placeholder: 'zh-CN-YunjianNeural',
-            ),
-            if (ttsType.value == 'openai') ...[
-              _GlassField(
-                label: 'API 地址',
-                controller: ttsBaseUrl,
-                placeholder: 'https://api.openai.com/v1',
-              ),
-              _GlassField(
-                label: 'API 密钥',
-                controller: ttsApiKey,
-                placeholder: 'sk-xxx',
-                obscure: true,
-              ),
-              _GlassField(
-                label: '模型',
-                controller: ttsModel,
-                placeholder: 'tts-1',
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
-                child: Text(
-                  '支持 CosyVoice / F5-TTS / ChatTTS 等开源 TTS，'
-                  '部署后将 API 地址指向本地服务即可 (如 http://localhost:8880/v1)。',
-                  style: TextStyle(fontSize: 11, color: c.textSecondary),
-                ),
-              ),
-            ],
           ],
         ),
         const SizedBox(height: 20),

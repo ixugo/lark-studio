@@ -5,6 +5,8 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:macos_ui/macos_ui.dart';
 
+import '../../../../data/models/config.dart';
+import '../../../core/app_button.dart';
 import '../../../core/app_colors.dart';
 import '../view_models/tts_view_model.dart';
 
@@ -30,17 +32,108 @@ class TTSPage extends HookConsumerWidget {
           onSelect: notifier.selectService,
         ),
         Expanded(
-          child: ts.selectedServiceId == null
-              ? const _OverviewPanel()
-              : _ServiceDetail(
-                  service: ts.services.firstWhere(
-                    (s) => s.id == ts.selectedServiceId,
-                    orElse: () => TTSService.empty,
-                  ),
-                  notifier: notifier,
-                ),
+          child: Column(
+            children: [
+              _VoiceConfigPanel(
+                config: ts.config,
+                saving: ts.saving,
+                notifier: notifier,
+              ),
+              Expanded(
+                child: ts.selectedServiceId == null
+                    ? const _OverviewPanel()
+                    : _ServiceDetail(
+                        service: ts.services.firstWhere(
+                          (s) => s.id == ts.selectedServiceId,
+                          orElse: () => TTSService.empty,
+                        ),
+                        notifier: notifier,
+                      ),
+              ),
+            ],
+          ),
         ),
       ],
+    );
+  }
+}
+
+/// 音色配置面板集中管理实际参与流水线的 TTS 参数。
+class _VoiceConfigPanel extends HookWidget {
+  final TTSConfig config;
+  final bool saving;
+  final TTSNotifier notifier;
+  const _VoiceConfigPanel({
+    required this.config,
+    required this.saving,
+    required this.notifier,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    final voice = useTextEditingController(text: config.voice);
+    final type = useState(config.type);
+    useEffect(() {
+      voice.text = config.voice;
+      type.value = config.type;
+      return null;
+    }, [config.voice, config.type]);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 14, 24, 12),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: c.borderLight, width: 0.5)),
+      ),
+      child: Row(
+        children: [
+          Text(
+            '合成设置',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: c.textPrimary,
+            ),
+          ),
+          const SizedBox(width: 14),
+          MacosPopupButton<String>(
+            value: type.value,
+            items: const [
+              MacosPopupMenuItem(value: 'edge', child: Text('Edge TTS')),
+              MacosPopupMenuItem(value: 'openai', child: Text('OpenAI TTS')),
+            ],
+            onChanged: (value) {
+              if (value != null) type.value = value;
+            },
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: MacosTextField(
+              controller: voice,
+              placeholder: '音色，例如 zh-CN-XiaoxiaoNeural',
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: c.inputBg,
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          AppButton(
+            onPressed: saving
+                ? null
+                : () => notifier.saveConfig(
+                    TTSConfig(
+                      type: type.value,
+                      voice: voice.text.trim(),
+                      baseUrl: config.baseUrl,
+                      apiKey: config.apiKey,
+                      model: config.model,
+                    ),
+                  ),
+            child: Text(saving ? '保存中…' : '保存'),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -71,8 +164,7 @@ class _ServiceList extends HookWidget {
           width: 260,
           decoration: BoxDecoration(
             color: c.barBg.withValues(alpha: 0.9),
-            border: Border(
-                right: BorderSide(color: c.borderLight, width: 0.5)),
+            border: Border(right: BorderSide(color: c.borderLight, width: 0.5)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -81,14 +173,16 @@ class _ServiceList extends HookWidget {
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
                 child: Row(
                   children: [
-                    Text('配音声音',
-                        style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: c.textPrimary)),
+                    Text(
+                      '配音声音',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: c.textPrimary,
+                      ),
+                    ),
                     const Spacer(),
-                    Icon(CupertinoIcons.plus,
-                        size: 16, color: c.textSecondary),
+                    Icon(CupertinoIcons.plus, size: 16, color: c.textSecondary),
                   ],
                 ),
               ),
@@ -98,19 +192,23 @@ class _ServiceList extends HookWidget {
                   children: [
                     if (local.isNotEmpty) ...[
                       _sectionTitle('本地模型', c),
-                      ...local.map((s) => _ServiceItem(
-                            service: s,
-                            selected: s.id == selectedId,
-                            onTap: () => onSelect(s.id),
-                          )),
+                      ...local.map(
+                        (s) => _ServiceItem(
+                          service: s,
+                          selected: s.id == selectedId,
+                          onTap: () => onSelect(s.id),
+                        ),
+                      ),
                     ],
                     if (online.isNotEmpty) ...[
                       _sectionTitle('在线服务', c),
-                      ...online.map((s) => _ServiceItem(
-                            service: s,
-                            selected: s.id == selectedId,
-                            onTap: () => onSelect(s.id),
-                          )),
+                      ...online.map(
+                        (s) => _ServiceItem(
+                          service: s,
+                          selected: s.id == selectedId,
+                          onTap: () => onSelect(s.id),
+                        ),
+                      ),
                     ],
                     const SizedBox(height: 12),
                     GestureDetector(
@@ -118,20 +216,28 @@ class _ServiceList extends HookWidget {
                       child: Container(
                         margin: const EdgeInsets.symmetric(horizontal: 4),
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 10),
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                              color: c.borderLight, width: 0.5),
+                          border: Border.all(color: c.borderLight, width: 0.5),
                         ),
                         child: Row(
                           children: [
-                            Icon(CupertinoIcons.plus,
-                                size: 14, color: c.textTertiary),
+                            Icon(
+                              CupertinoIcons.plus,
+                              size: 14,
+                              color: c.textTertiary,
+                            ),
                             const SizedBox(width: 8),
-                            Text('添加自定义服务',
-                                style: TextStyle(
-                                    fontSize: 12, color: c.textTertiary)),
+                            Text(
+                              '添加自定义服务',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: c.textTertiary,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -149,11 +255,14 @@ class _ServiceList extends HookWidget {
   Widget _sectionTitle(String title, AppColors c) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-      child: Text(title,
-          style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: c.textTertiary)),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: c.textTertiary,
+        ),
+      ),
     );
   }
 }
@@ -162,8 +271,11 @@ class _ServiceItem extends HookWidget {
   final TTSService service;
   final bool selected;
   final VoidCallback onTap;
-  const _ServiceItem(
-      {required this.service, required this.selected, required this.onTap});
+  const _ServiceItem({
+    required this.service,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -183,8 +295,8 @@ class _ServiceItem extends HookWidget {
             color: selected
                 ? AppColors.blue.withValues(alpha: 0.15)
                 : hovering.value
-                    ? c.cardBgHover
-                    : const Color(0x00000000),
+                ? c.cardBgHover
+                : const Color(0x00000000),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
@@ -192,28 +304,33 @@ class _ServiceItem extends HookWidget {
               Icon(service.icon, size: 16, color: service.color),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(service.name,
-                    style: TextStyle(
-                        fontSize: 13,
-                        fontWeight:
-                            selected ? FontWeight.w600 : FontWeight.w400,
-                        color: selected
-                            ? AppColors.blue
-                            : c.textPrimary)),
+                child: Text(
+                  service.name,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                    color: selected ? AppColors.blue : c.textPrimary,
+                  ),
+                ),
               ),
               if (service.badge.isNotEmpty) ...[
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.orange.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: Text(service.badge,
-                      style: const TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.orange)),
+                  child: Text(
+                    service.badge,
+                    style: const TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.orange,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 6),
               ],
@@ -222,9 +339,7 @@ class _ServiceItem extends HookWidget {
                 height: 7,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: service.available
-                      ? AppColors.green
-                      : c.borderSubtle,
+                  color: service.available ? AppColors.green : c.borderSubtle,
                 ),
               ),
             ],
@@ -248,14 +363,19 @@ class _OverviewPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('配音声音 — 总览',
-              style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: c.textPrimary)),
+          Text(
+            '配音声音 — 总览',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: c.textPrimary,
+            ),
+          ),
           const SizedBox(height: 8),
-          Text('三类声音来源一览与推荐起步路径',
-              style: TextStyle(fontSize: 13, color: c.textSecondary)),
+          Text(
+            '三类声音来源一览与推荐起步路径',
+            style: TextStyle(fontSize: 13, color: c.textSecondary),
+          ),
           const SizedBox(height: 24),
           _OverviewCard(
             title: '本地模型',
@@ -278,8 +398,11 @@ class _OverviewCard extends StatelessWidget {
   final String title;
   final String desc;
   final IconData icon;
-  const _OverviewCard(
-      {required this.title, required this.desc, required this.icon});
+  const _OverviewCard({
+    required this.title,
+    required this.desc,
+    required this.icon,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -299,15 +422,19 @@ class _OverviewCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
-                    style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: c.textPrimary)),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: c.textPrimary,
+                  ),
+                ),
                 const SizedBox(height: 3),
-                Text(desc,
-                    style: TextStyle(
-                        fontSize: 12, color: c.textSecondary)),
+                Text(
+                  desc,
+                  style: TextStyle(fontSize: 12, color: c.textSecondary),
+                ),
               ],
             ),
           ),
@@ -336,11 +463,14 @@ class _ServiceDetail extends HookWidget {
           children: [
             Icon(service.icon, size: 24, color: service.color),
             const SizedBox(width: 12),
-            Text(service.name,
-                style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: c.textPrimary)),
+            Text(
+              service.name,
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: c.textPrimary,
+              ),
+            ),
             const SizedBox(width: 12),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -350,13 +480,14 @@ class _ServiceDetail extends HookWidget {
                     : c.borderSubtle.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(4),
               ),
-              child: Text(service.available ? '可用' : '未配置',
-                  style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: service.available
-                          ? AppColors.green
-                          : c.textTertiary)),
+              child: Text(
+                service.available ? '可用' : '未配置',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: service.available ? AppColors.green : c.textTertiary,
+                ),
+              ),
             ),
           ],
         ),
@@ -367,14 +498,16 @@ class _ServiceDetail extends HookWidget {
             decoration: BoxDecoration(
               color: AppColors.blue.withValues(alpha: 0.06),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                  color: AppColors.blue.withValues(alpha: 0.15)),
+              border: Border.all(color: AppColors.blue.withValues(alpha: 0.15)),
             ),
-            child: Text(service.description,
-                style: TextStyle(
-                    fontSize: 12,
-                    color: c.textSecondary,
-                    height: 1.5)),
+            child: Text(
+              service.description,
+              style: TextStyle(
+                fontSize: 12,
+                color: c.textSecondary,
+                height: 1.5,
+              ),
+            ),
           ),
         const SizedBox(height: 20),
         Row(
@@ -404,26 +537,38 @@ class _ServiceDetail extends HookWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(CupertinoIcons.play_fill,
-                      size: 11, color: Color(0xFFFFFFFF)),
+                  const Icon(
+                    CupertinoIcons.play_fill,
+                    size: 11,
+                    color: Color(0xFFFFFFFF),
+                  ),
                   const SizedBox(width: 5),
-                  Text(testing.value ? '测试中...' : '测试连接',
-                      style: const TextStyle(
-                          fontSize: 12, color: Color(0xFFFFFFFF))),
+                  Text(
+                    testing.value ? '测试中...' : '测试连接',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFFFFFFFF),
+                    ),
+                  ),
                 ],
               ),
             ),
           ],
         ),
         const SizedBox(height: 24),
-        Text('音色候选',
-            style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: c.textPrimary)),
+        Text(
+          '音色候选',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: c.textPrimary,
+          ),
+        ),
         const SizedBox(height: 8),
-        Text('微软 Neural 音色名（如 zh-CN-XiaoxiaoNeural），逗号分隔',
-            style: TextStyle(fontSize: 11, color: c.textTertiary)),
+        Text(
+          '微软 Neural 音色名（如 zh-CN-XiaoxiaoNeural），逗号分隔',
+          style: TextStyle(fontSize: 11, color: c.textTertiary),
+        ),
         const SizedBox(height: 8),
         MacosTextField(
           placeholder: '输入音色名，回车添加',
@@ -436,11 +581,14 @@ class _ServiceDetail extends HookWidget {
           placeholderStyle: TextStyle(fontSize: 13, color: c.textPlaceholder),
         ),
         const SizedBox(height: 20),
-        Text('请求超时（秒）',
-            style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: c.textPrimary)),
+        Text(
+          '请求超时（秒）',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: c.textPrimary,
+          ),
+        ),
         const SizedBox(height: 8),
         MacosTextField(
           placeholder: '60',
@@ -453,14 +601,19 @@ class _ServiceDetail extends HookWidget {
           placeholderStyle: TextStyle(fontSize: 13, color: c.textPlaceholder),
         ),
         const SizedBox(height: 8),
-        Text('单次合成请求超时（秒）',
-            style: TextStyle(fontSize: 11, color: c.textTertiary)),
+        Text(
+          '单次合成请求超时（秒）',
+          style: TextStyle(fontSize: 11, color: c.textTertiary),
+        ),
         const SizedBox(height: 20),
-        Text('并发数',
-            style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: c.textPrimary)),
+        Text(
+          '并发数',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: c.textPrimary,
+          ),
+        ),
         const SizedBox(height: 8),
         MacosTextField(
           placeholder: '1',
@@ -473,8 +626,10 @@ class _ServiceDetail extends HookWidget {
           placeholderStyle: TextStyle(fontSize: 13, color: c.textPlaceholder),
         ),
         const SizedBox(height: 8),
-        Text('批量合成时的并发请求数（跨任务全局生效）',
-            style: TextStyle(fontSize: 11, color: c.textTertiary)),
+        Text(
+          '批量合成时的并发请求数（跨任务全局生效）',
+          style: TextStyle(fontSize: 11, color: c.textTertiary),
+        ),
       ],
     );
   }
@@ -484,8 +639,11 @@ class _ActionButton extends StatelessWidget {
   final String label;
   final IconData icon;
   final VoidCallback onTap;
-  const _ActionButton(
-      {required this.label, required this.icon, required this.onTap});
+  const _ActionButton({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -504,9 +662,7 @@ class _ActionButton extends StatelessWidget {
           children: [
             Icon(icon, size: 12, color: c.textTertiary),
             const SizedBox(width: 5),
-            Text(label,
-                style: TextStyle(
-                    fontSize: 12, color: c.textPrimary)),
+            Text(label, style: TextStyle(fontSize: 12, color: c.textPrimary)),
           ],
         ),
       ),
