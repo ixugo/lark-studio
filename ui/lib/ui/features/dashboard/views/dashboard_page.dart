@@ -957,7 +957,7 @@ class _EmptyImportArea extends StatelessWidget {
               _GuideStep(
                 index: 2,
                 label: '核对配置',
-                desc: '在上方配置条选择引擎、模型与语言，高级参数在右上角',
+                desc: '在上方选择语言、引擎、音色与输出方式',
                 color: color,
                 c: c,
               ),

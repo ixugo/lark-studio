@@ -88,8 +88,17 @@ class TaskDetailPage extends HookConsumerWidget {
         children: [
           _DetailNavBar(title: t?.fileName ?? '任务详情', c: c),
           Expanded(
-            child: _buildContent(context, c, t, error.value, logs.value,
-                pausing.value, resuming.value, doPause, doResume),
+            child: _buildContent(
+              context,
+              c,
+              t,
+              error.value,
+              logs.value,
+              pausing.value,
+              resuming.value,
+              doPause,
+              doResume,
+            ),
           ),
         ],
       ),
@@ -97,22 +106,23 @@ class TaskDetailPage extends HookConsumerWidget {
   }
 
   Widget _buildContent(
-      BuildContext context,
-      AppColors c,
-      Task? t,
-      String? err,
-      List<String> logs,
-      bool pausing,
-      bool resuming,
-      Future<void> Function() doPause,
-      Future<void> Function() doResume) {
+    BuildContext context,
+    AppColors c,
+    Task? t,
+    String? err,
+    List<String> logs,
+    bool pausing,
+    bool resuming,
+    Future<void> Function() doPause,
+    Future<void> Function() doResume,
+  ) {
     if (t == null && err == null) {
       return const Center(child: ProgressCircle(radius: 14));
     }
     if (t == null) {
       return Center(
-          child: Text(err ?? '加载失败',
-              style: TextStyle(color: c.textTertiary)));
+        child: Text(err ?? '加载失败', style: TextStyle(color: c.textTertiary)),
+      );
     }
 
     return ListView(
@@ -157,143 +167,206 @@ class TaskDetailPage extends HookConsumerWidget {
   Widget _row(AppColors c, String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        SizedBox(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
             width: 80,
-            child: Text(label,
-                style: TextStyle(fontSize: 13, color: c.textTertiary))),
-        Expanded(
-            child: Text(value,
-                style: TextStyle(fontSize: 13, color: c.textPrimary))),
-      ]),
+            child: Text(
+              label,
+              style: TextStyle(fontSize: 13, color: c.textTertiary),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(fontSize: 13, color: c.textPrimary),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildActions(Task t, bool pausing, bool resuming,
-      Future<void> Function() doPause, Future<void> Function() doResume) {
-    return Row(children: [
-      if (t.canPause)
-        Expanded(
+  Widget _buildActions(
+    Task t,
+    bool pausing,
+    bool resuming,
+    Future<void> Function() doPause,
+    Future<void> Function() doResume,
+  ) {
+    return Row(
+      children: [
+        if (t.canPause)
+          Expanded(
             child: AppButton(
-                color: AppColors.orange,
-                onPressed: pausing ? null : doPause,
-                child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(CupertinoIcons.pause_circle,
-                          size: 18, color: Color(0xFFFFFFFF)),
-                      SizedBox(width: 6),
-                      Text('暂停', style: TextStyle(fontSize: 14)),
-                    ]))),
-      if (t.canResume)
-        Expanded(
+              color: AppColors.orange,
+              onPressed: pausing ? null : doPause,
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    CupertinoIcons.pause_circle,
+                    size: 18,
+                    color: Color(0xFFFFFFFF),
+                  ),
+                  SizedBox(width: 6),
+                  Text('暂停', style: TextStyle(fontSize: 14)),
+                ],
+              ),
+            ),
+          ),
+        if (t.canResume)
+          Expanded(
             child: AppButton(
-                color: AppColors.green,
-                onPressed: resuming ? null : doResume,
-                child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(CupertinoIcons.play_circle,
-                          size: 18, color: Color(0xFFFFFFFF)),
-                      const SizedBox(width: 6),
-                      Text(t.status == 4 ? '重试' : '恢复',
-                          style: const TextStyle(fontSize: 14)),
-                    ]))),
-    ]);
+              color: AppColors.green,
+              onPressed: resuming ? null : doResume,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    CupertinoIcons.play_circle,
+                    size: 18,
+                    color: Color(0xFFFFFFFF),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    t.status == 4 ? '重试' : '恢复',
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
   }
 
   Widget _buildProgress(AppColors c, Task t) {
     final steps = t.mode == 3
         ? ['whisper', 'split', 'translate', 'tts', 'merge', 'burn']
         : t.mode == 2
-            ? ['whisper', 'split', 'translate', 'burn']
-            : ['whisper', 'burn'];
+        ? ['whisper', 'split', 'translate', 'burn']
+        : ['whisper', 'burn'];
     final currentIdx = steps.indexOf(t.currentStep);
 
     return GlassCard(
       padding: const EdgeInsets.all(16),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('处理进度',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '处理进度',
             style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: c.textPrimary)),
-        const SizedBox(height: 12),
-        ...steps.asMap().entries.map((e) {
-          final idx = e.key;
-          final name = e.value;
-          final isDone = (t.status == 3) || idx < currentIdx;
-          final isActive = t.status == 1 && idx == currentIdx;
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(children: [
-              if (isDone)
-                const Icon(CupertinoIcons.checkmark_circle_fill,
-                    size: 18, color: CupertinoColors.systemGreen)
-              else if (isActive)
-                const ProgressCircle(radius: 8)
-              else
-                Icon(CupertinoIcons.circle,
-                    size: 18, color: c.textQuaternary),
-              const SizedBox(width: 10),
-              Text(_stepLabel(name),
-                  style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: c.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...steps.asMap().entries.map((e) {
+            final idx = e.key;
+            final name = e.value;
+            final isDone = (t.status == 3) || idx < currentIdx;
+            final isActive = t.status == 1 && idx == currentIdx;
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  if (isDone)
+                    const Icon(
+                      CupertinoIcons.checkmark_circle_fill,
+                      size: 18,
+                      color: CupertinoColors.systemGreen,
+                    )
+                  else if (isActive)
+                    const ProgressCircle(radius: 8)
+                  else
+                    Icon(
+                      CupertinoIcons.circle,
+                      size: 18,
+                      color: c.textQuaternary,
+                    ),
+                  const SizedBox(width: 10),
+                  Text(
+                    _stepLabel(name),
+                    style: TextStyle(
                       fontSize: 13,
                       color: isActive ? c.accent : c.textPrimary,
-                      fontWeight:
-                          isActive ? FontWeight.w600 : FontWeight.w400)),
-            ]),
-          );
-        }),
-      ]),
+                      fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
     );
   }
 
   Widget _buildLogs(AppColors c, List<String> logs) {
     return GlassCard(
       padding: const EdgeInsets.all(16),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('实时日志',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '实时日志',
             style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: c.textPrimary)),
-        const SizedBox(height: 8),
-        Container(
-          height: 200,
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: c.isDark
-                ? const Color(0x47FFFFFF)
-                : const Color(0x0A000000),
-            borderRadius: BorderRadius.circular(8),
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: c.textPrimary,
+            ),
           ),
-          child: ListView.builder(
-            reverse: true,
-            itemCount: logs.length,
-            itemBuilder: (_, i) {
-              final idx = logs.length - 1 - i;
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Text(logs[idx],
+          const SizedBox(height: 8),
+          Container(
+            height: 200,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: c.isDark
+                  ? const Color(0x47FFFFFF)
+                  : const Color(0x0A000000),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: ListView.builder(
+              reverse: true,
+              itemCount: logs.length,
+              itemBuilder: (_, i) {
+                final idx = logs.length - 1 - i;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Text(
+                    logs[idx],
                     style: TextStyle(
-                        fontSize: 12,
-                        fontFamily: 'monospace',
-                        color: c.textSecondary)),
-              );
-            },
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                      color: c.textSecondary,
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
-        ),
-      ]),
+        ],
+      ),
     );
   }
 
   String _stepLabel(String step) {
-    const labels = {'whisper': '语音识别 (Whisper)', 'split': '句级分段 (Split)', 'translate': '翻译 (Translate)', 'tts': '语音合成 (TTS)', 'merge': '音频合并 (Merge)', 'burn': '字幕烧录 (Burn)'};
+    const labels = {
+      'whisper': '语音识别',
+      'split': '句级分段',
+      'translate': '字幕翻译',
+      'tts': '语音合成',
+      'merge': '音频合并',
+      'burn': '视频输出',
+    };
     return labels[step] ?? step;
   }
 
-  String _formatTime(DateTime dt) => '${dt.year}-${_pad(dt.month)}-${_pad(dt.day)} ${_pad(dt.hour)}:${_pad(dt.minute)}:${_pad(dt.second)}';
+  String _formatTime(DateTime dt) =>
+      '${dt.year}-${_pad(dt.month)}-${_pad(dt.day)} ${_pad(dt.hour)}:${_pad(dt.minute)}:${_pad(dt.second)}';
   String _pad(int n) => n.toString().padLeft(2, '0');
 }
 
@@ -310,43 +383,56 @@ class _DetailNavBar extends HookWidget {
       height: 44,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       border: Border(bottom: BorderSide(color: c.glassStroke, width: 0.5)),
-      child: Row(children: [
-        MouseRegion(
-          cursor: SystemMouseCursors.click,
-          onEnter: (_) => hovering.value = true,
-          onExit: (_) => hovering.value = false,
-          child: GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 120),
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: hovering.value
-                    ? c.glassCardBg
-                    : const Color(0x00000000),
-                borderRadius: BorderRadius.circular(8),
+      child: Row(
+        children: [
+          MouseRegion(
+            cursor: SystemMouseCursors.click,
+            onEnter: (_) => hovering.value = true,
+            onExit: (_) => hovering.value = false,
+            child: GestureDetector(
+              onTap: () => Navigator.of(context).pop(),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 120),
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: hovering.value
+                      ? c.glassCardBg
+                      : const Color(0x00000000),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      CupertinoIcons.chevron_left,
+                      size: 16,
+                      color: c.textSecondary,
+                    ),
+                    const SizedBox(width: 2),
+                    Text(
+                      '任务',
+                      style: TextStyle(fontSize: 13, color: c.textSecondary),
+                    ),
+                  ],
+                ),
               ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(CupertinoIcons.chevron_left,
-                    size: 16, color: c.textSecondary),
-                const SizedBox(width: 2),
-                Text('任务',
-                    style: TextStyle(fontSize: 13, color: c.textSecondary)),
-              ]),
             ),
           ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(title,
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              title,
               style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: c.textPrimary),
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: c.textPrimary,
+              ),
               maxLines: 1,
-              overflow: TextOverflow.ellipsis),
-        ),
-      ]),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
