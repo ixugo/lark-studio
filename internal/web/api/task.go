@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/ixugo/goddd/pkg/orm"
 	"github.com/ixugo/goddd/pkg/reason"
 	"github.com/ixugo/goddd/pkg/web"
 	"github.com/ixugo/vdub/internal/conf"
@@ -33,7 +32,7 @@ type TaskAPI struct {
 // NewTaskCore 创建任务领域并迁移任务、步骤和日志表。
 func NewTaskCore(db *gorm.DB) task.Core {
 	var store task.Storer
-	store = taskdb.NewDB(db).AutoMigrate(orm.GetEnabledAutoMigrate())
+	store = taskdb.NewDB(db).AutoMigrate(true)
 	return task.NewCore(store)
 }
 
