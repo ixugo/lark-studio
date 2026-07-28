@@ -1,10 +1,13 @@
 import 'dart:ui';
-import 'package:flutter/cupertino.dart';
+import 'package:flutter/cupertino.dart' show CupertinoAlertDialog, CupertinoDialogAction, CupertinoSlider, CupertinoSlidingSegmentedControl, showCupertinoDialog;
+import 'package:flutter/widgets.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:macos_ui/macos_ui.dart';
 
 import '../../../../data/models/config.dart';
 import '../../../../providers.dart';
+import '../../../core/app_colors.dart';
 import '../view_models/settings_view_model.dart';
 
 class SettingsPage extends HookConsumerWidget {
@@ -136,12 +139,12 @@ class SettingsPage extends HookConsumerWidget {
             onSave: saveConfig),
         Expanded(
           child: ss.loading
-              ? const Center(child: CupertinoActivityIndicator(radius: 14))
+              ? const Center(child: ProgressCircle(radius: 14))
               : ss.error != null && ss.config == null
                   ? Center(
                       child: Text(ss.error!,
                           style:
-                              const TextStyle(color: Color(0xFF8E8E93))))
+                              TextStyle(color: AppColors.of(context).textSecondary)))
                   : _buildForm(
                       context,
                       backend,
@@ -205,6 +208,7 @@ class SettingsPage extends HookConsumerWidget {
     TextEditingController lipSyncApiKey,
     SettingsNotifier notifier,
   ) {
+    final c = AppColors.of(context);
     return ListView(
       padding: const EdgeInsets.fromLTRB(28, 20, 28, 40),
       children: [
@@ -223,41 +227,41 @@ class SettingsPage extends HookConsumerWidget {
         ]),
         const SizedBox(height: 20),
         _GlassSection(title: 'TTS 语音合成', children: [
-          _segmentRow('TTS 类型', {'edge': 'Edge TTS', 'openai': 'OpenAI TTS'}, ttsType.value, (v) => ttsType.value = v),
+          _segmentRow('TTS 类型', {'edge': 'Edge TTS', 'openai': 'OpenAI TTS'}, ttsType.value, (v) => ttsType.value = v, c),
           _GlassField(label: '语音名称', controller: ttsVoice, placeholder: 'zh-CN-YunjianNeural'),
           if (ttsType.value == 'openai') ...[
             _GlassField(label: 'API 地址', controller: ttsBaseUrl, placeholder: 'https://api.openai.com/v1'),
             _GlassField(label: 'API 密钥', controller: ttsApiKey, placeholder: 'sk-xxx', obscure: true),
             _GlassField(label: '模型', controller: ttsModel, placeholder: 'tts-1'),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(18, 0, 18, 12),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
               child: Text(
                 '支持 CosyVoice / F5-TTS / ChatTTS 等开源 TTS，'
                 '部署后将 API 地址指向本地服务即可 (如 http://localhost:8880/v1)。',
-                style: TextStyle(fontSize: 11, color: Color(0xFF8E8E93)),
+                style: TextStyle(fontSize: 11, color: c.textSecondary),
               ),
             ),
           ],
         ]),
         const SizedBox(height: 20),
         _GlassSection(title: '对口型 (MuseTalk)', children: [
-          _switchRow('启用', lipSyncEnabled.value, '配音后自动对口型（需 MuseTalk 服务）', (v) => lipSyncEnabled.value = v),
+          _switchRow('启用', lipSyncEnabled.value, '配音后自动对口型（需 MuseTalk 服务）', (v) => lipSyncEnabled.value = v, c),
           if (lipSyncEnabled.value) ...[
             _GlassField(label: 'API 地址', controller: lipSyncBaseUrl, placeholder: 'http://localhost:7860'),
             _GlassField(label: 'API 密钥', controller: lipSyncApiKey, placeholder: '选填', obscure: true),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(18, 0, 18, 12),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
               child: Text(
                 '需自行部署 MuseTalk 服务。配音完成后自动调用 API 做唇形同步。'
                 '也可连接阿里云万象大模型等兼容服务。',
-                style: TextStyle(fontSize: 11, color: Color(0xFF8E8E93)),
+                style: TextStyle(fontSize: 11, color: c.textSecondary),
               ),
             ),
           ],
         ]),
         const SizedBox(height: 20),
         _GlassSection(title: '流水线', children: [
-          _segmentRow('Whisper', {'ffmpeg': 'FFmpeg', 'whisper-cpp': 'whisper.cpp'}, whisperMode.value, (v) => whisperMode.value = v),
+          _segmentRow('Whisper', {'ffmpeg': 'FFmpeg', 'whisper-cpp': 'whisper.cpp'}, whisperMode.value, (v) => whisperMode.value = v, c),
           _GlassField(label: '模型路径', controller: whisperModel, placeholder: '/path/to/ggml-large-v3.bin'),
           if (ss.models.isNotEmpty)
             Padding(
@@ -265,7 +269,7 @@ class SettingsPage extends HookConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('可用模型 (点击下载后自动填入路径)', style: TextStyle(fontSize: 11, color: Color(0xFF8E8E93))),
+                  Text('可用模型 (点击下载后自动填入路径)', style: TextStyle(fontSize: 11, color: c.textSecondary)),
                   const SizedBox(height: 6),
                   ...ss.models.map((m) => _ModelRow(
                         name: m['name'] as String? ?? '',
@@ -286,12 +290,12 @@ class SettingsPage extends HookConsumerWidget {
             ),
           _GlassField(label: 'FFmpeg', controller: ffmpegBin, placeholder: '留空使用 PATH'),
           _GlassField(label: '目标语言', controller: targetLang, placeholder: 'zh-CN'),
-          _sliderRow('Worker 数', workers.value, 1, 4, (v) => workers.value = v),
-          _doubleSliderRow('调速上限', maxSpeedFactor.value, 0, 1.5, '不调速', (v) => maxSpeedFactor.value = double.parse(v.toStringAsFixed(1))),
-          _sliderRow('翻译分块', translateChunkSize.value, 5, 20, (v) => translateChunkSize.value = v),
-          _sliderRow('TTS 并发', ttsWorkers.value, 1, 4, (v) => ttsWorkers.value = v),
-          _segmentRow('字幕输出', {'burn': '烧录到视频', 'file': '独立字幕文件'}, subtitleOutput.value, (v) => subtitleOutput.value = v),
-          _switchRow('清理中间产物', cleanIntermediate.value, '完成后删除 raw.mp3/audio_segs 等临时文件', (v) => cleanIntermediate.value = v),
+          _sliderRow('Worker 数', workers.value, 1, 4, (v) => workers.value = v, c),
+          _doubleSliderRow('调速上限', maxSpeedFactor.value, 0, 1.5, '不调速', (v) => maxSpeedFactor.value = double.parse(v.toStringAsFixed(1)), c),
+          _sliderRow('翻译分块', translateChunkSize.value, 5, 20, (v) => translateChunkSize.value = v, c),
+          _sliderRow('TTS 并发', ttsWorkers.value, 1, 4, (v) => ttsWorkers.value = v, c),
+          _segmentRow('字幕输出', {'burn': '烧录到视频', 'file': '独立字幕文件'}, subtitleOutput.value, (v) => subtitleOutput.value = v, c),
+          _switchRow('清理中间产物', cleanIntermediate.value, '完成后删除 raw.mp3/audio_segs 等临时文件', (v) => cleanIntermediate.value = v, c),
         ]),
         const SizedBox(height: 20),
         _GlassSection(title: '翻译提示词', children: [
@@ -301,48 +305,48 @@ class SettingsPage extends HookConsumerWidget {
     );
   }
 
-  Widget _segmentRow(String label, Map<String, String> options, String value, ValueChanged<String> onChanged) {
+  Widget _segmentRow(String label, Map<String, String> options, String value, ValueChanged<String> onChanged, AppColors c) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
       child: Row(children: [
-        SizedBox(width: 100, child: Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF3A3A3C)))),
+        SizedBox(width: 100, child: Text(label, style: TextStyle(fontSize: 13, color: c.textPrimary))),
         Expanded(child: CupertinoSlidingSegmentedControl<String>(groupValue: value, children: options.map((k, v) => MapEntry(k, Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: Text(v, style: const TextStyle(fontSize: 12))))), onValueChanged: (v) { if (v != null) onChanged(v); })),
       ]),
     );
   }
 
-  Widget _doubleSliderRow(String label, double value, double min, double max, String hint, ValueChanged<double> onChanged) {
+  Widget _doubleSliderRow(String label, double value, double min, double max, String hint, ValueChanged<double> onChanged, AppColors c) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
       child: Row(children: [
-        SizedBox(width: 100, child: Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF3A3A3C)))),
+        SizedBox(width: 100, child: Text(label, style: TextStyle(fontSize: 13, color: c.textPrimary))),
         Expanded(child: CupertinoSlider(value: value, min: min, max: max, divisions: ((max - min) * 10).round(), onChanged: onChanged)),
-        SizedBox(width: 56, child: Text(value <= 1 ? hint : '${value.toStringAsFixed(1)}x', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Color(0xFF3A3A3C)))),
+        SizedBox(width: 56, child: Text(value <= 1 ? hint : '${value.toStringAsFixed(1)}x', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: c.textPrimary))),
       ]),
     );
   }
 
-  Widget _sliderRow(String label, int value, int min, int max, ValueChanged<int> onChanged) {
+  Widget _sliderRow(String label, int value, int min, int max, ValueChanged<int> onChanged, AppColors c) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
       child: Row(children: [
-        SizedBox(width: 100, child: Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF3A3A3C)))),
+        SizedBox(width: 100, child: Text(label, style: TextStyle(fontSize: 13, color: c.textPrimary))),
         Expanded(child: CupertinoSlider(value: value.toDouble(), min: min.toDouble(), max: max.toDouble(), divisions: max - min, onChanged: (v) => onChanged(v.round()))),
-        SizedBox(width: 30, child: Text('$value', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Color(0xFF3A3A3C)))),
+        SizedBox(width: 30, child: Text('$value', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: c.textPrimary))),
       ]),
     );
   }
 
-  Widget _switchRow(String label, bool value, String hint, ValueChanged<bool> onChanged) {
+  Widget _switchRow(String label, bool value, String hint, ValueChanged<bool> onChanged, AppColors c) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
       child: Row(children: [
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF3A3A3C))),
+          Text(label, style: TextStyle(fontSize: 13, color: c.textPrimary)),
           const SizedBox(height: 2),
-          Text(hint, style: const TextStyle(fontSize: 11, color: Color(0xFF8E8E93))),
+          Text(hint, style: TextStyle(fontSize: 11, color: c.textSecondary)),
         ])),
-        CupertinoSwitch(value: value, onChanged: onChanged),
+        MacosSwitch(value: value, onChanged: onChanged),
       ]),
     );
   }
@@ -363,16 +367,17 @@ class _SettingsToolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AppColors.of(context);
     return ClipRect(
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
         child: Container(
           height: 52, padding: const EdgeInsets.symmetric(horizontal: 28),
-          decoration: BoxDecoration(color: const Color(0xFFFFFFFF).withValues(alpha: 0.65), border: const Border(bottom: BorderSide(color: Color(0x1A000000), width: 0.5))),
+          decoration: BoxDecoration(color: c.barBg.withValues(alpha: 0.9), border: Border(bottom: BorderSide(color: c.borderLight, width: 0.5))),
           child: Row(children: [
-            const Text('设置', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Color(0xFF1D1D1F), letterSpacing: -0.5)),
+            Text('设置', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: c.textPrimary, letterSpacing: -0.5)),
             const Spacer(),
-            if (canSave) CupertinoButton.filled(padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6), borderRadius: BorderRadius.circular(10), onPressed: saving ? null : onSave, child: Text(saving ? '保存中...' : '保存配置', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: CupertinoColors.white))),
+            if (canSave) PushButton(controlSize: ControlSize.regular, color: AppColors.blue, onPressed: saving ? null : onSave, child: Text(saving ? '保存中...' : '保存配置', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFFFFFFFF)))),
           ]),
         ),
       ),
@@ -387,18 +392,18 @@ class _GlassSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AppColors.of(context);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Padding(padding: const EdgeInsets.only(left: 6, bottom: 8), child: Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF8E8E93), letterSpacing: 0.3))),
+      Padding(padding: const EdgeInsets.only(left: 6, bottom: 8), child: Text(title, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: c.textSecondary, letterSpacing: 0.3))),
       ClipRRect(
         borderRadius: BorderRadius.circular(14),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
           child: Container(
             decoration: BoxDecoration(
-              gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [const Color(0xFFFFFFFF).withValues(alpha: 0.80), const Color(0xFFF9F9FB).withValues(alpha: 0.70)]),
+              color: c.cardBg.withValues(alpha: 0.85),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFFFFFFF).withValues(alpha: 0.5), width: 0.5),
-              boxShadow: [BoxShadow(color: const Color(0xFF000000).withValues(alpha: 0.04), blurRadius: 14, offset: const Offset(0, 3))],
+              border: Border.all(color: c.borderLight.withValues(alpha: 0.3), width: 0.5),
             ),
             child: Column(children: children),
           ),
@@ -417,11 +422,12 @@ class _GlassField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AppColors.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
       child: Row(children: [
-        SizedBox(width: 100, child: Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF3A3A3C)))),
-        Expanded(child: CupertinoTextField(controller: controller, placeholder: placeholder, obscureText: obscure, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), style: const TextStyle(fontSize: 13), decoration: BoxDecoration(color: const Color(0xFF000000).withValues(alpha: 0.03), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF000000).withValues(alpha: 0.06))))),
+        SizedBox(width: 100, child: Text(label, style: TextStyle(fontSize: 13, color: c.textPrimary))),
+        Expanded(child: MacosTextField(controller: controller, placeholder: placeholder, obscureText: obscure, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), style: TextStyle(fontSize: 13, color: c.textPrimary), decoration: BoxDecoration(color: c.inputBg, borderRadius: BorderRadius.circular(8), border: Border.all(color: c.borderLight)))),
       ]),
     );
   }
@@ -436,7 +442,7 @@ class _GlassMultiLine extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-      child: CupertinoTextField(controller: controller, placeholder: placeholder, maxLines: 6, minLines: 3, padding: const EdgeInsets.all(12), style: const TextStyle(fontSize: 12, fontFamily: 'monospace'), decoration: BoxDecoration(color: const Color(0xFF000000).withValues(alpha: 0.03), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF000000).withValues(alpha: 0.06)))),
+      child: MacosTextField(controller: controller, placeholder: placeholder, maxLines: 6, minLines: 3, padding: const EdgeInsets.all(12), style: const TextStyle(fontSize: 12, fontFamily: 'monospace'), decoration: BoxDecoration(color: const Color(0xFF000000).withValues(alpha: 0.03), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF000000).withValues(alpha: 0.06)))),
     );
   }
 }
@@ -450,16 +456,17 @@ class _ModelRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AppColors.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Row(children: [
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF3A3A3C))),
-          Text('$size · $desc', style: const TextStyle(fontSize: 10, color: Color(0xFF8E8E93))),
+          Text(name, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: c.textPrimary)),
+          Text('$size · $desc', style: TextStyle(fontSize: 10, color: c.textSecondary)),
         ])),
-        if (downloaded) CupertinoButton(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), minimumSize: Size.zero, onPressed: onSelect, child: const Text('使用', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF34C759))))
-        else if (downloading) Text('$progress%', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF007AFF)))
-        else CupertinoButton(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), minimumSize: Size.zero, onPressed: onDownload, child: const Text('下载', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF007AFF)))),
+        if (downloaded) PushButton(controlSize: ControlSize.mini, secondary: true, onPressed: onSelect, child: const Text('使用', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.green)))
+        else if (downloading) Text('$progress%', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.blue))
+        else PushButton(controlSize: ControlSize.mini, secondary: true, onPressed: onDownload, child: const Text('下载', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.blue))),
       ]),
     );
   }
@@ -473,14 +480,15 @@ class _StatusRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AppColors.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
       child: Row(children: [
-        Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF3A3A3C))),
+        Text(label, style: TextStyle(fontSize: 13, color: c.textPrimary)),
         const Spacer(),
-        Container(width: 8, height: 8, decoration: BoxDecoration(shape: BoxShape.circle, color: online ? const Color(0xFF34C759) : const Color(0xFFFF3B30), boxShadow: [BoxShadow(color: (online ? const Color(0xFF34C759) : const Color(0xFFFF3B30)).withValues(alpha: 0.35), blurRadius: 6)])),
+        Container(width: 8, height: 8, decoration: BoxDecoration(shape: BoxShape.circle, color: online ? AppColors.green : AppColors.red, boxShadow: [BoxShadow(color: (online ? AppColors.green : AppColors.red).withValues(alpha: 0.35), blurRadius: 6)])),
         const SizedBox(width: 8),
-        Text(online ? (detail ?? '已连接') : '未连接', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: online ? const Color(0xFF34C759) : const Color(0xFFFF3B30))),
+        Text(online ? (detail ?? '已连接') : '未连接', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: online ? AppColors.green : AppColors.red)),
       ]),
     );
   }

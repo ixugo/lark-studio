@@ -18,9 +18,8 @@ LDFLAGS     := -X main.buildVersion=$(VERSION) \
                -X main.buildTime=$(BUILD_TIME)
 LDFLAGS_REL := $(LDFLAGS) -X main.release=true -s -w
 
-# macOS: evermeet.cx universal2（同时支持 arm64 和 x64）
-FFMPEG_MACOS_URL  := https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip
-FFPROBE_MACOS_URL := https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip
+# macOS arm64: ffmpeg-static 6.1.1（与 SmartSub 同源，43MB vs evermeet 77MB）
+FFMPEG_MACOS_URL  := https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-darwin-arm64.gz
 # Windows: gyan.dev essentials
 FFMPEG_WIN_URL    := https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip
 
@@ -75,35 +74,23 @@ run: build ## 仅启动 Go 引擎（HTTP 模式）
 
 # ─── FFmpeg 静态包下载 ──────────────────────────────────
 
-ffmpeg-macos: ## 下载 macOS 静态 ffmpeg/ffprobe（不存在时自动下载）
+ffmpeg-macos: ## 下载 macOS 静态 ffmpeg（不存在时自动下载）
 	@mkdir -p $(FFMPEG_DIR)/darwin
 	@if [ ! -f $(FFMPEG_DIR)/darwin/ffmpeg ]; then \
-		echo "⬇ 下载 ffmpeg (macOS)..."; \
-		curl -fSL $(FFMPEG_MACOS_URL) -o /tmp/vdub_ffmpeg.zip && \
-		unzip -o /tmp/vdub_ffmpeg.zip -d $(FFMPEG_DIR)/darwin/ && \
-		chmod +x $(FFMPEG_DIR)/darwin/ffmpeg && \
-		rm -f /tmp/vdub_ffmpeg.zip; \
+		echo "⬇ 下载 ffmpeg (macOS arm64)..."; \
+		curl -fSL $(FFMPEG_MACOS_URL) | gunzip > $(FFMPEG_DIR)/darwin/ffmpeg && \
+		chmod +x $(FFMPEG_DIR)/darwin/ffmpeg; \
 	else \
 		echo "✓ ffmpeg 已存在"; \
 	fi
-	@if [ ! -f $(FFMPEG_DIR)/darwin/ffprobe ]; then \
-		echo "⬇ 下载 ffprobe (macOS)..."; \
-		curl -fSL $(FFPROBE_MACOS_URL) -o /tmp/vdub_ffprobe.zip && \
-		unzip -o /tmp/vdub_ffprobe.zip -d $(FFMPEG_DIR)/darwin/ && \
-		chmod +x $(FFMPEG_DIR)/darwin/ffprobe && \
-		rm -f /tmp/vdub_ffprobe.zip; \
-	else \
-		echo "✓ ffprobe 已存在"; \
-	fi
 
-ffmpeg-windows: ## 下载 Windows 静态 ffmpeg/ffprobe（不存在时自动下载）
+ffmpeg-windows: ## 下载 Windows 静态 ffmpeg（不存在时自动下载）
 	@mkdir -p $(FFMPEG_DIR)/windows
 	@if [ ! -f $(FFMPEG_DIR)/windows/ffmpeg.exe ]; then \
 		echo "⬇ 下载 ffmpeg (Windows)..."; \
 		curl -fSL $(FFMPEG_WIN_URL) -o /tmp/vdub_ffmpeg_win.zip && \
-		cd /tmp && unzip -o vdub_ffmpeg_win.zip '*/bin/ffmpeg.exe' '*/bin/ffprobe.exe' && \
+		cd /tmp && unzip -o vdub_ffmpeg_win.zip '*/bin/ffmpeg.exe' && \
 		find /tmp -name 'ffmpeg.exe' -path '*/bin/*' -exec cp {} $(CURDIR)/$(FFMPEG_DIR)/windows/ffmpeg.exe \; && \
-		find /tmp -name 'ffprobe.exe' -path '*/bin/*' -exec cp {} $(CURDIR)/$(FFMPEG_DIR)/windows/ffprobe.exe \; && \
 		rm -rf /tmp/vdub_ffmpeg_win.zip /tmp/ffmpeg-*-essentials_build; \
 	else \
 		echo "✓ ffmpeg.exe 已存在"; \
@@ -111,21 +98,26 @@ ffmpeg-windows: ## 下载 Windows 静态 ffmpeg/ffprobe（不存在时自动下�
 
 # ─── 打包 ───────────────────────────────────────────────
 
-bundle-macos: ffmpeg-macos build-release ## 打包 macOS .app（Go + ffmpeg 内嵌）
-	cd $(UI_DIR) && flutter build macos --release
+bundle-macos: ffmpeg-macos build-release ## 打包 macOS .dmg（Go + ffmpeg 内嵌）
+	cd $(UI_DIR) && flutter build macos --release --split-debug-info=../build/debug-info --obfuscate
 	$(eval APP := $(UI_DIR)/build/macos/Build/Products/Release/vdub_ui.app)
 	@mkdir -p "$(APP)/Contents/Resources"
-	cp $(BUILD_DIR)/$(BINARY)       "$(APP)/Contents/Resources/$(BINARY)"
-	cp $(FFMPEG_DIR)/darwin/ffmpeg   "$(APP)/Contents/Resources/ffmpeg"
-	cp $(FFMPEG_DIR)/darwin/ffprobe  "$(APP)/Contents/Resources/ffprobe"
+	@rm -f "$(APP)/Contents/Resources/ffprobe"
+	install -m 755 $(BUILD_DIR)/$(BINARY)       "$(APP)/Contents/Resources/$(BINARY)"
+	install -m 755 $(FFMPEG_DIR)/darwin/ffmpeg   "$(APP)/Contents/Resources/ffmpeg"
 	@echo "✓ $(APP)"
+	@echo "⚙ 生成 DMG..."
+	@rm -f build/vdub.dmg
+	@mkdir -p build
+	hdiutil create -volname "VDub" -srcfolder "$(APP)" -ov -format UDZO -imagekey zlib-level=9 build/vdub.dmg
+	@echo "✓ build/vdub.dmg"
+	@du -sh build/vdub.dmg
 
-bundle-windows: ffmpeg-windows build-windows ## 打包 Windows（Go + ffmpeg 并入 Flutter Release 目录）
-	cd $(UI_DIR) && flutter build windows --release
+bundle-windows: ffmpeg-windows build-windows ## 打包 Windows zip（Go + ffmpeg 并入 Flutter Release 目录）
+	cd $(UI_DIR) && flutter build windows --release --split-debug-info=../build/debug-info --obfuscate
 	$(eval WIN := $(UI_DIR)/build/windows/x64/runner/Release)
 	cp build/windows_amd64/$(BINARY).exe  "$(WIN)/$(BINARY).exe"
 	cp $(FFMPEG_DIR)/windows/ffmpeg.exe   "$(WIN)/ffmpeg.exe"
-	cp $(FFMPEG_DIR)/windows/ffprobe.exe  "$(WIN)/ffprobe.exe"
 	@echo "✓ $(WIN)"
 
 # ─── 清理 ───────────────────────────────────────────────

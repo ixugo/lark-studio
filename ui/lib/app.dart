@@ -1,8 +1,11 @@
-import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:macos_ui/macos_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'providers.dart';
 import 'ui/features/home/views/home_page.dart';
 import 'ui/features/onboarding/views/onboarding_page.dart';
 
@@ -11,24 +14,26 @@ class VdubApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return CupertinoApp(
+    ref.watch(themeProvider);
+    final platformBrightness = MediaQuery.platformBrightnessOf(context);
+    final brightness =
+        ref.read(themeProvider.notifier).resolve(platformBrightness);
+    final isDark = brightness == Brightness.dark;
+
+    return MacosApp(
       title: 'vdub',
       debugShowCheckedModeBanner: false,
-      theme: const CupertinoThemeData(
-        primaryColor: CupertinoColors.systemBlue,
-        scaffoldBackgroundColor: Color(0xFFF5F5F7),
-        barBackgroundColor: Color(0xF0F9F9F9),
-        textTheme: CupertinoTextThemeData(
-          primaryColor: CupertinoColors.systemBlue,
-        ),
-      ),
-      home: const _AppGate(),
+      themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
+      theme: MacosThemeData.light(),
+      darkTheme: MacosThemeData.dark(),
+      home: _AppGate(isDark: isDark),
     );
   }
 }
 
 class _AppGate extends StatefulWidget {
-  const _AppGate();
+  final bool isDark;
+  const _AppGate({required this.isDark});
 
   @override
   State<_AppGate> createState() => _AppGateState();
@@ -56,21 +61,31 @@ class _AppGateState extends State<_AppGate> with WidgetsBindingObserver {
     _updateSystemOverlay();
   }
 
-  /// 标题栏样式跟随系统深浅模式
+  static const _windowChannel = MethodChannel('vdub/window');
+
+  @override
+  void didUpdateWidget(covariant _AppGate oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isDark != widget.isDark) _updateSystemOverlay();
+  }
+
   void _updateSystemOverlay() {
-    final brightness =
-        WidgetsBinding.instance.platformDispatcher.platformBrightness;
-    SystemChrome.setSystemUIOverlayStyle(
-      brightness == Brightness.dark
-          ? SystemUiOverlayStyle.light.copyWith(
-              statusBarColor: const Color(0xFF1C1C1E),
-              systemNavigationBarColor: const Color(0xFF1C1C1E),
-            )
-          : SystemUiOverlayStyle.dark.copyWith(
-              statusBarColor: const Color(0xFFF5F5F7),
-              systemNavigationBarColor: const Color(0xFFF5F5F7),
-            ),
-    );
+    _windowChannel.invokeMethod('setDarkMode', widget.isDark);
+    if (widget.isDark) {
+      SystemChrome.setSystemUIOverlayStyle(
+        SystemUiOverlayStyle.light.copyWith(
+          statusBarColor: const Color(0xFF000000),
+          systemNavigationBarColor: const Color(0xFF000000),
+        ),
+      );
+    } else {
+      SystemChrome.setSystemUIOverlayStyle(
+        SystemUiOverlayStyle.dark.copyWith(
+          statusBarColor: const Color(0xFFF2F2F7),
+          systemNavigationBarColor: const Color(0xFFF2F2F7),
+        ),
+      );
+    }
   }
 
   Future<void> _checkOnboarding() async {
@@ -82,9 +97,7 @@ class _AppGateState extends State<_AppGate> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     if (_onboardingDone == null) {
-      return const CupertinoPageScaffold(
-        child: Center(child: CupertinoActivityIndicator(radius: 14)),
-      );
+      return const Center(child: ProgressCircle(radius: 14));
     }
 
     if (!_onboardingDone!) {

@@ -1,4 +1,7 @@
+import 'dart:ui' show Brightness;
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'data/repositories/config_repository.dart';
 import 'data/repositories/task_repository.dart';
@@ -42,3 +45,53 @@ final configRepoProvider = Provider<ConfigRepository>((ref) {
 final termRepoProvider = Provider<TermRepository>((ref) {
   return TermRepository(api: ref.watch(apiClientProvider));
 });
+
+// ---- Theme ----
+
+/// 主题模式：system / light / dark
+enum AppThemeMode { system, light, dark }
+
+class ThemeNotifier extends Notifier<AppThemeMode> {
+  static const _key = 'vdub_theme_mode';
+
+  @override
+  AppThemeMode build() {
+    _load();
+    return AppThemeMode.system;
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_key);
+    if (raw == null) return;
+    final mode = AppThemeMode.values.firstWhere(
+      (e) => e.name == raw,
+      orElse: () => AppThemeMode.system,
+    );
+    state = mode;
+  }
+
+  /// 在 system / light / dark 间循环
+  Future<void> toggle() async {
+    final next = switch (state) {
+      AppThemeMode.system => AppThemeMode.dark,
+      AppThemeMode.dark => AppThemeMode.light,
+      AppThemeMode.light => AppThemeMode.system,
+    };
+    state = next;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_key, next.name);
+  }
+
+  /// 解析为实际 Brightness
+  Brightness resolve(Brightness platformBrightness) {
+    return switch (state) {
+      AppThemeMode.light => Brightness.light,
+      AppThemeMode.dark => Brightness.dark,
+      AppThemeMode.system => platformBrightness,
+    };
+  }
+}
+
+final themeProvider =
+    NotifierProvider<ThemeNotifier, AppThemeMode>(ThemeNotifier.new);

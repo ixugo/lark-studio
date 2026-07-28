@@ -1,5 +1,7 @@
 import 'dart:ui';
-import 'package:flutter/cupertino.dart';
+import 'package:flutter/cupertino.dart' show CupertinoColors, CupertinoIcons, CupertinoPageScaffold;
+import 'package:flutter/widgets.dart';
+import 'package:macos_ui/macos_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class OnboardingPage extends StatefulWidget {
@@ -78,15 +80,15 @@ class _OnboardingPageState extends State<OnboardingPage> {
                   const SizedBox(height: 36),
                   SizedBox(
                     width: double.infinity,
-                    child: CupertinoButton.filled(
-                      borderRadius: BorderRadius.circular(14),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    child: PushButton(
+                      controlSize: ControlSize.large,
+                      color: const Color(0xFF007AFF),
                       onPressed: _finish,
                       child: const Text('开始使用',
                           style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
-                              color: CupertinoColors.white)),
+                              color: MacosColors.white)),
                     ),
                   ),
                 ],

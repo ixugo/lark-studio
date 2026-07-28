@@ -19,7 +19,7 @@ func (*Glossary) TableName() string { return "glossaries" }
 // Text=源词 Translation=指定译文；二者相同表示保持原文
 type Term struct {
 	ID          int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	GlossaryID  int64     `gorm:"notNull;index" json:"glossary_id"`
+	GlossaryID  int64     `gorm:"notNull;default:1;index" json:"glossary_id"`
 	Text        string    `gorm:"notNull" json:"text"`
 	Translation string    `gorm:"notNull" json:"translation"`
 	Note        string    `gorm:"type:text" json:"note"`

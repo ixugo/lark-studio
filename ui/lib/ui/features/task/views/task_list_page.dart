@@ -2,13 +2,16 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/cupertino.dart';
+import 'package:flutter/cupertino.dart' show CupertinoAlertDialog, CupertinoColors, CupertinoDialogAction, CupertinoIcons, CupertinoPageRoute, CupertinoSlidingSegmentedControl, showCupertinoDialog, showCupertinoModalPopup;
+import 'package:flutter/widgets.dart';
+import 'package:macos_ui/macos_ui.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../../data/models/task.dart';
 import '../../../../data/services/api_client.dart';
 import '../../../../providers.dart';
+import '../../../core/app_button.dart';
 import '../view_models/task_list_view_model.dart';
 import 'create_task_page.dart';
 import 'task_detail_page.dart';
@@ -61,48 +64,32 @@ class TaskListPage extends HookConsumerWidget {
                       color: Color(0xFF1D1D1F),
                       letterSpacing: -0.5)),
               const Spacer(),
-              CupertinoButton(
-                padding: EdgeInsets.zero,
-                onPressed: () => notifier.refresh(),
-                child: const Icon(CupertinoIcons.refresh,
+              MacosIconButton(
+                icon: const Icon(CupertinoIcons.refresh,
                     size: 16, color: Color(0xFF8E8E93)),
+                onPressed: () => notifier.refresh(),
               ),
               const SizedBox(width: 10),
-              CupertinoButton(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                color: const Color(0xFF000000).withValues(alpha: 0.05),
-                borderRadius: BorderRadius.circular(10),
+              AppButton.secondary(
                 onPressed: () => _showBatchDialog(context),
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(CupertinoIcons.folder_badge_plus,
-                        size: 15, color: Color(0xFF3A3A3C)),
+                    Icon(CupertinoIcons.folder_badge_plus, size: 15),
                     SizedBox(width: 5),
-                    Text('批量导入',
-                        style:
-                            TextStyle(fontSize: 13, color: Color(0xFF3A3A3C))),
+                    Text('批量导入'),
                   ],
                 ),
               ),
               const SizedBox(width: 8),
-              CupertinoButton.filled(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                borderRadius: BorderRadius.circular(10),
+              AppButton(
                 onPressed: () => _showCreateDialog(context),
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(CupertinoIcons.add,
-                        size: 15, color: CupertinoColors.white),
+                    Icon(CupertinoIcons.add, size: 15),
                     SizedBox(width: 5),
-                    Text('新建',
-                        style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: CupertinoColors.white)),
+                    Text('新建', style: TextStyle(fontWeight: FontWeight.w600)),
                   ],
                 ),
               ),
@@ -116,7 +103,7 @@ class TaskListPage extends HookConsumerWidget {
   Widget _buildBody(
       BuildContext context, TaskListState ts, TaskListNotifier notifier) {
     if (ts.loading && ts.tasks.isEmpty) {
-      return const Center(child: CupertinoActivityIndicator(radius: 14));
+      return const Center(child: ProgressCircle(radius: 14));
     }
     if (ts.error != null && ts.tasks.isEmpty) {
       return Center(
@@ -130,7 +117,7 @@ class TaskListPage extends HookConsumerWidget {
                 style:
                     const TextStyle(color: Color(0xFF8E8E93), fontSize: 14)),
             const SizedBox(height: 16),
-            CupertinoButton(
+            AppButton.secondary(
                 onPressed: () => notifier.refresh(),
                 child: const Text('重试')),
           ],
@@ -283,27 +270,24 @@ class _TaskCard extends StatelessWidget {
                   ),
                 ),
                 if (onPause != null)
-                  CupertinoButton(
-                    padding: EdgeInsets.zero,
-                    minimumSize: const Size(28, 28),
-                    onPressed: onPause,
-                    child: const Icon(CupertinoIcons.pause_circle,
+                  MacosIconButton(
+                    icon: const Icon(CupertinoIcons.pause_circle,
                         size: 20, color: CupertinoColors.systemOrange),
+                    onPressed: onPause,
+                    padding: EdgeInsets.zero,
                   ),
                 if (onResume != null)
-                  CupertinoButton(
-                    padding: EdgeInsets.zero,
-                    minimumSize: const Size(28, 28),
-                    onPressed: onResume,
-                    child: const Icon(CupertinoIcons.play_circle,
+                  MacosIconButton(
+                    icon: const Icon(CupertinoIcons.play_circle,
                         size: 20, color: CupertinoColors.systemGreen),
+                    onPressed: onResume,
+                    padding: EdgeInsets.zero,
                   ),
-                CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  minimumSize: const Size(28, 28),
-                  onPressed: onDelete,
-                  child: const Icon(CupertinoIcons.trash,
+                MacosIconButton(
+                  icon: const Icon(CupertinoIcons.trash,
                       size: 16, color: Color(0xFFC7C7CC)),
+                  onPressed: onDelete,
+                  padding: EdgeInsets.zero,
                 ),
                 const SizedBox(width: 4),
                 const Icon(CupertinoIcons.chevron_right,
@@ -318,7 +302,7 @@ class _TaskCard extends StatelessWidget {
 
   Widget _statusIcon(int status) {
     switch (status) {
-      case 1: return const CupertinoActivityIndicator(radius: 10);
+      case 1: return const ProgressCircle(radius: 10);
       case 2: return const Icon(CupertinoIcons.pause_circle_fill, color: CupertinoColors.systemYellow, size: 22);
       case 3: return const Icon(CupertinoIcons.checkmark_circle_fill, color: CupertinoColors.systemGreen, size: 22);
       case 4: return const Icon(CupertinoIcons.xmark_circle_fill, color: CupertinoColors.systemRed, size: 22);
@@ -402,10 +386,10 @@ class _BatchImportSheet extends HookConsumerWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFE5E5EA), width: 0.5))),
             child: Row(children: [
-              CupertinoButton(padding: EdgeInsets.zero, onPressed: () => Navigator.pop(context), child: const Text('取消', style: TextStyle(fontSize: 15))),
+              GestureDetector(onTap: () => Navigator.pop(context), child: const MouseRegion(cursor: SystemMouseCursors.click, child: Text('取消', style: TextStyle(fontSize: 15, color: Color(0xFF007AFF))))),
               const Expanded(child: Text('批量导入', textAlign: TextAlign.center, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Color(0xFF1D1D1F)))),
-              CupertinoButton(padding: EdgeInsets.zero, onPressed: (submitting.value || selectedFiles.value.isEmpty) ? null : submit,
-                  child: Text('导入 (${selectedFiles.value.length})', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: (submitting.value || selectedFiles.value.isEmpty) ? const Color(0xFFC7C7CC) : CupertinoColors.systemBlue))),
+              GestureDetector(onTap: (submitting.value || selectedFiles.value.isEmpty) ? null : submit,
+                  child: MouseRegion(cursor: SystemMouseCursors.click, child: Text('导入 (${selectedFiles.value.length})', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: (submitting.value || selectedFiles.value.isEmpty) ? const Color(0xFFC7C7CC) : const Color(0xFF007AFF))))),
             ]),
           ),
           Expanded(
@@ -415,7 +399,7 @@ class _BatchImportSheet extends HookConsumerWidget {
                 Row(children: [
                   const Text('已选视频', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Color(0xFF8E8E93))),
                   const Spacer(),
-                  CupertinoButton(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), color: CupertinoColors.systemBlue, borderRadius: BorderRadius.circular(8), onPressed: pickFiles, child: const Text('选择视频文件', style: TextStyle(color: CupertinoColors.white, fontSize: 13))),
+                  AppButton(onPressed: pickFiles, child: const Text('选择视频文件')),
                 ]),
                 const SizedBox(height: 8),
                 if (selectedFiles.value.isEmpty)
@@ -446,7 +430,7 @@ class _BatchImportSheet extends HookConsumerWidget {
                     onValueChanged: (v) => mode.value = v!),
                 const SizedBox(height: 20),
                 const Padding(padding: EdgeInsets.only(bottom: 8), child: Text('目标语言', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Color(0xFF8E8E93)))),
-                CupertinoTextField(controller: langController, placeholder: 'zh (默认中文)', padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: CupertinoColors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFE5E5EA)))),
+                MacosTextField(controller: langController, placeholder: 'zh (默认中文)', padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: CupertinoColors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFE5E5EA)))),
               ],
             ),
           ),

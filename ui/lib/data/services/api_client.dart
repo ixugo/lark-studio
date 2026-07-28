@@ -184,6 +184,22 @@ class ApiClient {
     return body['data'] as Map<String, dynamic>? ?? {};
   }
 
+  Future<Map<String, dynamic>> updateTerm({
+    required int glossaryId,
+    required int id,
+    required String text,
+    required String translation,
+    String note = '',
+  }) async {
+    final resp = await _client.put(
+      Uri.parse('$baseUrl/glossaries/$glossaryId/terms/$id'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'text': text, 'translation': translation, 'note': note}),
+    );
+    _checkStatus(resp);
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
   Future<void> deleteTerm({required int glossaryId, required int id}) async {
     final resp = await _client.delete(Uri.parse('$baseUrl/glossaries/$glossaryId/terms/$id'));
     _checkStatus(resp);

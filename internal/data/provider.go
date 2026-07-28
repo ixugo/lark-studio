@@ -1,13 +1,10 @@
 package data
 
 import (
-	"strings"
-
 	"github.com/glebarez/sqlite"
 	"github.com/google/wire"
 	"github.com/ixugo/goddd/pkg/orm"
 	"github.com/ixugo/vdub/internal/conf"
-	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
@@ -33,12 +30,6 @@ func SetupDB(c *conf.Bootstrap) (*gorm.DB, error) {
 
 // getDialector 返回 dial 和 是否 sqlite
 func getDialector(dsn string) (gorm.Dialector, bool) {
-	if strings.HasPrefix(dsn, "postgres") {
-		return postgres.New(postgres.Config{
-			DriverName: "pgx",
-			DSN:        dsn,
-		}), false
-	}
 	resolved := conf.ResolveDSN(dsn)
 	return sqlite.Open(resolved), true
 }

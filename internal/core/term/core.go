@@ -19,6 +19,7 @@ type Storer interface {
 	SearchTerms(ctx context.Context, glossaryID int64, query string) ([]Term, error)
 	ListEnabledTerms(ctx context.Context) ([]Term, error)
 	CreateTerm(ctx context.Context, t *Term) error
+	UpdateTerm(ctx context.Context, t *Term) error
 	DeleteTerm(ctx context.Context, id int64) error
 }
 
@@ -30,6 +31,19 @@ type Core struct {
 // NewCore 创建术语核心
 func NewCore(store Storer) Core {
 	return Core{store: store}
+}
+
+// EnsureDefaultGlossary 确保至少存在一个词库，不存在则创建"默认词库"
+func (c Core) EnsureDefaultGlossary(ctx context.Context) error {
+	list, err := c.store.ListGlossaries(ctx)
+	if err != nil {
+		return fmt.Errorf("查询词库失败: %w", err)
+	}
+	if len(list) > 0 {
+		return nil
+	}
+	g := &Glossary{Name: "默认词库", Enabled: true}
+	return c.store.CreateGlossary(ctx, g)
 }
 
 // ---- Glossary ----
@@ -107,6 +121,28 @@ func (c Core) Add(ctx context.Context, glossaryID int64, text, translation, note
 	}
 	if err := c.store.CreateTerm(ctx, t); err != nil {
 		return nil, fmt.Errorf("添加术语失败: %w", err)
+	}
+	return t, nil
+}
+
+// Update 更新指定词条的原文、译文、备注
+func (c Core) Update(ctx context.Context, id int64, text, translation, note string) (*Term, error) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil, fmt.Errorf("术语不能为空")
+	}
+	translation = strings.TrimSpace(translation)
+	if translation == "" {
+		translation = text
+	}
+	t := &Term{
+		ID:          id,
+		Text:        text,
+		Translation: translation,
+		Note:        strings.TrimSpace(note),
+	}
+	if err := c.store.UpdateTerm(ctx, t); err != nil {
+		return nil, fmt.Errorf("更新术语失败: %w", err)
 	}
 	return t, nil
 }

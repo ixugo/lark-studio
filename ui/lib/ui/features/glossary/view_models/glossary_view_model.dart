@@ -134,12 +134,48 @@ class GlossaryNotifier extends Notifier<GlossaryState> {
     await loadGlossaries();
   }
 
+  /// 更新词条
+  Future<void> updateTerm(int id,
+      {required String text, required String translation, String note = ''}) async {
+    final gid = state.selectedGlossaryId;
+    if (gid == null) return;
+    await _repo.updateTerm(
+        glossaryId: gid, id: id, text: text, translation: translation, note: note);
+    await loadTerms();
+  }
+
   /// 删除词条
   Future<void> deleteTerm(int id) async {
     final gid = state.selectedGlossaryId;
     if (gid == null) return;
     await _repo.deleteTerm(glossaryId: gid, id: id);
     await loadTerms();
+    await loadGlossaries();
+  }
+
+  /// 上移词库优先级
+  Future<void> moveGlossaryUp(int id) async {
+    final list = state.glossaries;
+    final idx = list.indexWhere((g) => (g['id'] as num).toInt() == id);
+    if (idx <= 0) return;
+    final prevId = (list[idx - 1]['id'] as num).toInt();
+    final curPriority = (list[idx]['priority'] as num?)?.toInt() ?? idx;
+    final prevPriority = (list[idx - 1]['priority'] as num?)?.toInt() ?? idx - 1;
+    await _repo.updateGlossary(id, priority: prevPriority);
+    await _repo.updateGlossary(prevId, priority: curPriority);
+    await loadGlossaries();
+  }
+
+  /// 下移词库优先级
+  Future<void> moveGlossaryDown(int id) async {
+    final list = state.glossaries;
+    final idx = list.indexWhere((g) => (g['id'] as num).toInt() == id);
+    if (idx < 0 || idx >= list.length - 1) return;
+    final nextId = (list[idx + 1]['id'] as num).toInt();
+    final curPriority = (list[idx]['priority'] as num?)?.toInt() ?? idx;
+    final nextPriority = (list[idx + 1]['priority'] as num?)?.toInt() ?? idx + 1;
+    await _repo.updateGlossary(id, priority: nextPriority);
+    await _repo.updateGlossary(nextId, priority: curPriority);
     await loadGlossaries();
   }
 }

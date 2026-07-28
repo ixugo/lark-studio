@@ -1,5 +1,7 @@
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/cupertino.dart';
+import 'package:flutter/cupertino.dart' show CupertinoAlertDialog, CupertinoColors, CupertinoDialogAction, CupertinoSlidingSegmentedControl, showCupertinoDialog;
+import 'package:flutter/widgets.dart';
+import 'package:macos_ui/macos_ui.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -54,10 +56,10 @@ class CreateTaskPage extends HookConsumerWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFE5E5EA), width: 0.5))),
           child: Row(children: [
-            CupertinoButton(padding: EdgeInsets.zero, onPressed: () => Navigator.pop(context), child: const Text('取消', style: TextStyle(fontSize: 15))),
+            GestureDetector(onTap: () => Navigator.pop(context), child: const MouseRegion(cursor: SystemMouseCursors.click, child: Text('取消', style: TextStyle(fontSize: 15, color: Color(0xFF007AFF))))),
             const Expanded(child: Text('新建任务', textAlign: TextAlign.center, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Color(0xFF1D1D1F)))),
-            CupertinoButton(padding: EdgeInsets.zero, onPressed: submitting.value ? null : submit,
-                child: Text('创建', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: submitting.value ? const Color(0xFFC7C7CC) : CupertinoColors.systemBlue))),
+            GestureDetector(onTap: submitting.value ? null : submit,
+                child: MouseRegion(cursor: SystemMouseCursors.click, child: Text('创建', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: submitting.value ? const Color(0xFFC7C7CC) : const Color(0xFF007AFF))))),
           ]),
         ),
         Expanded(child: ListView(
@@ -65,9 +67,9 @@ class CreateTaskPage extends HookConsumerWidget {
           children: [
             _sectionLabel('视频文件'),
             Row(children: [
-              Expanded(child: CupertinoTextField(controller: pathController, placeholder: '选择或输入视频文件路径', padding: const EdgeInsets.all(12), decoration: _fieldDecoration())),
+              Expanded(child: MacosTextField(controller: pathController, placeholder: '选择或输入视频文件路径', padding: const EdgeInsets.all(12), decoration: _fieldDecoration())),
               const SizedBox(width: 8),
-              CupertinoButton(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), color: const Color(0xFFE5E5EA), borderRadius: BorderRadius.circular(8), onPressed: pickFile, child: const Text('浏览', style: TextStyle(color: Color(0xFF3A3A3C), fontSize: 13))),
+              PushButton(controlSize: ControlSize.small, secondary: true, onPressed: pickFile, child: const Text('浏览', style: TextStyle(color: Color(0xFF3A3A3C), fontSize: 13))),
             ]),
             const SizedBox(height: 20),
             _sectionLabel('处理模式'),
@@ -78,10 +80,10 @@ class CreateTaskPage extends HookConsumerWidget {
             }, onValueChanged: (v) => mode.value = v!),
             const SizedBox(height: 20),
             _sectionLabel('目标语言'),
-            CupertinoTextField(controller: langController, placeholder: 'zh (默认中文)', padding: const EdgeInsets.all(12), decoration: _fieldDecoration()),
+            MacosTextField(controller: langController, placeholder: 'zh (默认中文)', padding: const EdgeInsets.all(12), decoration: _fieldDecoration()),
             const SizedBox(height: 20),
             _sectionLabel('输出目录（留空自动生成）'),
-            CupertinoTextField(controller: outputController, placeholder: '自动生成到视频同级目录', padding: const EdgeInsets.all(12), decoration: _fieldDecoration()),
+            MacosTextField(controller: outputController, placeholder: '自动生成到视频同级目录', padding: const EdgeInsets.all(12), decoration: _fieldDecoration()),
           ],
         )),
       ]),

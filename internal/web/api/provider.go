@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -42,8 +43,10 @@ type Usecase struct {
 
 // NewTermCore 创建术语 Core，自动迁移表结构
 func NewTermCore(db *gorm.DB) term.Core {
-	store := termdb.NewDB(db).AutoMigrate(orm.GetEnabledAutoMigrate())
-	return term.NewCore(store)
+	store := termdb.NewDB(db).AutoMigrate(true)
+	core := term.NewCore(store)
+	_ = core.EnsureDefaultGlossary(context.Background())
+	return core
 }
 
 // NewHTTPHandler 生成Gin框架路由内容

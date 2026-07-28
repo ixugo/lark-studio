@@ -112,8 +112,103 @@
 - [x] Makefile: build/test/run/dev/bundle + macOS/Windows 打包 + 版本注入 + FFmpeg 静态包自动下载
 - [x] -version 命令行标志: 打印 version/branch/hash/buildTime
 
+### SmartSub UI 复刻 + 架构重构
+
+- [x] MVVM 架构重构 (hooks_riverpod + HookConsumerWidget)
+- [x] 全局暗色主题 + AppColors 集中管理
+- [x] 64px 竖排导航 rail + TopBar + StatusBar
+- [x] macOS 标题栏透明融合 + 明/暗主题切换 (MethodChannel)
+- [x] 启动台: SmartSub 风格工作流卡片网格 + 向导式详情页
+- [x] 多词库管理: Go 后端 Glossary CRUD + 优先级排序 + 启用/禁用
+- [x] 词条编辑: 双击行内编辑 + 搜索 + 表头
+- [x] 翻译服务页: 左右分栏 + 服务列表 + 配置表单
+- [x] 引擎页: 左右分栏 + 本地/云端引擎列表 + 详情
+- [x] 音色页: 左右分栏 + 本地/在线服务 + 音色候选
+- [x] 下载页: 引擎安装卡片 + 视频下载面板
+- [x] 设置页: 暗色主题对齐 + 移除术语锁定重复功能
+
+### 打包体积优化
+
+- [x] 移除 ffprobe 依赖: Go 改用 `ffmpeg -i` 解析媒体时长
+- [x] ffmpeg 源切换: evermeet 8.1.2 (77MB) → ffmpeg-static 6.0 arm64 (43MB)
+- [x] macOS 打包改 DMG: hdiutil UDZO zlib-level=9
+- [x] zip 保留符号链接: `-y` 参数避免 framework 重复打包
+- [x] Flutter: `--split-debug-info` + `--obfuscate` + `uses-material-design: false`
+- [x] Go: `-s -w` 链接标志 + 移除 postgres 驱动
+- [x] Windows CI: UPX 压缩 Go 二进制 + ffmpeg
+- [x] GitHub Actions CI: Windows zip + macOS DMG 双平台自动发布
+- [x] 最终体积: .app 109MB / DMG 46MB (SmartSub 110MB)
+
 ## 待实现
 
 ### 质量提升
 
 - [ ] 停顿节奏保留: 原视频停顿检测 → 配音对应位置插入同样停顿 (Large 级别，暂缓)
+
+### 词库 (Glossary)
+
+- [x] CSV 导入/导出词条 + CSV 模板下载
+- [x] 行内新增词条（三列输入：原文/译文/备注）
+- [ ] 虚拟列表（词条量大时性能优化）
+
+### 启动台 (Dashboard)
+
+- [ ] 工作流详情页连接 Go 后端，实际创建任务
+- [ ] 最近任务列表对接真实数据（当前为硬编码示例）
+- [ ] 自定义工作流持久化（SharedPreferences）
+- [ ] 拖拽文件到工作流卡片直接创建任务
+
+### 字幕/校对/合成/配音 (任务流水线)
+
+- [ ] 校对页：字幕编辑器（时间轴 + 原文 + 译文 + 播放器联动）
+- [ ] 合成页：字幕烧录配置（字体/大小/颜色/位置）
+- [ ] 配音页：TTS 配音服务选择 + 音色试听 + 速度/音量调节
+- [ ] 字幕页：文件导入区完善（拖拽/点击导入）+ 高级选项面板
+- [ ] 任务进度实时展示（WebSocket 推送对接 UI）
+
+### 翻译 (Translation)
+
+- [ ] 配置保存到 Go 后端
+- [ ] 测试翻译功能对接
+- [ ] 总览页展示配置状态与起步建议
+
+### 引擎 (Engine)
+
+- [ ] 模型下载/管理功能对接
+- [ ] GPU 加速方式选择对接
+- [ ] 检测详情展示
+- [ ] 推荐模型逻辑
+
+### 音色 (TTS)
+
+- [ ] 配置保存到 Go 后端
+- [ ] 测试连接/试听功能
+- [ ] 音色文档链接
+
+### 下载 (Download)
+
+- [ ] yt-dlp / lux 安装检测与安装功能
+- [ ] 视频下载功能对接
+- [ ] Cookie 管理
+
+### 设置 (Settings)
+
+- [ ] 存储位置目录选择器
+- [ ] 网络代理配置
+- [ ] 检查更新功能
+- [ ] 关于页（版本/日志/开源许可）
+
+### UI/UX
+
+- [ ] 亮色主题全面适配（Dashboard 已用 AppColors，其他页面部分硬编码暗色值）
+- [ ] ⌘K 全局搜索/命令面板
+- [ ] 新手引导/FAQ
+- [ ] 快捷键速查面板
+- [ ] 活动中心（通知）
+
+### 工程
+
+- [ ] Windows 本地打包命令（当前只能通过 GitHub Actions CI 构建）
+- [ ] hdiutil deprecation warning：未来考虑迁移至 `diskutil image create`
+- [ ] Go 后端：ffmpeg whisper 滤镜模式测试覆盖
+- [ ] Flutter 测试覆盖（核心 ViewModel 单测）

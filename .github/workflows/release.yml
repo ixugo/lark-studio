@@ -1,0 +1,141 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+env:
+  GO_VERSION: '1.26'
+  FLUTTER_VERSION: '3.44.4'
+  FFMPEG_WIN_URL: 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip'
+  FFMPEG_MACOS_ARM64_URL: 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-darwin-arm64.gz'
+  FFMPEG_MACOS_X64_URL: 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-darwin-x64.gz'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+
+      - name: Download ffmpeg (Windows)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path vendor/ffmpeg/windows
+          $zipPath = "$env:TEMP\ffmpeg_win.zip"
+          Invoke-WebRequest -Uri $env:FFMPEG_WIN_URL -OutFile $zipPath
+          Expand-Archive -Path $zipPath -DestinationPath $env:TEMP\ffmpeg_extract -Force
+          $binDir = Get-ChildItem -Path $env:TEMP\ffmpeg_extract -Recurse -Directory -Filter "bin" | Select-Object -First 1
+          Copy-Item "$($binDir.FullName)\ffmpeg.exe" "vendor\ffmpeg\windows\ffmpeg.exe"
+
+      - name: Build Go engine (Windows amd64)
+        shell: pwsh
+        env:
+          GOOS: windows
+          GOARCH: amd64
+        run: |
+          $version = git describe --tags --always --dirty 2>$null
+          if (-not $version) { $version = "dev" }
+          $branch = git rev-parse --abbrev-ref HEAD 2>$null
+          $hash = git rev-parse --short HEAD 2>$null
+          $time = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
+          $ldflags = "-X main.buildVersion=$version -X main.gitBranch=$branch -X main.gitHash=$hash -X main.buildTime=$time -X main.release=true -s -w"
+          go build -ldflags $ldflags -o build\windows_amd64\vdub.exe .
+
+      - name: Build Flutter UI (Windows)
+        working-directory: ui
+        run: |
+          flutter pub get
+          flutter build windows --release --split-debug-info=../build/debug-info --obfuscate
+
+      - name: Compress binaries with UPX
+        shell: pwsh
+        run: |
+          choco install upx -y --no-progress
+          upx --best --lzma build\windows_amd64\vdub.exe
+          upx --best --lzma vendor\ffmpeg\windows\ffmpeg.exe
+
+      - name: Assemble release package
+        shell: pwsh
+        run: |
+          $releaseDir = "ui\build\windows\x64\runner\Release"
+          Copy-Item "build\windows_amd64\vdub.exe" "$releaseDir\vdub.exe"
+          Copy-Item "vendor\ffmpeg\windows\ffmpeg.exe" "$releaseDir\ffmpeg.exe"
+          $tag = "${{ github.event.release.tag_name }}"
+          Compress-Archive -Path "$releaseDir\*" -DestinationPath "vdub-windows-amd64-$tag.zip"
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: vdub-windows-amd64-*.zip
+
+  build-macos:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        goarch: [arm64, amd64]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+
+      - name: Download ffmpeg (macOS ${{ matrix.goarch }})
+        run: |
+          mkdir -p vendor/ffmpeg/darwin
+          if [ "${{ matrix.goarch }}" = "arm64" ]; then
+            curl -fSL "$FFMPEG_MACOS_ARM64_URL" | gunzip > vendor/ffmpeg/darwin/ffmpeg
+          else
+            curl -fSL "$FFMPEG_MACOS_X64_URL" | gunzip > vendor/ffmpeg/darwin/ffmpeg
+          fi
+          chmod +x vendor/ffmpeg/darwin/ffmpeg
+
+      - name: Build Go engine (macOS ${{ matrix.goarch }})
+        env:
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
+          BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+          HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+          TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+          go build -ldflags "-X main.buildVersion=$VERSION -X main.gitBranch=$BRANCH -X main.gitHash=$HASH -X main.buildTime=$TIME -X main.release=true -s -w" -o build/darwin_${{ matrix.goarch }}/vdub .
+
+      - name: Build Flutter UI (macOS)
+        working-directory: ui
+        run: |
+          flutter pub get
+          flutter build macos --release --split-debug-info=../build/debug-info --obfuscate
+
+      - name: Assemble .app and create DMG
+        run: |
+          APP="ui/build/macos/Build/Products/Release/vdub_ui.app"
+          install -m 755 build/darwin_${{ matrix.goarch }}/vdub "$APP/Contents/Resources/vdub"
+          install -m 755 vendor/ffmpeg/darwin/ffmpeg "$APP/Contents/Resources/ffmpeg"
+          TAG="${{ github.event.release.tag_name }}"
+          hdiutil create -volname "VDub" -srcfolder "$APP" -ov -format UDZO -imagekey zlib-level=9 "vdub-macos-${{ matrix.goarch }}-$TAG.dmg"
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: vdub-macos-${{ matrix.goarch }}-*.dmg

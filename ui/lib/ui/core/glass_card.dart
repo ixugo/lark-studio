@@ -1,5 +1,5 @@
 import 'dart:ui';
-import 'package:flutter/cupertino.dart';
+import 'package:flutter/widgets.dart';
 
 /// 暗色玻璃卡片——全局共享 UI 组件
 class GlassCard extends StatelessWidget {

@@ -115,6 +115,13 @@ func (d DB) CreateTerm(ctx context.Context, t *term.Term) error {
 	return d.db.WithContext(ctx).Create(t).Error
 }
 
+// UpdateTerm 更新词条的原文、译文、备注
+func (d DB) UpdateTerm(ctx context.Context, t *term.Term) error {
+	return d.db.WithContext(ctx).Model(t).
+		Select("text", "translation", "note").
+		Updates(t).Error
+}
+
 // DeleteTerm 按 ID 删除词条
 func (d DB) DeleteTerm(ctx context.Context, id int64) error {
 	return d.db.WithContext(ctx).Delete(&term.Term{}, id).Error

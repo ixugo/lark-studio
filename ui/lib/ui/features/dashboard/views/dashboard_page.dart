@@ -1,12 +1,15 @@
-import 'dart:ui';
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/cupertino.dart';
+import 'package:flutter/cupertino.dart' show CupertinoAlertDialog, CupertinoColors, CupertinoDialogAction, CupertinoIcons, CupertinoPageRoute, CupertinoPageScaffold, showCupertinoDialog;
+import 'package:flutter/widgets.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:macos_ui/macos_ui.dart';
 
 import '../../../../data/models/task.dart';
 import '../../../../providers.dart';
-import '../../../core/glass_card.dart';
+import '../../../core/app_button.dart';
+import '../../../core/app_colors.dart';
+import '../../../core/desktop_dropdown.dart';
 import '../../task/view_models/task_list_view_model.dart';
 import '../../task/views/task_detail_page.dart';
 import '../view_models/dashboard_view_model.dart';
@@ -21,594 +24,272 @@ class DashboardPage extends HookConsumerWidget {
     final ds = ref.watch(dashboardProvider);
 
     useEffect(() {
-      Future.microtask(
-          () => ref.read(dashboardProvider.notifier).load());
+      Future.microtask(() => ref.read(dashboardProvider.notifier).load());
       return null;
     }, const []);
 
-    return Column(
+    if (ds.loading && !backend.online) {
+      return const Center(child: ProgressCircle(radius: 14));
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(32, 28, 32, 32),
       children: [
-        _buildToolbar(() => ref.read(dashboardProvider.notifier).load()),
-        Expanded(
-          child: ds.loading && !backend.online
-              ? const Center(child: CupertinoActivityIndicator(radius: 14))
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(28, 20, 28, 28),
-                  children: [
-                    _buildWorkflowCards(context, ref),
-                    const SizedBox(height: 24),
-                    _buildRecentTasks(context, ds),
-                    const SizedBox(height: 20),
-                    _buildEnvReadiness(backend, ds),
-                  ],
-                ),
-        ),
+        _Greeting(taskCount: ds.recentTasks.length),
+        const SizedBox(height: 24),
+        _WorkflowGrid(ref: ref),
+        const SizedBox(height: 20),
+        _QuickTools(),
+        const SizedBox(height: 24),
+        _RecentTasksSection(tasks: ds.recentTasks),
       ],
-    );
-  }
-
-  Widget _buildWorkflowCards(BuildContext context, WidgetRef ref) {
-    return Row(
-      children: builtInWorkflows.map((wf) {
-        final colors = wf.gradientColors
-            .map((c) => Color(int.parse('FF$c', radix: 16)))
-            .toList();
-        return Expanded(
-          child: Padding(
-            padding: EdgeInsets.only(
-                left: wf == builtInWorkflows.first ? 0 : 7,
-                right: wf == builtInWorkflows.last ? 0 : 7),
-            child: _WorkflowCard(
-              title: wf.title,
-              subtitle: wf.subtitle,
-              steps: wf.steps,
-              gradient: colors,
-              onTap: wf.mode > 0
-                  ? () => _startWorkflow(context, wf, ref)
-                  : () => _showCustomWorkflow(context),
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  void _startWorkflow(
-      BuildContext context, WorkflowTemplate wf, WidgetRef ref) {
-    Navigator.of(context).push(CupertinoPageRoute(
-      builder: (_) => _WorkflowDetailPage(workflow: wf),
-    ));
-  }
-
-  void _showCustomWorkflow(BuildContext context) {
-    showCupertinoDialog(
-      context: context,
-      builder: (_) => CupertinoAlertDialog(
-        title: const Text('自定义流程'),
-        content: const Text('自定义流程功能即将推出'),
-        actions: [
-          CupertinoDialogAction(
-              child: const Text('确定'),
-              onPressed: () => Navigator.pop(context))
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRecentTasks(BuildContext context, DashboardState ds) {
-    return GlassCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
-            child: Row(
-              children: [
-                Container(
-                  width: 4,
-                  height: 16,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF007AFF),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                const Text('最近任务',
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFFE5E5EA),
-                        letterSpacing: -0.3)),
-              ],
-            ),
-          ),
-          if (ds.recentTasks.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(32),
-              child: Center(
-                  child: Text('暂无任务',
-                      style:
-                          TextStyle(fontSize: 13, color: Color(0xFFC7C7CC)))),
-            )
-          else
-            ...ds.recentTasks.map((t) => _RecentTaskRow(
-                task: t,
-                onTap: () {
-                  Navigator.of(context).push(CupertinoPageRoute(
-                    builder: (_) => TaskDetailPage(taskId: t.id),
-                  ));
-                })),
-          const SizedBox(height: 10),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEnvReadiness(dynamic backend, DashboardState ds) {
-    final cfg = ds.config;
-    final rows = <_EnvRow>[
-      _EnvRow('引擎', backend.online,
-          backend.online ? '端口 ${backend.port}' : '未启动'),
-      _EnvRow('语音识别', cfg != null, cfg?.pipeline.whisperMode ?? '-'),
-      _EnvRow('翻译服务', cfg?.llm.baseUrl.isNotEmpty == true,
-          cfg?.llm.model ?? '未配置'),
-      _EnvRow('配音服务', cfg != null,
-          cfg?.tts.type == 'edge' ? 'Edge TTS' : 'OpenAI TTS'),
-    ];
-    final allReady = rows.every((r) => r.ready);
-
-    return GlassCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
-            child: Row(
-              children: [
-                Container(
-                  width: 4,
-                  height: 16,
-                  decoration: BoxDecoration(
-                    color: allReady
-                        ? const Color(0xFF34C759)
-                        : const Color(0xFFFF9500),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                const Text('环境状态',
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFFE5E5EA),
-                        letterSpacing: -0.3)),
-                const Spacer(),
-                if (allReady) _ReadyBadge(),
-              ],
-            ),
-          ),
-          ...rows.map((r) => _envRowWidget(r)),
-          const SizedBox(height: 12),
-        ],
-      ),
-    );
-  }
-
-  Widget _envRowWidget(_EnvRow row) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 56,
-            child: Text(row.label,
-                style:
-                    const TextStyle(fontSize: 12, color: Color(0xFF8E8E93))),
-          ),
-          Container(
-            width: 7,
-            height: 7,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: row.ready
-                  ? const Color(0xFF34C759)
-                  : const Color(0xFFC7C7CC),
-              boxShadow: row.ready
-                  ? [
-                      BoxShadow(
-                          color: const Color(0xFF34C759)
-                              .withValues(alpha: 0.35),
-                          blurRadius: 6)
-                    ]
-                  : null,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(row.value,
-                style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: Color(0xFFE5E5EA)),
-                overflow: TextOverflow.ellipsis),
-          ),
-        ],
-      ),
     );
   }
 }
 
-// ---- 工作流卡片 ----
+// ---- 问候区域 ----
 
-class _WorkflowCard extends HookWidget {
-  final String title;
-  final String subtitle;
-  final List<WorkflowStep> steps;
-  final List<Color> gradient;
-  final VoidCallback onTap;
+class _Greeting extends StatelessWidget {
+  final int taskCount;
+  const _Greeting({required this.taskCount});
 
-  const _WorkflowCard({
-    required this.title,
-    required this.subtitle,
-    required this.steps,
-    required this.gradient,
-    required this.onTap,
-  });
+  String get _greetingText {
+    final hour = DateTime.now().hour;
+    if (hour < 6) return '夜深了';
+    if (hour < 12) return '早上好';
+    if (hour < 14) return '中午好';
+    if (hour < 18) return '下午好';
+    return '晚上好';
+  }
+
+  String get _dateText {
+    final now = DateTime.now();
+    const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
+    return '${now.month}月${now.day}日星期${weekdays[now.weekday - 1]} · 选择一个任务开始，文件也可以直接拖到卡片上';
+  }
 
   @override
   Widget build(BuildContext context) {
-    final hovering = useState(false);
-
-    return MouseRegion(
-      onEnter: (_) => hovering.value = true,
-      onExit: (_) => hovering.value = false,
-      child: GestureDetector(
-        onTap: onTap,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOut,
-              padding:
-                  const EdgeInsets.symmetric(vertical: 20, horizontal: 18),
+    final c = AppColors.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(_greetingText,
+                  style: TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.w800,
+                      color: c.textPrimary,
+                      letterSpacing: -0.8)),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    gradient[0]
-                        .withValues(alpha: hovering.value ? 0.20 : 0.12),
-                    gradient.length > 1
-                        ? gradient[1]
-                            .withValues(alpha: hovering.value ? 0.10 : 0.05)
-                        : gradient[0]
-                            .withValues(alpha: hovering.value ? 0.10 : 0.05),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: gradient[0]
-                      .withValues(alpha: hovering.value ? 0.25 : 0.12),
-                  width: 0.5,
-                ),
-                boxShadow: hovering.value
-                    ? [
-                        BoxShadow(
-                            color: gradient[0].withValues(alpha: 0.12),
-                            blurRadius: 16,
-                            offset: const Offset(0, 4))
-                      ]
-                    : null,
+                color: c.cardBgHover,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: c.border, width: 0.5),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(title,
+                  Icon(CupertinoIcons.clock,
+                      size: 12, color: c.textSecondary),
+                  const SizedBox(width: 5),
+                  Text('$taskCount 条任务',
                       style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: gradient[0],
-                          letterSpacing: -0.3)),
-                  const SizedBox(height: 4),
-                  Text(subtitle,
-                      style: TextStyle(
-                          fontSize: 11,
-                          color: gradient[0].withValues(alpha: 0.6))),
-                  if (steps.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    ...steps.asMap().entries.map((e) {
-                      final idx = e.key;
-                      final step = e.value;
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 3),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 18,
-                              height: 18,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color:
-                                    gradient[0].withValues(alpha: 0.15),
-                              ),
-                              child: Center(
-                                child: Text('${idx + 1}',
-                                    style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w600,
-                                        color: gradient[0])),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(step.label,
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color: gradient[0]
-                                        .withValues(alpha: 0.8))),
-                          ],
-                        ),
-                      );
-                    }),
-                  ],
+                          fontSize: 12, color: c.textSecondary)),
                 ],
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ---- 工作流详情页 ----
-
-class _WorkflowDetailPage extends HookConsumerWidget {
-  final WorkflowTemplate workflow;
-  const _WorkflowDetailPage({required this.workflow});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final creating = useState(false);
-    final wf = workflow;
-    final color =
-        Color(int.parse('FF${wf.gradientColors[0]}', radix: 16));
-
-    Future<void> pickAndCreate() async {
-      final notifier = ref.read(taskListProvider.notifier);
-      try {
-        final result =
-            await FilePicker.platform.pickFiles(type: FileType.video);
-        if (result?.files.first.path == null) return;
-        creating.value = true;
-        await notifier.createTask(
-            inputPath: result!.files.first.path!, mode: wf.mode);
-        if (context.mounted) Navigator.pop(context);
-      } catch (e) {
-        if (context.mounted) {
-          showCupertinoDialog(
-              context: context,
-              builder: (_) => CupertinoAlertDialog(
-                    content: Text('创建失败: $e'),
-                    actions: [
-                      CupertinoDialogAction(
-                          child: const Text('确定'),
-                          onPressed: () => Navigator.pop(context))
-                    ],
-                  ));
-        }
-      }
-      creating.value = false;
-    }
-
-    return CupertinoPageScaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
-      navigationBar: CupertinoNavigationBar(
-          middle: Text(wf.title), previousPageTitle: '主页'),
-      child: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(28),
-          children: [
-            Text(wf.title,
-                style: const TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFFE5E5EA),
-                    letterSpacing: -0.8)),
-            const SizedBox(height: 6),
-            Text(wf.subtitle,
-                style: const TextStyle(
-                    fontSize: 14, color: Color(0xFF8E8E93))),
-            const SizedBox(height: 28),
-            const Text('工作流步骤',
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF8E8E93),
-                    letterSpacing: 0.3)),
-            const SizedBox(height: 12),
-            ...wf.steps.asMap().entries.map((e) {
-              final idx = e.key;
-              final step = e.value;
-              final isLast = idx == wf.steps.length - 1;
-              return _StepRow(
-                index: idx + 1,
-                label: step.label,
-                color: color,
-                isLast: isLast,
-              );
-            }),
-            const SizedBox(height: 32),
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Icon(CupertinoIcons.cloud_upload,
-                  size: 32, color: color.withValues(alpha: 0.7)),
-            ),
-            const SizedBox(height: 16),
-            const Text('选择视频文件开始处理',
-                style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFFE5E5EA))),
-            const SizedBox(height: 6),
-            const Text('支持 MP4、MKV、AVI、MOV 等格式',
-                style:
-                    TextStyle(fontSize: 13, color: Color(0xFF8E8E93))),
-            const SizedBox(height: 20),
-            CupertinoButton.filled(
-              borderRadius: BorderRadius.circular(12),
-              onPressed: creating.value ? null : pickAndCreate,
-              child: Text(
-                  creating.value ? '创建中...' : '选择文件并开始',
-                  style:
-                      const TextStyle(fontWeight: FontWeight.w600)),
-            ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _StepRow extends StatelessWidget {
-  final int index;
-  final String label;
-  final Color color;
-  final bool isLast;
-
-  const _StepRow({
-    required this.index,
-    required this.label,
-    required this.color,
-    required this.isLast,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Column(
-          children: [
-            Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: color.withValues(alpha: 0.12),
-                border: Border.all(
-                    color: color.withValues(alpha: 0.3), width: 1.5),
-              ),
-              child: Center(
-                child: Text('$index',
-                    style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: color)),
-              ),
-            ),
-            if (!isLast)
-              Container(
-                width: 1.5,
-                height: 24,
-                color: color.withValues(alpha: 0.15),
-              ),
-          ],
-        ),
-        const SizedBox(width: 12),
-        Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Text(label,
-              style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFFE5E5EA))),
-        ),
+        const SizedBox(height: 6),
+        Text(_dateText,
+            style: TextStyle(fontSize: 13, color: c.textSecondary)),
       ],
     );
   }
 }
 
-// ---- 公用组件 ----
+// ---- 工作流卡片网格 ----
 
-class _EnvRow {
-  final String label;
-  final bool ready;
-  final String value;
-  const _EnvRow(this.label, this.ready, this.value);
-}
+class _WorkflowGrid extends StatelessWidget {
+  final WidgetRef ref;
+  const _WorkflowGrid({required this.ref});
 
-class _ReadyBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: const Color(0xFF34C759).withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8),
-        border:
-            Border.all(color: const Color(0xFF34C759).withValues(alpha: 0.2)),
-      ),
-      child: const Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(CupertinoIcons.checkmark_circle_fill,
-              size: 11, color: Color(0xFF34C759)),
-          SizedBox(width: 4),
-          Text('全部就绪',
+    final c = AppColors.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text('开始创作',
               style: TextStyle(
-                  fontSize: 10,
+                  fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xFF34C759))),
-        ],
-      ),
+                  color: c.textPrimary)),
+        ),
+        _buildGrid(context),
+      ],
     );
   }
+
+  Widget _buildGrid(BuildContext context) {
+    final workflows = _allWorkflows;
+    final rows = <Widget>[];
+    for (var i = 0; i < workflows.length; i += 3) {
+      final end = (i + 3).clamp(0, workflows.length);
+      final chunk = workflows.sublist(i, end);
+      rows.add(Padding(
+        padding: EdgeInsets.only(top: i == 0 ? 0 : 12),
+        child: Row(
+          children: chunk.asMap().entries.map((e) {
+            return Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(
+                    left: e.key == 0 ? 0 : 6,
+                    right: e.key == chunk.length - 1 ? 0 : 6),
+                child: _LaunchCard(
+                  wf: e.value,
+                  onTap: () => _handleTap(context, e.value),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ));
+    }
+    return Column(children: rows);
+  }
+
+  void _handleTap(BuildContext context, WorkflowTemplate wf) {
+    if (wf.mode == 0) {
+      showCupertinoDialog(
+        context: context,
+        builder: (_) => CupertinoAlertDialog(
+          title: const Text('自定义流程'),
+          content: const Text('打开向导，自由组合目标与配置，可存为配方'),
+          actions: [
+            CupertinoDialogAction(
+                child: const Text('确定'),
+                onPressed: () => Navigator.pop(context))
+          ],
+        ),
+      );
+    } else {
+      Navigator.of(context).push(CupertinoPageRoute(
+        builder: (_) => _WorkflowDetailPage(workflow: wf),
+      ));
+    }
+  }
+
+  static final _allWorkflows = <WorkflowTemplate>[
+    const WorkflowTemplate(
+      id: 'dub_full',
+      title: '视频 → 配音成片',
+      subtitle: '听写、翻译、配音、合成一条龙，全自动出成品视频',
+      gradientColors: ['FF3B30', 'FF6B5B'],
+      mode: 3,
+      steps: [
+        WorkflowStep(id: 'whisper', label: '提取字幕', icon: 'text'),
+        WorkflowStep(id: 'translate', label: '翻译字幕', icon: 'globe'),
+        WorkflowStep(id: 'tts', label: '语音合成', icon: 'mic'),
+        WorkflowStep(id: 'merge', label: '合成视频', icon: 'film'),
+      ],
+    ),
+    const WorkflowTemplate(
+      id: 'bilingual_sub',
+      title: '视频 → 双语字幕',
+      subtitle: '转写人声并翻译成目标语言，一步到位',
+      gradientColors: ['30D158', '5BDE83'],
+      mode: 2,
+      steps: [
+        WorkflowStep(id: 'whisper', label: '语音识别', icon: 'waveform'),
+        WorkflowStep(id: 'translate', label: '翻译字幕', icon: 'globe'),
+      ],
+    ),
+    const WorkflowTemplate(
+      id: 'subtitle_only',
+      title: '视频 → 原文字幕',
+      subtitle: '只转写人声，不翻译',
+      gradientColors: ['007AFF', '5AC8FA'],
+      mode: 1,
+      steps: [
+        WorkflowStep(id: 'whisper', label: '语音识别', icon: 'waveform'),
+        WorkflowStep(id: 'output', label: '输出字幕', icon: 'doc'),
+      ],
+    ),
+    const WorkflowTemplate(
+      id: 'translate_existing',
+      title: '翻译已有字幕',
+      subtitle: '把 SRT 等字幕文件翻译成其它语言',
+      gradientColors: ['5856D6', '8E8AFF'],
+      mode: 4,
+      steps: [
+        WorkflowStep(id: 'load', label: '加载字幕', icon: 'doc'),
+        WorkflowStep(id: 'translate', label: '翻译', icon: 'globe'),
+      ],
+    ),
+    const WorkflowTemplate(
+      id: 'en_to_cn',
+      title: '英文视频转中文',
+      subtitle: '转写 · 翻译 · 配音 · 合成',
+      gradientColors: ['FF9500', 'FFCC00'],
+      mode: 3,
+      steps: [
+        WorkflowStep(id: 'whisper', label: '语音识别', icon: 'waveform'),
+        WorkflowStep(id: 'translate', label: '翻译', icon: 'globe'),
+        WorkflowStep(id: 'tts', label: '配音', icon: 'mic'),
+        WorkflowStep(id: 'merge', label: '合成', icon: 'film'),
+      ],
+    ),
+    const WorkflowTemplate(
+      id: 'custom',
+      title: '自定义流程',
+      subtitle: '打开向导，自由组合目标与配置，可存为配方',
+      gradientColors: ['8E8E93', 'AEAEB2'],
+      mode: 0,
+      steps: [],
+    ),
+  ];
 }
 
-  Widget _buildToolbar(VoidCallback onRefresh) {
-    return Container(
-      height: 52,
-      padding: const EdgeInsets.symmetric(horizontal: 28),
-      decoration: const BoxDecoration(
-        color: Color(0xFF0D0D0D),
-        border: Border(bottom: BorderSide(color: Color(0xFF1F1F1F), width: 0.5)),
-      ),
-      child: Row(
-        children: [
-          const Text('启动台',
-              style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFFE5E5EA),
-                  letterSpacing: -0.5)),
-          const Spacer(),
-          CupertinoButton(
-            padding: EdgeInsets.zero,
-            onPressed: onRefresh,
-            child: const Icon(CupertinoIcons.refresh,
-                size: 16, color: Color(0xFF8E8E93)),
-          ),
-        ],
-      ),
-    );
-  }
+// ---- 单张启动卡片 ----
 
-class _RecentTaskRow extends HookWidget {
-  final Task task;
+class _LaunchCard extends HookWidget {
+  final WorkflowTemplate wf;
   final VoidCallback onTap;
+  const _LaunchCard({required this.wf, required this.onTap});
 
-  const _RecentTaskRow({required this.task, required this.onTap});
+  IconData get _icon {
+    switch (wf.id) {
+      case 'dub_full':
+        return CupertinoIcons.film;
+      case 'bilingual_sub':
+        return CupertinoIcons.doc_text;
+      case 'subtitle_only':
+        return CupertinoIcons.textformat;
+      case 'translate_existing':
+        return CupertinoIcons.doc_on_doc;
+      case 'en_to_cn':
+        return CupertinoIcons.globe;
+      case 'custom':
+        return CupertinoIcons.plus;
+      default:
+        return CupertinoIcons.play;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final hovering = useState(false);
+    final c = AppColors.of(context);
+    final color =
+        Color(int.parse('FF${wf.gradientColors[0]}', radix: 16));
 
     return MouseRegion(
       onEnter: (_) => hovering.value = true,
@@ -616,50 +297,278 @@ class _RecentTaskRow extends HookWidget {
       child: GestureDetector(
         onTap: onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.all(16),
+          height: 120,
+          decoration: BoxDecoration(
+            color: hovering.value ? c.cardBgHover : c.cardBg,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: hovering.value
+                  ? color.withValues(alpha: 0.3)
+                  : c.border,
+              width: 0.5,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(_icon, size: 16, color: color),
+              ),
+              const Spacer(),
+              Text(wf.title,
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: c.textPrimary)),
+              const SizedBox(height: 2),
+              Text(wf.subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 11, color: c.textSecondary)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---- 快捷工具栏 ----
+
+class _QuickTools extends StatelessWidget {
+  static const _tools = <_ToolDef>[
+    _ToolDef('工具', CupertinoIcons.wrench, null),
+    _ToolDef('视频下载', CupertinoIcons.cloud_download, null),
+    _ToolDef('校对字幕', CupertinoIcons.pencil_ellipsis_rectangle, null),
+    _ToolDef('合成到视频', CupertinoIcons.film, null),
+    _ToolDef('配音', CupertinoIcons.mic, null),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: _tools.map((t) {
+        return Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: _ToolChip(tool: t),
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _ToolDef {
+  final String label;
+  final IconData icon;
+  final VoidCallback? onTap;
+  const _ToolDef(this.label, this.icon, this.onTap);
+}
+
+class _ToolChip extends HookWidget {
+  final _ToolDef tool;
+  const _ToolChip({required this.tool});
+
+  @override
+  Widget build(BuildContext context) {
+    final hovering = useState(false);
+    final c = AppColors.of(context);
+
+    return MouseRegion(
+      onEnter: (_) => hovering.value = true,
+      onExit: (_) => hovering.value = false,
+      child: GestureDetector(
+        onTap: tool.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: hovering.value ? c.inputBg : c.cardBgHover,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: c.borderSubtle, width: 0.5),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(tool.icon, size: 13, color: c.textSecondary),
+              const SizedBox(width: 6),
+              Text(tool.label,
+                  style: TextStyle(fontSize: 12, color: c.textPrimary)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---- 最近任务区域 ----
+
+class _RecentTasksSection extends StatelessWidget {
+  final List<Task> tasks;
+  const _RecentTasksSection({required this.tasks});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text('最近任务',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: c.textPrimary)),
+            const SizedBox(width: 8),
+            Text('${tasks.length}',
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: c.textSecondary)),
+            const Spacer(),
+            GestureDetector(
+              onTap: () {},
+              child: const MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('查看全部',
+                        style: TextStyle(
+                            fontSize: 12, color: Color(0xFF007AFF))),
+                    SizedBox(width: 2),
+                    Icon(CupertinoIcons.chevron_right,
+                        size: 11, color: Color(0xFF007AFF)),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        if (tasks.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(32),
+            decoration: BoxDecoration(
+              color: c.cardBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: c.border, width: 0.5),
+            ),
+            child: Center(
+              child: Text('暂无任务',
+                  style: TextStyle(fontSize: 13, color: c.textTertiary)),
+            ),
+          )
+        else
+          Container(
+            decoration: BoxDecoration(
+              color: c.cardBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: c.border, width: 0.5),
+            ),
+            child: Column(
+              children: tasks.asMap().entries.map((e) {
+                final isLast = e.key == tasks.length - 1;
+                return _TaskRow(task: e.value, isLast: isLast);
+              }).toList(),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _TaskRow extends HookWidget {
+  final Task task;
+  final bool isLast;
+  const _TaskRow({required this.task, required this.isLast});
+
+  @override
+  Widget build(BuildContext context) {
+    final hovering = useState(false);
+    final c = AppColors.of(context);
+
+    return MouseRegion(
+      onEnter: (_) => hovering.value = true,
+      onExit: (_) => hovering.value = false,
+      child: GestureDetector(
+        onTap: () {
+          Navigator.of(context).push(CupertinoPageRoute(
+            builder: (_) => TaskDetailPage(taskId: task.id),
+          ));
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
             color: hovering.value
-                ? const Color(0xFF007AFF).withValues(alpha: 0.04)
+                ? c.cardBgHover
                 : CupertinoColors.transparent,
-            border: const Border(
-                bottom: BorderSide(color: Color(0x0A000000), width: 0.5)),
+            border: isLast
+                ? null
+                : Border(
+                    bottom: BorderSide(color: c.borderLight, width: 0.5)),
           ),
           child: Row(
             children: [
               _statusDot(task.status),
               const SizedBox(width: 10),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(task.fileName,
-                        style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFFE5E5EA)),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 1),
-                    Text(task.modeName,
-                        style: const TextStyle(
-                            fontSize: 11, color: Color(0xFF8E8E93))),
-                  ],
-                ),
+                child: Text(task.fileName,
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: c.textPrimary),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
               ),
+              const SizedBox(width: 8),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: c.cardBgHover,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(task.modeName,
+                    style: TextStyle(
+                        fontSize: 10, color: c.textSecondary)),
+              ),
+              const SizedBox(width: 12),
+              Text(_formatTime(task.createdAt),
+                  style: TextStyle(
+                      fontSize: 11, color: c.textTertiary)),
+              const SizedBox(width: 12),
               Text(task.statusName,
                   style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w500,
                       color: _statusColor(task.status))),
-              const SizedBox(width: 6),
-              const Icon(CupertinoIcons.chevron_right,
-                  size: 11, color: Color(0xFFC7C7CC)),
             ],
           ),
         ),
       ),
     );
+  }
+
+  String _formatTime(DateTime? dt) {
+    if (dt == null) return '';
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inMinutes < 1) return '刚刚';
+    if (diff.inHours < 1) return '${diff.inMinutes}分钟前';
+    if (diff.inDays < 1) return '${diff.inHours}小时前';
+    return '${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }
 
   Widget _statusDot(int status) {
@@ -671,7 +580,7 @@ class _RecentTaskRow extends HookWidget {
         shape: BoxShape.circle,
         color: color,
         boxShadow: [
-          BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 4)
+          BoxShadow(color: color.withValues(alpha: 0.35), blurRadius: 4)
         ],
       ),
     );
@@ -690,5 +599,627 @@ class _RecentTaskRow extends HookWidget {
       default:
         return const Color(0xFFC7C7CC);
     }
+  }
+}
+
+// ── 工作流详情页（SmartSub 完整向导：配置栏 + 目标产物 + 步骤链 + 文件导入 + 日志） ──
+
+class _WorkflowDetailPage extends HookConsumerWidget {
+  final WorkflowTemplate workflow;
+  const _WorkflowDetailPage({required this.workflow});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = AppColors.of(context);
+    final creating = useState(false);
+    final wf = workflow;
+    final color = Color(int.parse('FF${wf.gradientColors[0]}', radix: 16));
+    final logExpanded = useState(false);
+    final importedFiles = useState<List<String>>([]);
+
+    // 配置项：从后端 config 读取当前值
+    final ds = ref.watch(dashboardProvider);
+    final cfg = ds.config;
+    final videoLang = useState('英语');
+    final targetLang = useState(cfg?.pipeline.defaultTargetLang ?? 'zh-CN');
+    final whisperModel = useState(cfg?.pipeline.whisperMode ?? 'ffmpeg');
+    final translateService = useState(cfg?.llm.model.isNotEmpty == true ? cfg!.llm.model : 'local');
+    final subtitleOutput = useState(cfg?.pipeline.subtitleOutput ?? 'burn');
+
+    // 目标产物 toggle
+    final doTranslate = useState(wf.mode >= 2);
+    final doDub = useState(wf.mode >= 3);
+    final doVideo = useState(wf.mode >= 3);
+
+    List<String> activeSteps() {
+      final steps = <String>['语音识别'];
+      if (doTranslate.value) steps.add('翻译字幕');
+      if (doDub.value) steps.add('语音合成');
+      if (doVideo.value) steps.add('合成视频');
+      if (steps.length == 1) steps.add('输出字幕');
+      return steps;
+    }
+
+    int resolvedMode() {
+      if (doVideo.value && doDub.value) return 3;
+      if (doTranslate.value) return 2;
+      return 1;
+    }
+
+    Future<void> pickFiles() async {
+      try {
+        final result = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: ['mp4', 'mkv', 'mov', 'avi', 'webm', 'mp3', 'wav', 'flac', 'aac', 'm4a', 'srt', 'ass'],
+          allowMultiple: true,
+        );
+        if (result == null || result.files.isEmpty) return;
+        final paths = result.files
+            .where((f) => f.path != null)
+            .map((f) => f.path!)
+            .toList();
+        importedFiles.value = [...importedFiles.value, ...paths];
+      } catch (_) {}
+    }
+
+    Future<void> startTask() async {
+      if (importedFiles.value.isEmpty) {
+        await pickFiles();
+        if (importedFiles.value.isEmpty) return;
+      }
+      creating.value = true;
+      try {
+        final notifier = ref.read(taskListProvider.notifier);
+        for (final path in importedFiles.value) {
+          await notifier.createTask(inputPath: path, mode: resolvedMode());
+        }
+        if (context.mounted) Navigator.pop(context);
+      } catch (e) {
+        if (context.mounted) {
+          showCupertinoDialog(
+            context: context,
+            builder: (_) => CupertinoAlertDialog(
+              content: Text('创建失败: $e'),
+              actions: [
+                CupertinoDialogAction(
+                  child: const Text('确定'),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+          );
+        }
+      }
+      creating.value = false;
+    }
+
+    final steps = activeSteps();
+
+    return CupertinoPageScaffold(
+      backgroundColor: c.contentBg,
+      child: Column(
+          children: [
+            // ─── 顶部标题栏（← 返回 + 标题 + 工具按钮组） ───
+            Container(
+              padding: const EdgeInsets.fromLTRB(8, 8, 12, 6),
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: c.borderLight, width: 0.5)),
+              ),
+              child: Row(
+                children: [
+                  MacosIconButton(
+                    icon: Icon(CupertinoIcons.back, size: 18, color: c.textSecondary),
+                    onPressed: () => Navigator.pop(context),
+                    padding: const EdgeInsets.all(6),
+                  ),
+                  const SizedBox(width: 2),
+                  Text(wf.title,
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: c.textPrimary)),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text('新任务 · 导入文件后自动保存到最近任务',
+                        style: TextStyle(fontSize: 11, color: c.textTertiary),
+                        overflow: TextOverflow.ellipsis),
+                  ),
+                  const Spacer(),
+                  _SmallButton(icon: CupertinoIcons.doc_fill, label: '导入', c: c, onTap: pickFiles),
+                  const SizedBox(width: 6),
+                  _SmallButton(icon: CupertinoIcons.list_bullet, label: null, c: c, onTap: () {}),
+                  const SizedBox(width: 6),
+                  _SmallButton(icon: CupertinoIcons.square_grid_2x2, label: null, c: c, onTap: () {}),
+                  const SizedBox(width: 6),
+                  _SmallButton(
+                    icon: CupertinoIcons.trash,
+                    label: '清空列表',
+                    c: c,
+                    onTap: () => importedFiles.value = [],
+                  ),
+                  const SizedBox(width: 6),
+                  _SmallButton(icon: CupertinoIcons.slider_horizontal_3, label: '高级选项', c: c, onTap: () {}),
+                ],
+              ),
+            ),
+
+            // ─── InlineConfigBar（配置栏：语音模型 / 视频语言 / 翻译 / 输出） ───
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: c.borderLight, width: 0.5)),
+              ),
+              child: Column(
+                children: [
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
+                    children: [
+                      _ConfigDropdown(
+                        label: '语音模型',
+                        value: whisperModel.value == 'ffmpeg' ? 'Whisper (FFmpeg)' : whisperModel.value,
+                        icon: CupertinoIcons.waveform,
+                        iconColor: const Color(0xFF34C759),
+                        c: c,
+                        items: const ['Whisper (FFmpeg)', 'whisper-cpp', 'Faster Whisper'],
+                        onChanged: (v) => whisperModel.value = v ?? whisperModel.value,
+                      ),
+                      _ConfigDropdown(
+                        label: '视频语言',
+                        value: videoLang.value,
+                        icon: CupertinoIcons.globe,
+                        iconColor: c.textSecondary,
+                        c: c,
+                        items: const ['英语', '日语', '韩语', '法语', '德语', '西班牙语', '自动检测'],
+                        onChanged: (v) => videoLang.value = v ?? videoLang.value,
+                      ),
+                      _ConfigDropdown(
+                        label: '翻译成',
+                        value: _langDisplayName(targetLang.value),
+                        icon: CupertinoIcons.arrow_right_arrow_left,
+                        iconColor: c.textSecondary,
+                        c: c,
+                        items: const ['中文', '英语', '日语', '韩语', '法语', '德语'],
+                        onChanged: (v) => targetLang.value = _langCode(v ?? '中文'),
+                      ),
+                      _ConfigDropdown(
+                        label: '翻译服务',
+                        value: translateService.value,
+                        icon: CupertinoIcons.text_bubble,
+                        iconColor: c.textSecondary,
+                        c: c,
+                        items: const ['local', 'OpenAI', 'DeepL', 'Google'],
+                        onChanged: (v) => translateService.value = v ?? translateService.value,
+                      ),
+                      _ConfigDropdown(
+                        label: '输出内容',
+                        value: subtitleOutput.value == 'burn' ? '烧录到视频' : '仅输出字幕文件',
+                        icon: CupertinoIcons.doc_text,
+                        iconColor: c.textSecondary,
+                        c: c,
+                        items: const ['烧录到视频', '仅输出字幕文件', '仅输出翻译字幕'],
+                        onChanged: (v) {
+                          if (v == '烧录到视频') subtitleOutput.value = 'burn';
+                          else subtitleOutput.value = 'file';
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  // 目标产物 toggle + 步骤链
+                  Row(
+                    children: [
+                      _GoalToggle(label: '翻译', icon: CupertinoIcons.globe, active: doTranslate.value,
+                          color: const Color(0xFF30D158), c: c,
+                          onTap: () => doTranslate.value = !doTranslate.value),
+                      const SizedBox(width: 8),
+                      _GoalToggle(label: '配音', icon: CupertinoIcons.mic, active: doDub.value,
+                          color: const Color(0xFFFF9500), c: c,
+                          onTap: () {
+                            doDub.value = !doDub.value;
+                            if (doDub.value && !doTranslate.value) doTranslate.value = true;
+                          }),
+                      const SizedBox(width: 8),
+                      _GoalToggle(label: '成片', icon: CupertinoIcons.film, active: doVideo.value,
+                          color: const Color(0xFFFF3B30), c: c,
+                          onTap: () {
+                            doVideo.value = !doVideo.value;
+                            if (doVideo.value && !doDub.value) {
+                              doDub.value = true;
+                              doTranslate.value = true;
+                            }
+                          }),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: steps.asMap().entries.expand((e) {
+                              final widgets = <Widget>[
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: color.withValues(alpha: c.isDark ? 0.12 : 0.08),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(e.value,
+                                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: color)),
+                                ),
+                              ];
+                              if (e.key < steps.length - 1) {
+                                widgets.add(Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                                  child: Icon(CupertinoIcons.chevron_right, size: 10, color: c.textTertiary),
+                                ));
+                              }
+                              return widgets;
+                            }).toList(),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            // ─── 文件导入区 / 已导入列表 ───
+            Expanded(
+              child: importedFiles.value.isEmpty
+                  ? _EmptyImportArea(color: color, c: c, onImport: pickFiles)
+                  : _ImportedFileList(
+                      files: importedFiles.value,
+                      c: c,
+                      onRemove: (i) {
+                        final updated = [...importedFiles.value]..removeAt(i);
+                        importedFiles.value = updated;
+                      },
+                    ),
+            ),
+
+            // ─── 底部日志面板 + 开始任务 ───
+            GestureDetector(
+              onTap: () => logExpanded.value = !logExpanded.value,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  border: Border(top: BorderSide(color: c.borderLight, width: 0.5)),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          logExpanded.value ? CupertinoIcons.chevron_down : CupertinoIcons.chevron_right,
+                          size: 12,
+                          color: c.textTertiary,
+                        ),
+                        const SizedBox(width: 4),
+                        Text('运行日志（本任务）', style: TextStyle(fontSize: 11, color: c.textTertiary)),
+                        const SizedBox(width: 8),
+                        Text('暂无日志', style: TextStyle(fontSize: 11, color: c.textTertiary)),
+                        const Spacer(),
+                        if (importedFiles.value.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: Text('${importedFiles.value.length} 个文件',
+                                style: TextStyle(fontSize: 11, color: c.textSecondary)),
+                          ),
+                        AppButton(
+                          onPressed: creating.value ? null : startTask,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(CupertinoIcons.play_fill, size: 12),
+                              const SizedBox(width: 6),
+                              Text(creating.value ? '创建中...' : '开始任务',
+                                  style: const TextStyle(fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (logExpanded.value)
+                      Container(
+                        height: 120,
+                        margin: const EdgeInsets.only(top: 8),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: c.isDark ? const Color(0xFF0A0A0A) : const Color(0xFFF5F5F5),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Center(
+                          child: Text('暂无日志', style: TextStyle(fontSize: 12, color: c.textTertiary)),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+    );
+  }
+
+  static String _langDisplayName(String code) {
+    const map = {'zh-CN': '中文', 'en': '英语', 'ja': '日语', 'ko': '韩语', 'fr': '法语', 'de': '德语'};
+    return map[code] ?? code;
+  }
+
+  static String _langCode(String name) {
+    const map = {'中文': 'zh-CN', '英语': 'en', '日语': 'ja', '韩语': 'ko', '法语': 'fr', '德语': 'de'};
+    return map[name] ?? name;
+  }
+}
+
+/// 空状态文件导入区（虚线边框 + 三步引导）
+class _EmptyImportArea extends StatelessWidget {
+  final Color color;
+  final AppColors c;
+  final VoidCallback onImport;
+  const _EmptyImportArea({required this.color, required this.c, required this.onImport});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Container(
+        decoration: BoxDecoration(
+          color: c.cardBg,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _GuideStep(index: 1, label: '导入文件',
+                  desc: '支持 MP4 / MKV / MOV / MP3 / WAV 等 29 种常见视频与音频格式', color: color, c: c),
+              const SizedBox(height: 20),
+              _GuideStep(index: 2, label: '核对配置',
+                  desc: '在上方配置条选择引擎、模型与语言，高级参数在右上角', color: color, c: c),
+              const SizedBox(height: 20),
+              _GuideStep(index: 3, label: '开始任务',
+                  desc: '点击右下角开始按钮，批量处理并实时查看进度', color: color, c: c),
+              const SizedBox(height: 28),
+              AppButton(
+                onPressed: onImport,
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(CupertinoIcons.doc_fill, size: 14),
+                    SizedBox(width: 8),
+                    Text('导入', style: TextStyle(fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text('也可以把媒体文件或文件夹直接拖进本页', style: TextStyle(fontSize: 11, color: c.textTertiary)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 已导入文件列表
+class _ImportedFileList extends StatelessWidget {
+  final List<String> files;
+  final AppColors c;
+  final void Function(int index) onRemove;
+  const _ImportedFileList({required this.files, required this.c, required this.onRemove});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: files.length,
+      itemBuilder: (_, i) {
+        final name = files[i].split('/').last;
+        return Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: c.cardBg,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: c.border, width: 0.5),
+          ),
+          child: Row(
+            children: [
+              Icon(CupertinoIcons.film, size: 16, color: c.textSecondary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(name,
+                    style: TextStyle(fontSize: 13, color: c.textPrimary),
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+              MacosIconButton(
+                icon: Icon(CupertinoIcons.xmark_circle_fill, size: 16, color: c.textTertiary),
+                onPressed: () => onRemove(i),
+                padding: EdgeInsets.zero,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// 配置下拉选择器 — 桌面风格原地 dropdown overlay
+class _ConfigDropdown extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color iconColor;
+  final AppColors c;
+  final List<String> items;
+  final ValueChanged<String?> onChanged;
+
+  const _ConfigDropdown({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.iconColor,
+    required this.c,
+    required this.items,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return DesktopDropdown(
+      value: value,
+      items: items,
+      onChanged: (v) => onChanged(v),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label, style: TextStyle(fontSize: 12, color: c.textSecondary)),
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: c.inputBg,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 12, color: iconColor),
+                const SizedBox(width: 5),
+                Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: c.textPrimary)),
+                const SizedBox(width: 4),
+                Icon(CupertinoIcons.chevron_down, size: 10, color: c.textTertiary),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 目标产物 toggle 按钮
+class _GoalToggle extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool active;
+  final Color color;
+  final AppColors c;
+  final VoidCallback onTap;
+
+  const _GoalToggle({
+    required this.label,
+    required this.icon,
+    required this.active,
+    required this.color,
+    required this.c,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: active ? color.withValues(alpha: 0.12) : c.cardBg,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: active ? color.withValues(alpha: 0.4) : c.border,
+            width: active ? 1.5 : 0.5,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(active ? CupertinoIcons.checkmark_circle_fill : icon,
+                size: 14, color: active ? color : c.textTertiary),
+            const SizedBox(width: 6),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+                    color: active ? color : c.textSecondary)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 引导步骤行
+class _GuideStep extends StatelessWidget {
+  final int index;
+  final String label;
+  final String desc;
+  final Color color;
+  final AppColors c;
+
+  const _GuideStep({
+    required this.index,
+    required this.label,
+    required this.desc,
+    required this.color,
+    required this.c,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 24, height: 24,
+          decoration: BoxDecoration(shape: BoxShape.circle, color: color.withValues(alpha: 0.12)),
+          child: Center(
+            child: Text('$index', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color)),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: c.textPrimary)),
+            const SizedBox(height: 2),
+            Text(desc, style: TextStyle(fontSize: 12, color: c.textSecondary)),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// 顶栏小按钮
+class _SmallButton extends StatelessWidget {
+  final IconData icon;
+  final String? label;
+  final AppColors c;
+  final VoidCallback onTap;
+  const _SmallButton({required this.icon, this.label, required this.c, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 13, color: c.textSecondary),
+              if (label != null) ...[
+                const SizedBox(width: 4),
+                Text(label!, style: TextStyle(fontSize: 11, color: c.textSecondary)),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

@@ -37,6 +37,20 @@ class TermRepository {
           translation: translation,
           note: note);
 
+  Future<Map<String, dynamic>> updateTerm({
+    required int glossaryId,
+    required int id,
+    required String text,
+    required String translation,
+    String note = '',
+  }) =>
+      _api.updateTerm(
+          glossaryId: glossaryId,
+          id: id,
+          text: text,
+          translation: translation,
+          note: note);
+
   Future<void> deleteTerm({required int glossaryId, required int id}) =>
       _api.deleteTerm(glossaryId: glossaryId, id: id);
 }

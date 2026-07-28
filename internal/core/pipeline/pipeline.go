@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 )
@@ -382,27 +383,34 @@ func parseIntSafe(s string) int {
 	return v
 }
 
-// probeMediaDuration 用 ffprobe 获取媒体文件时长（秒）
+// probeMediaDuration 用 ffmpeg -i 获取媒体文件时长（秒）
+// 不依赖 ffprobe，减少一个外部二进制
 func probeMediaDuration(ffmpegBin, mediaPath string) float64 {
-	ffprobe := "ffprobe"
+	bin := "ffmpeg"
 	if ffmpegBin != "" {
-		// 尝试从 ffmpeg 路径推断 ffprobe 路径
-		if idx := len(ffmpegBin) - len("ffmpeg"); idx >= 0 && ffmpegBin[idx:] == "ffmpeg" {
-			ffprobe = ffmpegBin[:idx] + "ffprobe"
-		}
+		bin = ffmpegBin
 	}
-
-	cmd := exec.Command(ffprobe,
-		"-v", "error",
-		"-show_entries", "format=duration",
-		"-of", "default=noprint_wrappers=1:nokey=1",
-		mediaPath,
-	)
-	output, err := cmd.Output()
-	if err != nil {
+	cmd := exec.Command(bin, "-i", mediaPath)
+	output, _ := cmd.CombinedOutput()
+	// 从 stderr 中解析 "Duration: HH:MM:SS.xx"
+	s := string(output)
+	idx := strings.Index(s, "Duration: ")
+	if idx < 0 {
 		return 0
 	}
-	var dur float64
-	fmt.Sscanf(string(output), "%f", &dur)
-	return dur
+	s = s[idx+len("Duration: "):]
+	end := strings.IndexByte(s, ',')
+	if end < 0 {
+		return 0
+	}
+	parts := strings.Split(s[:end], ":")
+	if len(parts) != 3 {
+		return 0
+	}
+	var h, m int
+	var sec float64
+	fmt.Sscanf(parts[0], "%d", &h)
+	fmt.Sscanf(parts[1], "%d", &m)
+	fmt.Sscanf(parts[2], "%f", &sec)
+	return float64(h)*3600 + float64(m)*60 + sec
 }

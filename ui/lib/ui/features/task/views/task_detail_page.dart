@@ -1,6 +1,8 @@
 import 'dart:async';
 
-import 'package:flutter/cupertino.dart';
+import 'package:flutter/cupertino.dart' show CupertinoColors, CupertinoIcons, CupertinoNavigationBar, CupertinoPageScaffold;
+import 'package:flutter/widgets.dart';
+import 'package:macos_ui/macos_ui.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -88,7 +90,7 @@ class TaskDetailPage extends HookConsumerWidget {
 
   Widget _buildContent(Task? t, String? err, List<String> logs, bool pausing, bool resuming, Future<void> Function() doPause, Future<void> Function() doResume) {
     if (t == null && err == null) {
-      return const Center(child: CupertinoActivityIndicator(radius: 14));
+      return const Center(child: ProgressCircle(radius: 14));
     }
     if (t == null) {
       return Center(child: Text(err ?? '加载失败', style: const TextStyle(color: Color(0xFF8E8E93))));
@@ -121,8 +123,8 @@ class TaskDetailPage extends HookConsumerWidget {
 
   Widget _buildActions(Task t, bool pausing, bool resuming, Future<void> Function() doPause, Future<void> Function() doResume) {
     return Row(children: [
-      if (t.canPause) Expanded(child: CupertinoButton(color: CupertinoColors.systemOrange, padding: const EdgeInsets.symmetric(vertical: 10), borderRadius: BorderRadius.circular(10), onPressed: pausing ? null : doPause, child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(CupertinoIcons.pause_circle, size: 18, color: CupertinoColors.white), SizedBox(width: 6), Text('暂停', style: TextStyle(fontSize: 14, color: CupertinoColors.white))]))),
-      if (t.canResume) Expanded(child: CupertinoButton(color: CupertinoColors.systemGreen, padding: const EdgeInsets.symmetric(vertical: 10), borderRadius: BorderRadius.circular(10), onPressed: resuming ? null : doResume, child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Icon(CupertinoIcons.play_circle, size: 18, color: CupertinoColors.white), const SizedBox(width: 6), Text(t.status == 4 ? '重试' : '恢复', style: const TextStyle(fontSize: 14, color: CupertinoColors.white))]))),
+      if (t.canPause) Expanded(child: PushButton(controlSize: ControlSize.large, color: CupertinoColors.systemOrange, onPressed: pausing ? null : doPause, child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(CupertinoIcons.pause_circle, size: 18, color: MacosColors.white), SizedBox(width: 6), Text('暂停', style: TextStyle(fontSize: 14, color: MacosColors.white))]))),
+      if (t.canResume) Expanded(child: PushButton(controlSize: ControlSize.large, color: CupertinoColors.systemGreen, onPressed: resuming ? null : doResume, child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Icon(CupertinoIcons.play_circle, size: 18, color: MacosColors.white), const SizedBox(width: 6), Text(t.status == 4 ? '重试' : '恢复', style: const TextStyle(fontSize: 14, color: MacosColors.white))]))),
     ]);
   }
 
@@ -143,7 +145,7 @@ class TaskDetailPage extends HookConsumerWidget {
           final isActive = t.status == 1 && idx == currentIdx;
           return Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Row(children: [
             if (isDone) const Icon(CupertinoIcons.checkmark_circle_fill, size: 18, color: CupertinoColors.systemGreen)
-            else if (isActive) const CupertinoActivityIndicator(radius: 8)
+            else if (isActive) const ProgressCircle(radius: 8)
             else const Icon(CupertinoIcons.circle, size: 18, color: Color(0xFFD1D1D6)),
             const SizedBox(width: 10),
             Text(_stepLabel(name), style: TextStyle(fontSize: 13, color: isActive ? CupertinoColors.systemBlue : const Color(0xFF3A3A3C), fontWeight: isActive ? FontWeight.w600 : FontWeight.w400)),
