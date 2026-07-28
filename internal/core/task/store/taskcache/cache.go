@@ -10,16 +10,18 @@ var _ task.Storer = (*Cache)(nil)
 
 func NewCache(store task.Storer, cache conc.Cacher) *Cache {
 	return &Cache{
-		store: store,
-		task:  cache,
-		step:  cache,
+		store:   store,
+		task:    cache,
+		step:    cache,
+		taskLog: cache,
 	}
 }
 
 type Cache struct {
-	store task.Storer
-	task  conc.Cacher
-	step  conc.Cacher
+	store   task.Storer
+	task    conc.Cacher
+	step    conc.Cacher
+	taskLog conc.Cacher
 }
 
 // Task implements task.TaskStorer
@@ -30,4 +32,9 @@ func (c *Cache) Task() task.TaskStorer {
 // Step implements task.StepStorer
 func (c *Cache) Step() task.StepStorer {
 	return (*Step)(c)
+}
+
+// TaskLog implements task.TaskLogStorer
+func (c *Cache) TaskLog() task.TaskLogStorer {
+	return (*TaskLog)(c)
 }

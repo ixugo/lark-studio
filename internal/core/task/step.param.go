@@ -13,6 +13,8 @@ type ListStepInput struct {
 	TaskID    string     `form:"task_id"`
 	Name      string     `form:"name"`   // whisper/split/translate/tts/merge/burn
 	Status    int        `form:"status"` // 0=待执行, 1=执行中, 2=完成, 3=失败, 4=跳过
+	Progress  int        `form:"progress"`
+	Detail    string     `form:"detail"`
 	Output    string     `form:"output"` // JSON: 步骤输出（中间产物路径等）
 	Error     string     `form:"error"`
 	StartedAt *time.Time `form:"started_at"`
@@ -29,6 +31,8 @@ type UpdateStepInput struct {
 	TaskID    string     `json:"task_id"`
 	Name      string     `json:"name"`   // whisper/split/translate/tts/merge/burn
 	Status    int        `json:"status"` // 0=待执行, 1=执行中, 2=完成, 3=失败, 4=跳过
+	Progress  int        `json:"progress"`
+	Detail    string     `json:"detail"`
 	Output    string     `json:"output"` // JSON: 步骤输出（中间产物路径等）
 	Error     string     `json:"error"`
 	StartedAt *time.Time `json:"started_at"`
@@ -39,6 +43,8 @@ type CreateStepInput struct {
 	TaskID    string     `json:"task_id"`
 	Name      string     `json:"name"`   // whisper/split/translate/tts/merge/burn
 	Status    int        `json:"status"` // 0=待执行, 1=执行中, 2=完成, 3=失败, 4=跳过
+	Progress  int        `json:"progress"`
+	Detail    string     `json:"detail"`
 	Output    string     `json:"output"` // JSON: 步骤输出（中间产物路径等）
 	Error     string     `json:"error"`
 	StartedAt *time.Time `json:"started_at"`

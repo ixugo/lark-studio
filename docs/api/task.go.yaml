@@ -1,0 +1,48 @@
+openapi: 3.1.0
+info:
+  title: vdub Task API
+  version: 1.0.0
+paths:
+  /tasks/{id}/logs:
+    get:
+      tags:
+        - admin/任务管理
+      summary: 获取任务日志
+      description: 返回 SQLite 中该任务最近 1000 行日志，用于重新进入任务详情后恢复历史日志。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 任务 ID
+      responses:
+        '200':
+          description: 日志读取成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    description: 按写入时间正序排列的结构化日志
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          format: int64
+                        task_id:
+                          type: string
+                        level:
+                          type: string
+                        step:
+                          type: string
+                        message:
+                          type: string
+                        created_at:
+                          type: string
+                          format: date-time
+        '404':
+          description: 任务不存在

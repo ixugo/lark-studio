@@ -28,6 +28,11 @@ func (d DB) Step() task.StepStorer {
 	return Step(d)
 }
 
+// TaskLog Get business instance
+func (d DB) TaskLog() task.TaskLogStorer {
+	return TaskLog(d)
+}
+
 // AutoMigrate sync database
 func (d DB) AutoMigrate(ok bool) DB {
 	if !ok {
@@ -36,6 +41,7 @@ func (d DB) AutoMigrate(ok bool) DB {
 	if err := d.db.AutoMigrate(
 		new(task.Task),
 		new(task.Step),
+		new(task.TaskLog),
 	); err != nil {
 		panic(err)
 	}
