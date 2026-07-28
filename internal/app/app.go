@@ -19,12 +19,6 @@ import (
 )
 
 func Run(bc *conf.Bootstrap) {
-	// 以可执行文件所在目录为工作目录，防止以服务方式运行时，工作目录切换到其它位置
-	bin, _ := os.Executable()
-	if err := os.Chdir(filepath.Dir(bin)); err != nil {
-		slog.Error("change work dir fail", "err", err)
-	}
-
 	log, clean := SetupLog(bc)
 	defer clean()
 
