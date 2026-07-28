@@ -216,14 +216,19 @@ Rules:
 			"expected", expected, "got", len(translated), "attempt", attempt+1)
 	}
 
-	// 重试耗尽仍数量不符，做防御性对齐
-	for len(lastTranslated) < expected {
-		lastTranslated = append(lastTranslated, sentences[len(lastTranslated)])
+	return requireTranslationCount(lastTranslated, expected)
+}
+
+// requireTranslationCount 拒绝缺行译文，避免用原文补位后送入配音。
+func requireTranslationCount(translated []string, expected int) ([]string, error) {
+	if len(translated) != expected {
+		return nil, fmt.Errorf(
+			"翻译数量不符: 期望 %d 行，实际 %d 行",
+			expected,
+			len(translated),
+		)
 	}
-	if len(lastTranslated) > expected {
-		lastTranslated = lastTranslated[:expected]
-	}
-	return lastTranslated, nil
+	return translated, nil
 }
 
 // parseNumberedLines 解析 LLM 返回的编号行

@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -154,19 +155,80 @@ func (c *Core) consumeTTS(cfg ttsWorkerConfig) {
 			cfg.state.once.Do(func() { cfg.state.err = cfg.ctx.Err() })
 			continue
 		}
-		outputPath := filepath.Join(cfg.audioDir, fmt.Sprintf("%d.wav", pair.index))
-		if info, err := os.Stat(outputPath); err == nil && info.Size() > 0 {
-			c.reportTTSProgress(cfg.job, int(cfg.state.done.Add(1)), cfg.total, &cfg.state.logged)
-			continue
-		}
-		if err := c.tts.Synthesize(cfg.ctx, pair.text, outputPath, ""); err != nil {
+		if err := c.synthesizePair(cfg, pair); err != nil {
 			cfg.state.once.Do(func() {
-				cfg.state.err = fmt.Errorf("TTS 第 %d 句失败: %w", pair.index+1, err)
+				cfg.state.err = err
 			})
 			continue
 		}
 		c.reportTTSProgress(cfg.job, int(cfg.state.done.Add(1)), cfg.total, &cfg.state.logged)
 	}
+}
+
+// synthesizePair 记录实际译文，并只复用译文指纹一致的音频。
+func (c *Core) synthesizePair(cfg ttsWorkerConfig, pair ttsPair) error {
+	outputPath := filepath.Join(cfg.audioDir, fmt.Sprintf("%d.wav", pair.index))
+	displayText := strings.Join(strings.Fields(pair.text), " ")
+	c.logEvent(
+		cfg.job.TaskID,
+		"info",
+		StepTTS,
+		"配音第 %d/%d 句：%s",
+		pair.index+1,
+		cfg.total,
+		displayText,
+	)
+	if audioSegmentMatchesText(outputPath, pair.text) {
+		c.logEvent(cfg.job.TaskID, "info", StepTTS, "复用第 %d 句配音", pair.index+1)
+		return nil
+	}
+	if err := removeStaleAudio(outputPath); err != nil {
+		return fmt.Errorf("清理第 %d 句旧配音失败: %w", pair.index+1, err)
+	}
+	if err := c.tts.Synthesize(cfg.ctx, pair.text, outputPath, ""); err != nil {
+		return fmt.Errorf("TTS 第 %d 句失败: %w", pair.index+1, err)
+	}
+	if err := writeAudioTextFingerprint(outputPath, pair.text); err != nil {
+		return fmt.Errorf("保存第 %d 句配音指纹失败: %w", pair.index+1, err)
+	}
+	return nil
+}
+
+// audioSegmentMatchesText 仅在音频存在且译文指纹一致时允许断点复用。
+func audioSegmentMatchesText(audioPath, text string) bool {
+	info, err := os.Stat(audioPath)
+	if err != nil || info.Size() == 0 {
+		return false
+	}
+	data, err := os.ReadFile(audioPath + ".text.sha256")
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(data)) == audioTextFingerprint(text)
+}
+
+// writeAudioTextFingerprint 保存配音实际输入的稳定指纹。
+func writeAudioTextFingerprint(audioPath, text string) error {
+	return os.WriteFile(
+		audioPath+".text.sha256",
+		[]byte(audioTextFingerprint(text)),
+		0o644,
+	)
+}
+
+// audioTextFingerprint 生成译文内容的 SHA-256 指纹。
+func audioTextFingerprint(text string) string {
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(text)))
+}
+
+// removeStaleAudio 删除旧音频与指纹，避免译文变化后仍沿用旧配音。
+func removeStaleAudio(audioPath string) error {
+	for _, path := range []string{audioPath, audioPath + ".text.sha256"} {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
 }
 
 // translateAllChunks 分块翻译全部句子（调用方须持有 llmMu 锁）

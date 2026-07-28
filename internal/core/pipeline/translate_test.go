@@ -1,9 +1,32 @@
 package pipeline
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
 
+// TestAudioSegmentMatchesText 验证旧音频仅在译文完全一致时复用。
+func TestAudioSegmentMatchesText(t *testing.T) {
+	audioPath := filepath.Join(t.TempDir(), "0.wav")
+	if err := os.WriteFile(audioPath, []byte("audio"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if audioSegmentMatchesText(audioPath, "第一句中文") {
+		t.Fatal("无译文指纹的旧音频不应复用")
+	}
+	if err := writeAudioTextFingerprint(audioPath, "第一句中文"); err != nil {
+		t.Fatal(err)
+	}
+	if !audioSegmentMatchesText(audioPath, "第一句中文") {
+		t.Fatal("相同译文应复用已有音频")
+	}
+	if audioSegmentMatchesText(audioPath, "第二句中文") {
+		t.Fatal("译文变化后不应复用旧音频")
+	}
+}
+
+// TestTranslateContextWindow 验证分块翻译携带正确的前后文。
 func TestTranslateContextWindow(t *testing.T) {
 	sentences := []string{"s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9"}
 
@@ -67,6 +90,7 @@ func TestTranslateContextWindow(t *testing.T) {
 	}
 }
 
+// assertSliceEqual 比对上下文切片并输出准确下标。
 func assertSliceEqual(t *testing.T, label string, want, got []string) {
 	t.Helper()
 	if len(want) != len(got) {
@@ -80,6 +104,7 @@ func assertSliceEqual(t *testing.T, label string, want, got []string) {
 	}
 }
 
+// TestContextWindowConstant 验证上下文窗口不会膨胀提示词。
 func TestContextWindowConstant(t *testing.T) {
 	if contextWindow <= 0 {
 		t.Error("contextWindow 必须为正整数")
