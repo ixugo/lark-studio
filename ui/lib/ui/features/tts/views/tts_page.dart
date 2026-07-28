@@ -294,10 +294,14 @@ class _ServiceItem extends HookWidget {
           decoration: BoxDecoration(
             color: selected
                 ? AppColors.blue.withValues(alpha: 0.15)
-                : hovering.value
-                ? c.cardBgHover
                 : const Color(0x00000000),
             borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: !selected && hovering.value
+                  ? c.border
+                  : const Color(0x00000000),
+              width: 0.5,
+            ),
           ),
           child: Row(
             children: [
