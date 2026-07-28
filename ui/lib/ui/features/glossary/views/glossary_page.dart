@@ -926,37 +926,3 @@ class _AddTermRow extends HookWidget {
     );
   }
 }
-
-/// 小型操作按钮
-class _SmallActionBtn extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  const _SmallActionBtn({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-  @override
-  Widget build(BuildContext context) {
-    final c = AppColors.of(context);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: c.inputBg,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 13, color: c.textTertiary),
-            const SizedBox(width: 4),
-            Text(label, style: TextStyle(fontSize: 12, color: c.textPrimary)),
-          ],
-        ),
-      ),
-    );
-  }
-}

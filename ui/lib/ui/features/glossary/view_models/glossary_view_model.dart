@@ -1,4 +1,4 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../../data/repositories/term_repository.dart';
 import '../../../../providers.dart';
@@ -36,8 +36,9 @@ class GlossaryState {
   }) {
     return GlossaryState(
       glossaries: glossaries ?? this.glossaries,
-      selectedGlossaryId:
-          clearSelection ? null : (selectedGlossaryId ?? this.selectedGlossaryId),
+      selectedGlossaryId: clearSelection
+          ? null
+          : (selectedGlossaryId ?? this.selectedGlossaryId),
       terms: terms ?? this.terms,
       loadingGlossaries: loadingGlossaries ?? this.loadingGlossaries,
       loadingTerms: loadingTerms ?? this.loadingTerms,
@@ -84,8 +85,10 @@ class GlossaryNotifier extends Notifier<GlossaryState> {
     if (gid == null) return;
     state = state.copyWith(loadingTerms: true);
     try {
-      final terms =
-          await _repo.listTerms(glossaryId: gid, query: state.searchQuery);
+      final terms = await _repo.listTerms(
+        glossaryId: gid,
+        query: state.searchQuery,
+      );
       state = state.copyWith(terms: terms, loadingTerms: false);
     } catch (e) {
       state = state.copyWith(error: '$e', loadingTerms: false);
@@ -107,10 +110,18 @@ class GlossaryNotifier extends Notifier<GlossaryState> {
   }
 
   /// 更新词库
-  Future<void> updateGlossary(int id,
-      {String? name, bool? enabled, int? priority}) async {
-    await _repo.updateGlossary(id,
-        name: name, enabled: enabled, priority: priority);
+  Future<void> updateGlossary(
+    int id, {
+    String? name,
+    bool? enabled,
+    int? priority,
+  }) async {
+    await _repo.updateGlossary(
+      id,
+      name: name,
+      enabled: enabled,
+      priority: priority,
+    );
     await loadGlossaries();
   }
 
@@ -124,23 +135,39 @@ class GlossaryNotifier extends Notifier<GlossaryState> {
   }
 
   /// 添加词条
-  Future<void> addTerm(String text,
-      {String translation = '', String note = ''}) async {
+  Future<void> addTerm(
+    String text, {
+    String translation = '',
+    String note = '',
+  }) async {
     final gid = state.selectedGlossaryId;
     if (gid == null) return;
     await _repo.createTerm(
-        glossaryId: gid, text: text, translation: translation, note: note);
+      glossaryId: gid,
+      text: text,
+      translation: translation,
+      note: note,
+    );
     await loadTerms();
     await loadGlossaries();
   }
 
   /// 更新词条
-  Future<void> updateTerm(int id,
-      {required String text, required String translation, String note = ''}) async {
+  Future<void> updateTerm(
+    int id, {
+    required String text,
+    required String translation,
+    String note = '',
+  }) async {
     final gid = state.selectedGlossaryId;
     if (gid == null) return;
     await _repo.updateTerm(
-        glossaryId: gid, id: id, text: text, translation: translation, note: note);
+      glossaryId: gid,
+      id: id,
+      text: text,
+      translation: translation,
+      note: note,
+    );
     await loadTerms();
   }
 
@@ -160,7 +187,8 @@ class GlossaryNotifier extends Notifier<GlossaryState> {
     if (idx <= 0) return;
     final prevId = (list[idx - 1]['id'] as num).toInt();
     final curPriority = (list[idx]['priority'] as num?)?.toInt() ?? idx;
-    final prevPriority = (list[idx - 1]['priority'] as num?)?.toInt() ?? idx - 1;
+    final prevPriority =
+        (list[idx - 1]['priority'] as num?)?.toInt() ?? idx - 1;
     await _repo.updateGlossary(id, priority: prevPriority);
     await _repo.updateGlossary(prevId, priority: curPriority);
     await loadGlossaries();
@@ -173,12 +201,14 @@ class GlossaryNotifier extends Notifier<GlossaryState> {
     if (idx < 0 || idx >= list.length - 1) return;
     final nextId = (list[idx + 1]['id'] as num).toInt();
     final curPriority = (list[idx]['priority'] as num?)?.toInt() ?? idx;
-    final nextPriority = (list[idx + 1]['priority'] as num?)?.toInt() ?? idx + 1;
+    final nextPriority =
+        (list[idx + 1]['priority'] as num?)?.toInt() ?? idx + 1;
     await _repo.updateGlossary(id, priority: nextPriority);
     await _repo.updateGlossary(nextId, priority: curPriority);
     await loadGlossaries();
   }
 }
 
-final glossaryProvider =
-    NotifierProvider<GlossaryNotifier, GlossaryState>(GlossaryNotifier.new);
+final glossaryProvider = NotifierProvider<GlossaryNotifier, GlossaryState>(
+  GlossaryNotifier.new,
+);

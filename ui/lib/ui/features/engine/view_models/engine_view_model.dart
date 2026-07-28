@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:ui' show Color;
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/widgets.dart' show IconData;
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../../data/repositories/config_repository.dart';
 import '../../../../data/services/websocket_service.dart';

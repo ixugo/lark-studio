@@ -6,7 +6,7 @@ class ConfigRepository {
   final ApiClient _api;
   AppConfig? _cached;
 
-  ConfigRepository({required ApiClient api}) : _api = api;
+  ConfigRepository({required this._api});
 
   Future<AppConfig> getConfig({bool forceRefresh = false}) async {
     if (_cached != null && !forceRefresh) return _cached!;
