@@ -106,17 +106,27 @@ class PipelineConfig {
 }
 
 class LLMConfig {
+  final String provider;
   final String baseUrl;
   final String apiKey;
   final String model;
+  final String deepLXUrl;
 
-  const LLMConfig({this.baseUrl = '', this.apiKey = '', this.model = ''});
+  const LLMConfig({
+    this.provider = 'bing',
+    this.baseUrl = '',
+    this.apiKey = '',
+    this.model = '',
+    this.deepLXUrl = '',
+  });
 
   factory LLMConfig.fromJson(Map<String, dynamic> json) {
     return LLMConfig(
+      provider: json['provider'] as String? ?? 'bing',
       baseUrl: json['base_url'] as String? ?? '',
       apiKey: json['api_key'] as String? ?? '',
       model: json['model'] as String? ?? '',
+      deepLXUrl: json['deeplx_url'] as String? ?? '',
     );
   }
 }

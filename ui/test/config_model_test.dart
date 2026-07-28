@@ -17,4 +17,16 @@ void main() {
     expect(config.whisperMode, 'whisper-cpp');
     expect(config.subtitleOutput, 'burn');
   });
+
+  test('翻译配置默认使用必应并读取 DeepLX 地址', () {
+    final defaults = LLMConfig.fromJson({});
+    final configured = LLMConfig.fromJson({
+      'provider': 'deeplx',
+      'deeplx_url': 'http://127.0.0.1:1188/translate',
+    });
+
+    expect(defaults.provider, 'bing');
+    expect(configured.provider, 'deeplx');
+    expect(configured.deepLXUrl, 'http://127.0.0.1:1188/translate');
+  });
 }

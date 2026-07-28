@@ -1,7 +1,7 @@
 import 'dart:ui' show Color;
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/widgets.dart' show IconData;
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../../data/repositories/config_repository.dart';
 import '../../../../providers.dart';
@@ -75,8 +75,9 @@ class TranslationState {
   }) {
     return TranslationState(
       services: services ?? this.services,
-      selectedServiceId:
-          clearSelection ? null : (selectedServiceId ?? this.selectedServiceId),
+      selectedServiceId: clearSelection
+          ? null
+          : (selectedServiceId ?? this.selectedServiceId),
       showConfiguredOnly: showConfiguredOnly ?? this.showConfiguredOnly,
     );
   }
@@ -106,20 +107,11 @@ class TranslationNotifier extends Notifier<TranslationState> {
           category: 'custom',
           icon: CupertinoIcons.desktopcomputer,
           color: const Color(0xFF30D158),
-          description:
-              'OpenAI 兼容 API 的基础地址，通常以 /v1 结尾。\nSmartSub 会自动拼接聊天接口路径。',
+          description: 'OpenAI 兼容 API 的基础地址，通常以 /v1 结尾。\nSmartSub 会自动拼接聊天接口路径。',
           configured: hasLlm,
           baseUrl: llm.baseUrl,
           apiKey: llm.apiKey,
           model: llm.model,
-        ),
-        const TranslationService(
-          id: 'auto_free',
-          name: '自动免费翻译',
-          category: 'free',
-          icon: CupertinoIcons.bolt,
-          color: Color(0xFFFF9500),
-          description: '自动在多个免费翻译引擎之间轮询。',
         ),
         const TranslationService(
           id: 'bing',
@@ -128,22 +120,17 @@ class TranslationNotifier extends Notifier<TranslationState> {
           icon: CupertinoIcons.textformat,
           color: Color(0xFF007AFF),
           description: '微软必应翻译引擎，免费无需配置。',
+          configured: true,
         ),
-        const TranslationService(
-          id: 'google',
-          name: '谷歌免费翻译',
-          category: 'free',
-          icon: CupertinoIcons.globe,
-          color: Color(0xFF34C759),
-          description: '谷歌翻译引擎，免费但需要网络通畅。',
-        ),
-        const TranslationService(
+        TranslationService(
           id: 'deeplx',
           name: 'DeepLX',
           category: 'free',
           icon: CupertinoIcons.text_bubble,
-          color: Color(0xFF5856D6),
-          description: 'DeepL 免费接口，翻译质量较高。',
+          color: const Color(0xFF5856D6),
+          description: '连接自行部署的 DeepLX 接口。',
+          configured: llm.deepLXUrl.isNotEmpty,
+          baseUrl: llm.deepLXUrl,
         ),
         const TranslationService(
           id: 'openai',
@@ -163,7 +150,15 @@ class TranslationNotifier extends Notifier<TranslationState> {
         ),
       ];
 
-      state = state.copyWith(services: services);
+      state = state.copyWith(
+        services: services,
+        selectedServiceId:
+            llm.provider == 'bing' ||
+                llm.provider == 'deeplx' ||
+                llm.provider == 'openai'
+            ? llm.provider
+            : null,
+      );
     } catch (_) {}
   }
 
@@ -178,15 +173,24 @@ class TranslationNotifier extends Notifier<TranslationState> {
   }
 
   /// 保存服务配置
-  Future<void> saveServiceConfig(String serviceId,
-      {String? baseUrl, String? apiKey, String? model}) async {
-    final updates = <String, dynamic>{
-      'llm': <String, dynamic>{
-        if (baseUrl != null) 'base_url': baseUrl,
-        if (apiKey != null) 'api_key': apiKey,
-        if (model != null) 'model': model,
-      },
+  Future<void> saveServiceConfig(
+    String serviceId, {
+    String? baseUrl,
+    String? apiKey,
+    String? model,
+  }) async {
+    final llmUpdates = <String, dynamic>{
+      'provider': _providerName(serviceId),
+      if (serviceId == 'deeplx' && baseUrl != null) 'deeplx_url': baseUrl,
+      if (serviceId != 'deeplx' && baseUrl != null) 'base_url': baseUrl,
     };
+    if (apiKey != null) {
+      llmUpdates['api_key'] = apiKey;
+    }
+    if (model != null) {
+      llmUpdates['model'] = model;
+    }
+    final updates = <String, dynamic>{'llm': llmUpdates};
     await _configRepo.updateConfig(updates);
     await load();
   }
@@ -195,8 +199,14 @@ class TranslationNotifier extends Notifier<TranslationState> {
   Future<void> testTranslation(String serviceId) async {
     await Future.delayed(const Duration(seconds: 1));
   }
+
+  /// _providerName 将界面服务标识映射为后端支持的翻译引擎。
+  String _providerName(String serviceId) {
+    return serviceId == 'bing' || serviceId == 'deeplx' ? serviceId : 'openai';
+  }
 }
 
 final translationProvider =
     NotifierProvider<TranslationNotifier, TranslationState>(
-        TranslationNotifier.new);
+      TranslationNotifier.new,
+    );
