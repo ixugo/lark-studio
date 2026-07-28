@@ -9,11 +9,7 @@ import 'providers.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
-  runApp(
-    ProviderScope(
-      child: const _AppBootstrap(),
-    ),
-  );
+  runApp(ProviderScope(child: const _AppBootstrap()));
 }
 
 /// 读取 providers 启动引擎和 WebSocket
@@ -36,8 +32,8 @@ class _AppBootstrapState extends ConsumerState<_AppBootstrap> {
 
     backend.addListener(() {
       if (backend.port > 0) {
-        api.updateBaseUrl('http://localhost:${backend.port}');
-        ws.updateWsUrl('ws://localhost:${backend.port}/ws');
+        api.updateBaseUrl('http://127.0.0.1:${backend.port}');
+        ws.updateWsUrl('ws://127.0.0.1:${backend.port}/ws');
       }
       if (backend.online && !ws.connected) {
         ws.connect();

@@ -1,12 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 /// 管理 Go 引擎进程的生命周期 + 存活监控
-/// 启动时自动选择可用端口，关闭时杀死引擎进程
+/// 启动时由引擎原子分配回环端口，关闭时杀死引擎进程
 /// 健康检查连续失败 3 次后自动重启引擎
 class BackendService extends ChangeNotifier {
   Process? _process;
@@ -24,10 +24,10 @@ class BackendService extends ChangeNotifier {
   bool get online => _online;
   bool get processRunning => _process != null;
   int get port => _port;
-  String get baseUrl => 'http://localhost:$_port';
-  String get wsUrl => 'ws://localhost:$_port/ws';
+  String get baseUrl => 'http://127.0.0.1:$_port';
+  String get wsUrl => 'ws://127.0.0.1:$_port/ws';
 
-  /// 启动引擎：找空闲端口 → 拉起子进程 → 健康检查
+  /// 启动引擎：拉起子进程 → 接收实际端口 → 健康检查
   /// 若二进制未找到，回退到 connectOnly 模式（开发者可手动启动引擎）
   Future<bool> start({String? binaryPath}) async {
     final bin = binaryPath ?? _findBinary();
@@ -41,17 +41,21 @@ class BackendService extends ChangeNotifier {
   }
 
   Future<bool> _launchProcess(String bin) async {
-    _port = await _findFreePort();
+    _port = 0;
     try {
-      _process = await Process.start(bin, ['-port', '$_port']);
-      _process!.stdout.listen((data) {
-        debugPrint('engine: ${String.fromCharCodes(data).trim()}');
-      });
+      _process = await Process.start(bin, const ['-port', '0']);
+      _process!.stdout
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .listen((line) {
+            _readEngineLine(line);
+          });
       _process!.stderr.listen((data) {
         debugPrint('engine err: ${String.fromCharCodes(data).trim()}');
       });
       _process!.exitCode.then((_) {
         _process = null;
+        _port = 0;
         _setOnline(false);
       });
     } catch (e) {
@@ -59,8 +63,17 @@ class BackendService extends ChangeNotifier {
       return false;
     }
     _failCount = 0;
-    _startHealthCheck();
     return true;
+  }
+
+  /// 解析引擎就绪行；端口由 Go 原子绑定，避免前端探测端口的竞态。
+  void _readEngineLine(String line) {
+    debugPrint('engine: $line');
+    final match = RegExp(r'^ENGINE_PORT=(\d+)$').firstMatch(line.trim());
+    if (match == null) return;
+    _port = int.parse(match.group(1)!);
+    notifyListeners();
+    _startHealthCheck();
   }
 
   /// 仅连接已运行的引擎（调试时用 -port 手动启动）
@@ -94,8 +107,7 @@ class BackendService extends ChangeNotifier {
         _failCount >= _maxFailBeforeRestart &&
         !_restarting) {
       _restarting = true;
-      debugPrint(
-          'engine health check failed $_failCount times, restarting...');
+      debugPrint('engine health check failed $_failCount times, restarting...');
       _killProcess();
       await Future.delayed(const Duration(seconds: 1));
       await _launchProcess(_binaryPath!);
@@ -110,27 +122,6 @@ class BackendService extends ChangeNotifier {
     }
   }
 
-  /// 在 9523~9623 范围内找一个可用端口
-  Future<int> _findFreePort() async {
-    final rng = Random();
-    for (var i = 0; i < 20; i++) {
-      final candidate = 9523 + rng.nextInt(100);
-      try {
-        final socket =
-            await ServerSocket.bind(InternetAddress.loopbackIPv4, candidate);
-        await socket.close();
-        return candidate;
-      } catch (_) {
-        continue;
-      }
-    }
-    final socket =
-        await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
-    final port = socket.port;
-    await socket.close();
-    return port;
-  }
-
   /// 在常见位置查找 vdub 可执行文件
   String? _findBinary() {
     final exe = Platform.resolvedExecutable;
@@ -140,7 +131,9 @@ class BackendService extends ChangeNotifier {
 
     if (Platform.isMacOS && exe.contains('.app/Contents/')) {
       final contentsDir = exe.substring(
-          0, exe.indexOf('.app/Contents/') + '.app/Contents'.length);
+        0,
+        exe.indexOf('.app/Contents/') + '.app/Contents'.length,
+      );
       candidates.add('$contentsDir/Resources/vdub');
 
       final appDir = exe.substring(0, exe.indexOf('.app/'));

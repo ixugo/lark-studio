@@ -21,8 +21,9 @@ final backendProvider = Provider<BackendService>((ref) {
   return svc;
 });
 
-final apiClientProvider =
-    Provider<ApiClient>((ref) => ApiClient(baseUrl: 'http://localhost:9523'));
+final apiClientProvider = Provider<ApiClient>(
+  (ref) => ApiClient(baseUrl: 'http://127.0.0.1:9523'),
+);
 
 final wsServiceProvider = Provider<WebSocketService>((ref) {
   final svc = WebSocketService();
@@ -93,5 +94,6 @@ class ThemeNotifier extends Notifier<AppThemeMode> {
   }
 }
 
-final themeProvider =
-    NotifierProvider<ThemeNotifier, AppThemeMode>(ThemeNotifier.new);
+final themeProvider = NotifierProvider<ThemeNotifier, AppThemeMode>(
+  ThemeNotifier.new,
+);

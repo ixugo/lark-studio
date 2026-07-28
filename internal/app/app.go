@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -44,15 +45,24 @@ func Run(bc *conf.Bootstrap) {
 	defer watchCancel()
 	go conf.WatchConfig(watchCtx, bc, webhookWorkersReloader())
 
+	listener, err := listenLoopback(bc.Server.HTTP.Port)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ENGINE_ERROR=监听引擎失败: %s\n", err)
+		slog.Error("监听引擎失败", "err", err)
+		return
+	}
+	defer listener.Close()
+
 	svc := server.New(handler,
-		server.Port(strconv.Itoa(bc.Server.HTTP.Port)),
+		server.Port(strconv.Itoa(listener.Addr().(*net.TCPAddr).Port)),
+		server.Listener(listener),
 		server.ReadTimeout(bc.Server.HTTP.Timeout.Duration()),
 		server.WriteTimeout(bc.Server.HTTP.Timeout.Duration()),
 	)
 	go svc.Start()
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, syscall.SIGINT, syscall.SIGTERM)
-	fmt.Println("服务启动成功 port:", bc.Server.HTTP.Port)
+	fmt.Printf("ENGINE_PORT=%d\n", listener.Addr().(*net.TCPAddr).Port)
 
 	select {
 	case s := <-interrupt:
@@ -64,6 +74,11 @@ func Run(bc *conf.Bootstrap) {
 	if err := svc.Shutdown(); err != nil {
 		slog.Error(`server.Shutdown()`, "err", err)
 	}
+}
+
+// listenLoopback 仅在本机 IPv4 回环地址提供引擎接口，零端口由系统原子分配。
+func listenLoopback(port int) (net.Listener, error) {
+	return net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: port})
 }
 
 // SetupLog 初始化日志
