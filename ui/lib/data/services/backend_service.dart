@@ -43,7 +43,11 @@ class BackendService extends ChangeNotifier {
   Future<bool> _launchProcess(String bin) async {
     _port = 0;
     try {
-      _process = await Process.start(bin, const ['-port', '0']);
+      final workingDirectory = _engineWorkingDirectory();
+      _process = await Process.start(bin, const [
+        '-port',
+        '0',
+      ], workingDirectory: workingDirectory);
       _process!.stdout
           .transform(utf8.decoder)
           .transform(const LineSplitter())
@@ -64,6 +68,16 @@ class BackendService extends ChangeNotifier {
     }
     _failCount = 0;
     return true;
+  }
+
+  /// _engineWorkingDirectory 把数据库与日志放入用户数据目录，避免改写签名后的 app 包。
+  String _engineWorkingDirectory() {
+    final home = Platform.environment['HOME'];
+    final base = Platform.isMacOS && home != null
+        ? '$home/Library/Application Support/vdub'
+        : '${Directory.systemTemp.path}/vdub';
+    Directory(base).createSync(recursive: true);
+    return base;
   }
 
   /// 解析引擎就绪行；端口由 Go 原子绑定，避免前端探测端口的竞态。
