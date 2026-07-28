@@ -12,18 +12,23 @@ class TaskRepository {
 
   Future<Task> getTask(String id) => _api.getTask(id);
 
+  /// getTaskLogs 返回按时间正序排列的任务日志。
+  Future<List<TaskLog>> getTaskLogs(String id) => _api.getTaskLogs(id);
+
+  /// listTaskSteps 返回当前任务的步骤状态。
+  Future<List<TaskStep>> listTaskSteps(String id) => _api.listTaskSteps(id);
+
   Future<Task> createTask({
     required String inputPath,
     required int mode,
     String outputDir = '',
     String targetLang = '',
-  }) =>
-      _api.createTask(
-        inputPath: inputPath,
-        mode: mode,
-        outputDir: outputDir,
-        targetLang: targetLang,
-      );
+  }) => _api.createTask(
+    inputPath: inputPath,
+    mode: mode,
+    outputDir: outputDir,
+    targetLang: targetLang,
+  );
 
   Future<void> deleteTask(String id) => _api.deleteTask(id);
 
