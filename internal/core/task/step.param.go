@@ -21,9 +21,16 @@ type ListStepInput struct {
 	EndedAt   *time.Time `form:"ended_at"`
 }
 
+// ToQuery 按任务与步骤名称筛选，保证详情页只读取当前任务的处理记录。
 func (i *ListStepInput) ToQuery() *orm.Query {
-	// TODO: 实现 ToQuery 条件
-	return orm.NewQuery(1).OrderBy("created_at DESC")
+	query := orm.NewQuery(2)
+	if i.TaskID != "" {
+		query.Where("task_id = ?", i.TaskID)
+	}
+	if i.Name != "" {
+		query.Where("name = ?", i.Name)
+	}
+	return query.OrderBy("created_at ASC")
 }
 
 type UpdateStepInput struct {
