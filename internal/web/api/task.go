@@ -2,6 +2,7 @@
 package api
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -100,16 +101,19 @@ func (a TaskAPI) createTask(c *gin.Context, in *task.CreateTaskInput) (*task.Tas
 	if err != nil {
 		return nil, err
 	}
-	if _, err := a.taskCore.AppendTaskLog(
-		c.Request.Context(), t.ID, "info", "",
-		"任务创建，模式："+taskModeTitle(t.Mode),
-	); err != nil {
+	if err := a.appendCreationLog(c.Request.Context(), t); err != nil {
 		return nil, err
 	}
 	if err := a.scheduler.Submit(taskPipelineJob(t)); err != nil {
 		return nil, reason.ErrServer.Withf("提交流水线失败: %s", err)
 	}
 	return t, nil
+}
+
+// appendCreationLog 为每个入口创建的任务写入同样的首条历史日志。
+func (a TaskAPI) appendCreationLog(ctx context.Context, item *task.Task) error {
+	_, err := a.taskCore.AppendTaskLog(ctx, item.ID, "info", "", "任务创建，模式："+taskModeTitle(item.Mode))
+	return err
 }
 
 // prepareTaskInput 校验输入并补齐不会随全局配置变化的任务参数。
@@ -348,6 +352,9 @@ func (a TaskAPI) createBatchTask(
 	}
 	t, err := a.taskCore.CreateTask(c.Request.Context(), taskInput)
 	if err != nil {
+		return nil, err
+	}
+	if err := a.appendCreationLog(c.Request.Context(), t); err != nil {
 		return nil, err
 	}
 	if err := a.scheduler.Submit(taskPipelineJob(t)); err != nil {

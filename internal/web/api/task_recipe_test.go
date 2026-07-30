@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -29,6 +30,64 @@ func TestNewTaskCoreMigratesLegacySchema(t *testing.T) {
 		if !db.Migrator().HasColumn(&task.Task{}, column) {
 			t.Fatalf("旧任务表未补齐字段 %s", column)
 		}
+	}
+}
+
+// TestPrepareTaskInputDefaultsToBing 验证未显式选择翻译服务时创建任务固定使用必应。
+func TestPrepareTaskInputDefaultsToBing(t *testing.T) {
+	inputPath := filepath.Join(t.TempDir(), "sample.mp4")
+	if err := os.WriteFile(inputPath, []byte("video"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := conf.DefaultConfig()
+	api := TaskAPI{conf: &cfg}
+	input := &task.CreateTaskInput{InputPath: inputPath, Mode: 2}
+
+	if err := api.prepareTaskInput(input); err != nil {
+		t.Fatal(err)
+	}
+	if input.Translator != "bing" {
+		t.Fatalf("默认翻译服务 = %q，期望 bing", input.Translator)
+	}
+}
+
+// TestTaskPipelineJobPreservesRecipe 验证调度器收到的参数与任务配方快照完全一致。
+func TestTaskPipelineJobPreservesRecipe(t *testing.T) {
+	item := &task.Task{
+		ID: "task-1", Mode: 3, SourceLang: "en", TargetLang: "zh-CN",
+		Translator: "bing", OutputContent: "translated", TTSEngine: "edge",
+		TTSVoice: "zh-CN-XiaoxiaoNeural", SpeechRate: 1.2, SubtitleOutput: "none",
+	}
+	job := taskPipelineJob(item)
+	if job.Translator != "bing" || job.TTSEngine != "edge" || job.SubtitleOutput != "none" {
+		t.Fatalf("配方快照丢失：%+v", job)
+	}
+	if job.SourceLang != "en" || job.TargetLang != "zh-CN" || job.SpeechRate != 1.2 {
+		t.Fatalf("语言或语速快照丢失：%+v", job)
+	}
+}
+
+// TestAppendCreationLog 验证任务从不同入口创建时都会拥有独立首条日志。
+func TestAppendCreationLog(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "task.db")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	core := NewTaskCore(db)
+	item, err := core.CreateTask(context.Background(), &task.CreateTaskInput{Mode: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := TaskAPI{taskCore: core}
+	if err := api.appendCreationLog(context.Background(), item); err != nil {
+		t.Fatal(err)
+	}
+	logs, err := core.ListRecentTaskLogs(context.Background(), item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(logs) != 1 || logs[0].Message != "任务创建，模式：配音成片" {
+		t.Fatalf("首条任务日志错误：%+v", logs)
 	}
 }
 
