@@ -13,8 +13,8 @@ import (
 // runSplit 句级重分段：将 whisper 碎片合并为自然句并重分配时间轴
 // 流程：读取 whisper src.srt → 构建字符-时间映射 → LLM 分句 → 时间轴对齐 → 覆写 src.srt
 func (c *Core) runSplit(ctx context.Context, job Job) error {
-	if job.Translator == "bing" || job.Translator == "deeplx" {
-		c.logEvent(job.TaskID, "info", StepSplit, "免费翻译沿用 Whisper 时间轴")
+	if !RequiresSemanticSplit(job.Translator) {
+		c.logEvent(job.TaskID, "info", StepSplit, "翻译沿用 Whisper 时间轴")
 		c.notifier.OnProgress(job.TaskID, StepSplit, 100)
 		return nil
 	}

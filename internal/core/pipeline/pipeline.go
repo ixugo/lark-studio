@@ -325,12 +325,14 @@ func (c *Core) buildSteps(job Job) []string {
 	case ModeSubtitle:
 		steps = []string{StepWhisper, StepBurn}
 	case ModeTranslate:
-		steps = []string{StepWhisper, StepSplit, StepTranslate, StepBurn}
+		steps = translationSteps(job.Translator, StepWhisper, StepTranslate, StepBurn)
 	case ModeDub:
 		if c.cfg.LipSyncEnabled && c.lipSync != nil {
-			steps = []string{StepWhisper, StepSplit, StepTranslate, StepTTS, StepMerge, StepLipSync, StepBurn}
+			steps = translationSteps(
+				job.Translator, StepWhisper, StepTranslate, StepTTS, StepMerge, StepLipSync, StepBurn,
+			)
 		} else {
-			steps = []string{StepWhisper, StepSplit, StepTranslate, StepTTS, StepMerge, StepBurn}
+			steps = translationSteps(job.Translator, StepWhisper, StepTranslate, StepTTS, StepMerge, StepBurn)
 		}
 	default:
 		steps = []string{StepWhisper, StepBurn}
@@ -352,6 +354,19 @@ func (c *Core) buildSteps(job Job) []string {
 		return filtered
 	}
 	return steps
+}
+
+// translationSteps 仅在 OpenAI 翻译时插入语义分句，必应与 DeepLX 直接保留 Whisper 时间轴。
+func translationSteps(translator string, steps ...string) []string {
+	if !RequiresSemanticSplit(translator) {
+		return steps
+	}
+	return append([]string{steps[0], StepSplit}, steps[1:]...)
+}
+
+// RequiresSemanticSplit 表示翻译引擎是否需要大模型参与语义分句与上下文翻译。
+func RequiresSemanticSplit(translator string) bool {
+	return strings.EqualFold(translator, "openai")
 }
 
 // noopNotifier 空通知实现

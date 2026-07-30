@@ -12,10 +12,13 @@ func TestBuildSteps(t *testing.T) {
 		want []string
 	}{
 		{Job{Mode: ModeSubtitle, SubtitleOutput: "burn"}, []string{StepWhisper, StepBurn}},
-		{Job{Mode: ModeTranslate, SubtitleOutput: "burn"}, []string{StepWhisper, StepSplit, StepTranslate, StepBurn}},
-		{Job{Mode: ModeDub, SubtitleOutput: "burn"}, []string{StepWhisper, StepSplit, StepTranslate, StepTTS, StepMerge, StepBurn}},
-		{Job{Mode: ModeTranslate, SubtitleOutput: "file"}, []string{StepWhisper, StepSplit, StepTranslate}},
-		{Job{Mode: ModeDub, SubtitleOutput: "file"}, []string{StepWhisper, StepSplit, StepTranslate, StepTTS, StepMerge, StepBurn}},
+		{Job{Mode: ModeTranslate, Translator: "openai", SubtitleOutput: "burn"}, []string{StepWhisper, StepSplit, StepTranslate, StepBurn}},
+		{Job{Mode: ModeDub, Translator: "openai", SubtitleOutput: "burn"}, []string{StepWhisper, StepSplit, StepTranslate, StepTTS, StepMerge, StepBurn}},
+		{Job{Mode: ModeTranslate, Translator: "openai", SubtitleOutput: "file"}, []string{StepWhisper, StepSplit, StepTranslate}},
+		{Job{Mode: ModeDub, Translator: "openai", SubtitleOutput: "file"}, []string{StepWhisper, StepSplit, StepTranslate, StepTTS, StepMerge, StepBurn}},
+		{Job{Mode: ModeTranslate, Translator: "bing", SubtitleOutput: "burn"}, []string{StepWhisper, StepTranslate, StepBurn}},
+		{Job{Mode: ModeDub, Translator: "bing", SubtitleOutput: "burn"}, []string{StepWhisper, StepTranslate, StepTTS, StepMerge, StepBurn}},
+		{Job{Mode: ModeTranslate, Translator: "deeplx", SubtitleOutput: "file"}, []string{StepWhisper, StepTranslate}},
 		{Job{Mode: 0, SubtitleOutput: "burn"}, []string{StepWhisper, StepBurn}},
 	}
 

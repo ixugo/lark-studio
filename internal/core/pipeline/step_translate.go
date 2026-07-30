@@ -243,7 +243,9 @@ func (c *Core) translateAllChunks(
 	}
 
 	prompt := c.cfg.TranslatePrompt
-	prompt = c.injectTermsIntoPrompt(ctx, prompt, sentences)
+	if RequiresSemanticSplit(job.Translator) {
+		prompt = c.injectTermsIntoPrompt(ctx, prompt, sentences)
+	}
 
 	var translated []string
 	total := len(sentences)
@@ -294,6 +296,9 @@ func (c *Core) translateChunk(
 	chunkRange translationRange,
 ) ([]string, error) {
 	start, end := chunkRange.start, chunkRange.end
+	if !RequiresSemanticSplit(job.Translator) {
+		return c.translateWithJob(ctx, job, sentences[start:end], "", nil, nil)
+	}
 	contextStart := max(0, start-contextWindow)
 	contextEnd := min(len(sentences), end+contextWindow)
 	return c.translateWithJob(

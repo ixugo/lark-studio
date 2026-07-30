@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,11 +19,24 @@ const (
 	freeUserAgent    = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Edg/131.0.0.0"
 )
 
+// bingHTTPError 保留微软接口状态码，以便只在令牌失效时重新授权。
+type bingHTTPError struct {
+	statusCode int
+}
+
+// Error 将服务端状态转换为可展示的翻译错误。
+func (e bingHTTPError) Error() string {
+	return fmt.Sprintf("必应翻译返回状态 %d", e.statusCode)
+}
+
 // translateBing 使用 Edge 浏览器的匿名令牌批量翻译，结果与输入逐项对应。
 func (c *Client) translateBing(ctx context.Context, texts []string, targetLang string) ([]string, error) {
 	result, err := c.requestBing(ctx, texts, targetLang, false)
 	if err == nil {
 		return result, nil
+	}
+	if !needsBingTokenRefresh(err) {
+		return nil, err
 	}
 	c.tokenMu.Lock()
 	c.token = ""
@@ -58,7 +72,7 @@ func (c *Client) requestBing(ctx context.Context, texts []string, targetLang str
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("必应翻译返回状态 %d", resp.StatusCode)
+		return nil, bingHTTPError{statusCode: resp.StatusCode}
 	}
 	var payload []struct {
 		Translations []struct {
@@ -76,6 +90,13 @@ func (c *Client) requestBing(ctx context.Context, texts []string, targetLang str
 		result[i] = payload[i].Translations[0].Text
 	}
 	return requireTranslationCount(result, len(texts))
+}
+
+// needsBingTokenRefresh 仅在授权失效时重新获取令牌，限流与业务错误直接返回。
+func needsBingTokenRefresh(err error) bool {
+	var responseErr bingHTTPError
+	return errors.As(err, &responseErr) &&
+		(responseErr.statusCode == http.StatusUnauthorized || responseErr.statusCode == http.StatusForbidden)
 }
 
 // bingToken 缓存短期匿名令牌，减少每批字幕的授权请求。

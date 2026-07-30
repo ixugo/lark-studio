@@ -44,6 +44,63 @@ func TestTranslateBing(t *testing.T) {
 	}
 }
 
+// TestTranslateBingDoesNotRetryRateLimit 验证限流不会额外请求令牌或重复提交同一批字幕。
+func TestTranslateBingDoesNotRetryRateLimit(t *testing.T) {
+	authCalls := 0
+	translateCalls := 0
+	client := NewRoutingClient("", "", "", "bing", "")
+	client.bingAuth = "https://test.local/auth"
+	client.bingAPI = "https://test.local/translate"
+	client.client = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path == "/auth" {
+			authCalls++
+			return testResponse("test-token"), nil
+		}
+		translateCalls++
+		return &http.Response{
+			StatusCode: http.StatusTooManyRequests,
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"code":429001}}`)),
+			Header:     make(http.Header),
+		}, nil
+	})}
+
+	_, err := client.Translate(context.Background(), []string{"Hello"}, "zh-CN", "", nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "429") {
+		t.Fatalf("限流错误 = %v", err)
+	}
+	if authCalls != 1 || translateCalls != 1 {
+		t.Fatalf("限流请求次数 auth=%d translate=%d", authCalls, translateCalls)
+	}
+}
+
+// TestTranslateBingRefreshesExpiredToken 验证仅令牌失效时才重新授权并重试。
+func TestTranslateBingRefreshesExpiredToken(t *testing.T) {
+	authCalls := 0
+	translateCalls := 0
+	client := NewRoutingClient("", "", "", "bing", "")
+	client.bingAuth = "https://test.local/auth"
+	client.bingAPI = "https://test.local/translate"
+	client.client = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path == "/auth" {
+			authCalls++
+			return testResponse("token-" + string(rune('0'+authCalls))), nil
+		}
+		translateCalls++
+		if translateCalls == 1 {
+			return &http.Response{StatusCode: http.StatusUnauthorized, Body: io.NopCloser(strings.NewReader("expired")), Header: make(http.Header)}, nil
+		}
+		return testResponse(`[{"translations":[{"text":"你好"}]}]`), nil
+	})}
+
+	got, err := client.Translate(context.Background(), []string{"Hello"}, "zh-CN", "", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != "你好" || authCalls != 2 || translateCalls != 2 {
+		t.Fatalf("重授权结果=%v auth=%d translate=%d", got, authCalls, translateCalls)
+	}
+}
+
 // TestTranslateDeepLX 验证 DeepLX 的主译文与候选译文均可读取。
 func TestTranslateDeepLX(t *testing.T) {
 	requests := 0

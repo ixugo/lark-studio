@@ -43,6 +43,20 @@ func TestDBNotifierProgressNeverRegresses(t *testing.T) {
 	}
 }
 
+// TestProgressWeightsSkipLLMSplitForBing 验证必应任务不会把未执行的语义分句计入总进度。
+func TestProgressWeightsSkipLLMSplitForBing(t *testing.T) {
+	notifier := &dbNotifier{}
+	for _, translator := range []string{"bing", "deeplx"} {
+		weights := notifier.progressWeights(pipeline.ModeDub, "burn", translator)
+		if _, exists := weights[pipeline.StepSplit]; exists {
+			t.Fatalf("%s 任务不应包含语义分句权重", translator)
+		}
+	}
+	if _, exists := notifier.progressWeights(pipeline.ModeDub, "burn", "openai")[pipeline.StepSplit]; !exists {
+		t.Fatal("OpenAI 任务应包含语义分句权重")
+	}
+}
+
 // newNotifierTestCore 创建互不共享的 SQLite 测试领域。
 func newNotifierTestCore(t *testing.T) task.Core {
 	t.Helper()

@@ -276,7 +276,7 @@ func (n *dbNotifier) updateTaskProgress(
 	detail := n.taskStepDetail(taskID, step)
 	err := n.taskCore.SetTaskStatus(ctx, taskID, func(item *task.Task) {
 		totalProgress = max(
-			n.totalProgress(item.Mode, item.SubtitleOutput, n.stepProgress[taskID]),
+			n.totalProgress(item.Mode, item.SubtitleOutput, item.Translator, n.stepProgress[taskID]),
 			item.Progress,
 		)
 		item.Status = 1
@@ -406,8 +406,8 @@ func (n *dbNotifier) clearTask(taskID string) {
 }
 
 // totalProgress 按任务模式权重汇总所有步骤进度。
-func (n *dbNotifier) totalProgress(mode int, subtitleOutput string, progress map[string]int) int {
-	weights := n.progressWeights(mode, subtitleOutput)
+func (n *dbNotifier) totalProgress(mode int, subtitleOutput, translator string, progress map[string]int) int {
+	weights := n.progressWeights(mode, subtitleOutput, translator)
 	totalWeight := 0
 	weightedProgress := 0
 	for step, weight := range weights {
@@ -421,7 +421,7 @@ func (n *dbNotifier) totalProgress(mode int, subtitleOutput string, progress map
 }
 
 // progressWeights 返回当前模式实际执行步骤的进度权重。
-func (n *dbNotifier) progressWeights(mode int, subtitleOutput string) map[string]int {
+func (n *dbNotifier) progressWeights(mode int, subtitleOutput, translator string) map[string]int {
 	if subtitleOutput == "" {
 		subtitleOutput = "burn"
 	}
@@ -431,10 +431,14 @@ func (n *dbNotifier) progressWeights(mode int, subtitleOutput string) map[string
 		weights[pipeline.StepWhisper] = 65
 	case pipeline.ModeTranslate:
 		weights[pipeline.StepWhisper] = 35
-		weights[pipeline.StepSplit] = 5
+		if pipeline.RequiresSemanticSplit(translator) {
+			weights[pipeline.StepSplit] = 5
+		}
 		weights[pipeline.StepTranslate] = 25
 	case pipeline.ModeDub:
-		weights[pipeline.StepSplit] = 5
+		if pipeline.RequiresSemanticSplit(translator) {
+			weights[pipeline.StepSplit] = 5
+		}
 		weights[pipeline.StepTranslate] = 20
 		weights[pipeline.StepTTS] = 25
 		weights[pipeline.StepMerge] = 10
