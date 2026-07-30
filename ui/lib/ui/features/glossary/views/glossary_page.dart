@@ -1,10 +1,5 @@
 import 'dart:ui';
-import 'package:flutter/cupertino.dart'
-    show
-        CupertinoAlertDialog,
-        CupertinoDialogAction,
-        CupertinoIcons,
-        showCupertinoDialog;
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -368,15 +363,6 @@ class _GlossaryDetail extends HookConsumerWidget {
               style: const TextStyle(fontSize: 13),
             ),
           ),
-          MacosIconButton(
-            icon: const Icon(
-              CupertinoIcons.trash,
-              size: 16,
-              color: AppColors.red,
-            ),
-            onPressed: () => _confirmDelete(context, glossaryId),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          ),
         ],
       ),
     );
@@ -582,30 +568,6 @@ class _GlossaryDetail extends HookConsumerWidget {
           ),
         ),
       ],
-    );
-  }
-
-  void _confirmDelete(BuildContext context, int glossaryId) {
-    showCupertinoDialog(
-      context: context,
-      builder: (_) => CupertinoAlertDialog(
-        title: const Text('删除词库'),
-        content: const Text('删除后词库下的全部词条将一并清除，不可恢复。'),
-        actions: [
-          CupertinoDialogAction(
-            child: const Text('取消'),
-            onPressed: () => Navigator.pop(context),
-          ),
-          CupertinoDialogAction(
-            isDestructiveAction: true,
-            child: const Text('删除'),
-            onPressed: () {
-              notifier.deleteGlossary(glossaryId);
-              Navigator.pop(context);
-            },
-          ),
-        ],
-      ),
     );
   }
 }
