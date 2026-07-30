@@ -64,8 +64,10 @@ func InspectRuntime(configured string) RuntimeInfo {
 	output, err := exec.CommandContext(ctx, path, "--version").CombinedOutput()
 	version := firstOutputLine(string(output))
 	if err != nil {
-		output, err = exec.CommandContext(ctx, path, "-m", "__vdub_runtime_probe_missing__.bin").CombinedOutput()
-		if !strings.Contains(string(output), "error: failed to open model file") {
+		output, err = exec.CommandContext(
+			ctx, path, "-m", "__vdub_runtime_probe_missing__.bin", "-f", runtimeProbeInputPath(),
+		).CombinedOutput()
+		if !strings.Contains(string(output), "failed to open") {
 			return RuntimeInfo{Binary: path}
 		}
 		version = "whisper.cpp"
@@ -76,6 +78,14 @@ func InspectRuntime(configured string) RuntimeInfo {
 		Version:      version,
 		Acceleration: runtimeAcceleration(),
 	}
+}
+
+// runtimeProbeInputPath 提供一个无需读取的输入路径，使 CLI 先验证缺失模型后退出。
+func runtimeProbeInputPath() string {
+	if runtime.GOOS == "windows" {
+		return "NUL"
+	}
+	return "/dev/null"
 }
 
 // InstallRuntime 下载与当前发布版本匹配的官方 whisper.cpp 运行时。

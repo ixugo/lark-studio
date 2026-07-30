@@ -146,6 +146,7 @@ jobs:
           install -m 755 build/darwin_${{ matrix.goarch }}/vdub "$APP/Contents/Resources/vdub"
           install -m 755 vendor/ffmpeg/darwin/ffmpeg "$APP/Contents/Resources/ffmpeg"
           cp -R vendor/whisper/darwin "$APP/Contents/Resources/whisper"
+          codesign --force --deep --sign - "$APP"
           TAG="${{ github.event.release.tag_name }}"
           hdiutil create -volname "VDub" -srcfolder "$APP" -ov -format UDZO -imagekey zlib-level=9 "vdub-macos-${{ matrix.goarch }}-$TAG.dmg"
           tar -czf "vdub-whisper-darwin-${{ matrix.goarch }}.tar.gz" -C vendor/whisper/darwin .
