@@ -248,7 +248,20 @@ type stubWhisper struct {
 	srt string
 }
 
-func (s *stubWhisper) Transcribe(_ context.Context, _, outputSRT, _ string) error {
+func (s *stubWhisper) Transcribe(
+	_ context.Context,
+	_ string,
+	outputSRT string,
+	_ string,
+	onProgress func(int),
+	onLog func(string),
+) error {
+	if onLog != nil {
+		onLog("测试听写完成")
+	}
+	if onProgress != nil {
+		onProgress(100)
+	}
 	return os.WriteFile(outputSRT, []byte(s.srt), 0o644)
 }
 
