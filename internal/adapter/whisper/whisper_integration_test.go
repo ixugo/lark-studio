@@ -15,8 +15,12 @@ import (
 func TestWhisperRuntime(t *testing.T) {
 	model := os.Getenv("VDUB_WHISPER_MODEL")
 	audio := os.Getenv("VDUB_WHISPER_AUDIO")
+	binary := os.Getenv("VDUB_WHISPER_BIN")
 	if model == "" || audio == "" {
 		t.Skip("需要 VDUB_WHISPER_MODEL 和 VDUB_WHISPER_AUDIO")
+	}
+	if binary == "" {
+		binary = "whisper-cli"
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
@@ -25,7 +29,7 @@ func TestWhisperRuntime(t *testing.T) {
 	var maxProgress atomic.Int32
 	var logCount atomic.Int32
 
-	err := NewRunner("whisper-cli", model).Transcribe(
+	err := NewRunner(binary, model).Transcribe(
 		ctx,
 		audio,
 		output,
