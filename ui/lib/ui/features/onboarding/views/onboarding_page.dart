@@ -153,7 +153,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  '模型可在“引擎”中下载与切换。',
+                  '模型可在“设置 > 流水线”中下载与切换。',
                   style: TextStyle(fontSize: 13, color: c.textSecondary),
                 ),
               ),

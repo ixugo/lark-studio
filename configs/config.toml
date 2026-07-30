@@ -30,9 +30,9 @@
 [Pipeline]
   # 并行 worker 数量
   Workers = 2
-  # whisper 模式: whisper-cpp / ffmpeg（ffmpeg 需编译时启用 --enable-whisper）
+  # 固定使用 whisper.cpp
   WhisperMode = "whisper-cpp"
-  # whisper.cpp 可执行文件路径（WhisperMode=whisper-cpp 时生效）
+  # whisper.cpp 可执行文件路径（留空优先使用应用内嵌运行时）
   WhisperBin = "whisper-cli"
   # whisper ggml 模型文件路径
   WhisperModel = ""

@@ -38,7 +38,6 @@ class SettingsPage extends HookConsumerWidget {
     final lipSyncBaseUrl = useTextEditingController();
     final lipSyncApiKey = useTextEditingController();
 
-    final whisperMode = useState('ffmpeg');
     final workers = useState(2);
     final maxSpeedFactor = useState(0.0);
     final translateChunkSize = useState(10);
@@ -51,7 +50,6 @@ class SettingsPage extends HookConsumerWidget {
       llmBaseUrl.text = cfg.llm.baseUrl;
       llmApiKey.text = cfg.llm.apiKey;
       llmModel.text = cfg.llm.model;
-      whisperMode.value = cfg.pipeline.whisperMode;
       whisperModel.text = cfg.pipeline.whisperModel;
       ffmpegBin.text = cfg.pipeline.ffmpegBin;
       targetLang.text = cfg.pipeline.defaultTargetLang;
@@ -97,7 +95,6 @@ class SettingsPage extends HookConsumerWidget {
           },
           'pipeline': {
             'workers': workers.value,
-            'whisper_mode': whisperMode.value,
             'whisper_model': whisperModel.text.trim(),
             'ffmpeg_bin': ffmpegBin.text.trim(),
             'default_target_lang': targetLang.text.trim(),
@@ -147,7 +144,6 @@ class SettingsPage extends HookConsumerWidget {
                   backend,
                   wsService,
                   ss,
-                  whisperMode,
                   workers,
                   maxSpeedFactor,
                   translateChunkSize,
@@ -176,7 +172,6 @@ class SettingsPage extends HookConsumerWidget {
     dynamic backend,
     dynamic wsService,
     SettingsState ss,
-    ValueNotifier<String> whisperMode,
     ValueNotifier<int> workers,
     ValueNotifier<double> maxSpeedFactor,
     ValueNotifier<int> translateChunkSize,
@@ -270,12 +265,11 @@ class SettingsPage extends HookConsumerWidget {
         _GlassSection(
           title: '流水线',
           children: [
-            _segmentRow(
-              'Whisper',
-              {'ffmpeg': 'FFmpeg', 'whisper-cpp': 'whisper.cpp'},
-              whisperMode.value,
-              (v) => whisperMode.value = v,
-              c,
+            const Padding(
+              padding: EdgeInsets.fromLTRB(18, 14, 18, 2),
+              child: Row(
+                children: [Text('听写引擎'), Spacer(), Text('whisper.cpp')],
+              ),
             ),
             _GlassField(
               label: '模型路径',
