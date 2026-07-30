@@ -18,6 +18,12 @@ void main() {
     expect(config.subtitleOutput, 'burn');
   });
 
+  test('旧版 FFmpeg 听写配置会迁移到 whisper.cpp', () {
+    final config = PipelineConfig.fromJson({'WhisperMode': 'ffmpeg'});
+
+    expect(config.whisperMode, 'whisper-cpp');
+  });
+
   test('翻译配置默认使用必应并读取 DeepLX 地址', () {
     final defaults = LLMConfig.fromJson({});
     final configured = LLMConfig.fromJson({

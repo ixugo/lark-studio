@@ -108,7 +108,7 @@ func (uc *Usecase) updateConfig(_ *gin.Context, in *updateConfigInput) (configOu
 			c.Pipeline.Workers = *p.Workers
 		}
 		if p.WhisperMode != nil {
-			c.Pipeline.WhisperMode = *p.WhisperMode
+			c.Pipeline.WhisperMode = "whisper-cpp"
 		}
 		if p.WhisperModel != nil {
 			c.Pipeline.WhisperModel = *p.WhisperModel

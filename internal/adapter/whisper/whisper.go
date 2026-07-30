@@ -1,5 +1,4 @@
-// Package whisper 实现语音识别适配器
-// 支持 whisper.cpp 命令行 和 ffmpeg 内置 whisper 滤镜两种模式
+// Package whisper 实现 whisper.cpp 语音识别适配器。
 package whisper
 
 import (
@@ -205,59 +204,4 @@ func shouldRetryWithoutGPU(output []byte) bool {
 	text := string(output)
 	return strings.Contains(text, "ggml_metal_buffer_init") ||
 		strings.Contains(text, "failed to allocate buffer")
-}
-
-// FFmpegRunner 使用 ffmpeg 内置 whisper 滤镜做语音识别
-// 适用于 ffmpeg 编译时启用了 --enable-whisper 的场景，无需单独安装 whisper.cpp
-type FFmpegRunner struct {
-	ffmpegBin string // ffmpeg 路径
-	model     string // ggml 模型文件路径
-}
-
-// NewFFmpegRunner 创建 ffmpeg whisper runner
-func NewFFmpegRunner(ffmpegBin, model string) *FFmpegRunner {
-	if ffmpegBin == "" {
-		ffmpegBin = "ffmpeg"
-	}
-	return &FFmpegRunner{ffmpegBin: ffmpegBin, model: model}
-}
-
-// Transcribe 通过 ffmpeg whisper 滤镜转写音频为 SRT
-func (r *FFmpegRunner) Transcribe(
-	ctx context.Context,
-	audioPath string,
-	outputSRT string,
-	lang string,
-	onProgress func(int),
-	onLog func(string),
-) error {
-	if lang == "" {
-		lang = "auto"
-	}
-
-	filter := fmt.Sprintf("whisper=model=%s:language=%s:format=srt:destination=%s",
-		r.model, lang, outputSRT,
-	)
-
-	cmd := exec.CommandContext(ctx, r.ffmpegBin,
-		"-y", "-i", audioPath,
-		"-af", filter,
-		"-f", "null", "-",
-	)
-	if onProgress != nil {
-		onProgress(5)
-	}
-	output, err := cmd.CombinedOutput()
-	if onLog != nil && len(output) > 0 {
-		for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
-			onLog(line)
-		}
-	}
-	if err != nil {
-		return fmt.Errorf("ffmpeg whisper 转写失败: %s\noutput: %s", err, string(output))
-	}
-	if onProgress != nil {
-		onProgress(100)
-	}
-	return nil
 }

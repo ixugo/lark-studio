@@ -34,13 +34,7 @@ func NewPipelineCore(bc *conf.Bootstrap, opts ...pipeline.Option) *pipeline.Core
 		LipSyncEnabled:     bc.LipSync.Enabled,
 	}
 
-	var wr pipeline.WhisperRunner
-	switch bc.Pipeline.WhisperMode {
-	case "whisper-cpp":
-		wr = whisper.NewRunner(bc.Pipeline.WhisperBin, bc.Pipeline.WhisperModel)
-	default:
-		wr = whisper.NewFFmpegRunner(bc.Pipeline.FFmpegBin, bc.Pipeline.WhisperModel)
-	}
+	wr := whisper.NewRunner(bc.Pipeline.WhisperBin, bc.Pipeline.WhisperModel)
 
 	lc := llm.NewRoutingClient(
 		bc.LLM.BaseURL,

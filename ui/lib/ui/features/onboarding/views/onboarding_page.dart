@@ -16,8 +16,6 @@ class OnboardingPage extends StatefulWidget {
 }
 
 class _OnboardingPageState extends State<OnboardingPage> {
-  String _whisperMode = 'ffmpeg';
-
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
@@ -135,7 +133,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '选择语音识别引擎',
+            '语音识别已就绪',
             style: TextStyle(
               fontSize: 17,
               fontWeight: FontWeight.w600,
@@ -145,87 +143,30 @@ class _OnboardingPageState extends State<OnboardingPage> {
           ),
           const SizedBox(height: 4),
           Text(
-            '其余配置可在设置页随时修改',
+            '使用 whisper.cpp；首次使用时只需下载所选模型',
             style: TextStyle(fontSize: 13, color: c.textTertiary),
           ),
           const SizedBox(height: 18),
-          _optionTile(
-            c,
-            'FFmpeg 内置 Whisper',
-            '无需额外模型，开箱即用',
-            _whisperMode == 'ffmpeg',
-            () => setState(() => _whisperMode = 'ffmpeg'),
-          ),
-          _optionTile(
-            c,
-            'whisper.cpp',
-            '独立引擎，需下载模型文件，识别精度更高',
-            _whisperMode == 'whisper-cpp',
-            () => setState(() => _whisperMode = 'whisper-cpp'),
+          Row(
+            children: [
+              Icon(CupertinoIcons.waveform, size: 20, color: c.accent),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '模型可在“引擎”中下载与切换。',
+                  style: TextStyle(fontSize: 13, color: c.textSecondary),
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _optionTile(
-    AppColors c,
-    String title,
-    String subtitle,
-    bool selected,
-    VoidCallback onTap,
-  ) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        margin: const EdgeInsets.symmetric(vertical: 5),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: selected ? c.accent.withValues(alpha: 0.12) : c.glassCardBg,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: selected ? c.accent.withValues(alpha: 0.40) : c.glassStroke,
-            width: 0.5,
-          ),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: selected ? c.accent : c.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: TextStyle(fontSize: 11, color: c.textTertiary),
-                  ),
-                ],
-              ),
-            ),
-            if (selected)
-              Icon(
-                CupertinoIcons.checkmark_circle_fill,
-                size: 20,
-                color: c.accent,
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Future<void> _finish() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('whisper_mode', _whisperMode);
+    await prefs.setString('whisper_mode', 'whisper-cpp');
     await prefs.setBool('onboarding_done', true);
     widget.onDone();
   }

@@ -61,7 +61,7 @@ func TestIntegration_TranslatePipeline(t *testing.T) {
 	assertSRTQuality(t, filepath.Join(workDir, "trans.srt"))
 }
 
-// TestIntegration_E2E_Whisper 真实 ffmpeg whisper → split → translate → burn
+// TestIntegration_E2E_Whisper 真实 whisper.cpp → split → translate → burn
 // 端到端验证：裁剪视频 10~30s，用真实语音识别 + LLM 翻译 + 字幕烧录
 //
 // 运行: VDUB_LLM_BASE_URL=... VDUB_LLM_API_KEY=... VDUB_WHISPER_MODEL=/path/to/model.bin \
@@ -76,7 +76,7 @@ func TestIntegration_E2E_Whisper(t *testing.T) {
 	workDir := makeWorkDir(t)
 	clipped := clipTestVideo(t, workDir)
 
-	wr := whisper.NewFFmpegRunner("ffmpeg", whisperModel)
+	wr := whisper.NewRunner("whisper-cli", whisperModel)
 	edgeTTS := tts.NewEdgeTTS("zh-CN-YunjianNeural")
 	cfg := pipeline.Config{FFmpegBin: "ffmpeg", MaxSpeedFactor: 1.2}
 	pipeCore := pipeline.NewCore(cfg, wr, llmClient, edgeTTS)
@@ -121,7 +121,7 @@ func TestIntegration_E2E_Dub(t *testing.T) {
 	workDir := makeWorkDir(t)
 	clipped := clipTestVideo(t, workDir)
 
-	wr := whisper.NewFFmpegRunner("ffmpeg", whisperModel)
+	wr := whisper.NewRunner("whisper-cli", whisperModel)
 	edgeTTS := tts.NewEdgeTTS("zh-CN-YunjianNeural")
 	cfg := pipeline.Config{
 		FFmpegBin:      "ffmpeg",

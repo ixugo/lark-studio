@@ -40,7 +40,7 @@ class PipelineConfig {
 
   const PipelineConfig({
     this.workers = 2,
-    this.whisperMode = 'ffmpeg',
+    this.whisperMode = 'whisper-cpp',
     this.whisperModel = '',
     this.ffmpegBin = '',
     this.defaultTargetLang = 'zh-CN',
@@ -58,7 +58,7 @@ class PipelineConfig {
       whisperMode: _knownString(
         json['WhisperMode'],
         fallback: 'whisper-cpp',
-        values: const {'ffmpeg', 'whisper-cpp'},
+        values: const {'whisper-cpp'},
       ),
       whisperModel: json['WhisperModel'] as String? ?? '',
       ffmpegBin: json['FFmpegBin'] as String? ?? '',
