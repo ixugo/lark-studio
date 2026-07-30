@@ -283,7 +283,7 @@ class SettingsPage extends HookConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '可用模型 (点击下载后自动填入路径)',
+                      '可用模型（下载完成后点“使用”即生效）',
                       style: TextStyle(fontSize: 11, color: c.textSecondary),
                     ),
                     const SizedBox(height: 6),
@@ -298,9 +298,18 @@ class SettingsPage extends HookConsumerWidget {
                         path: m['path'] as String? ?? '',
                         onDownload: () =>
                             notifier.downloadModel(m['name'] as String? ?? ''),
-                        onSelect: () {
+                        onSelect: () async {
                           final p = m['path'] as String? ?? '';
-                          if (p.isNotEmpty) whisperModel.text = p;
+                          if (p.isEmpty) {
+                            return;
+                          }
+                          whisperModel.text = p;
+                          final cfg = await notifier.saveConfig({
+                            'pipeline': {'whisper_model': p},
+                          });
+                          if (cfg != null) {
+                            whisperModel.text = cfg.pipeline.whisperModel;
+                          }
                         },
                       ),
                     ),
