@@ -41,6 +41,10 @@ jobs:
           $binDir = Get-ChildItem -Path $env:TEMP\ffmpeg_extract -Recurse -Directory -Filter "bin" | Select-Object -First 1
           Copy-Item "$($binDir.FullName)\ffmpeg.exe" "vendor\ffmpeg\windows\ffmpeg.exe"
 
+      - name: Build whisper.cpp runtime (Windows amd64)
+        shell: pwsh
+        run: ./scripts/build-whisper-runtime.ps1 -TargetOS windows -TargetArch amd64
+
       - name: Build Go engine (Windows amd64)
         shell: pwsh
         env:
@@ -74,13 +78,17 @@ jobs:
           $releaseDir = "ui\build\windows\x64\runner\Release"
           Copy-Item "build\windows_amd64\vdub.exe" "$releaseDir\vdub.exe"
           Copy-Item "vendor\ffmpeg\windows\ffmpeg.exe" "$releaseDir\ffmpeg.exe"
+          Copy-Item "vendor\whisper\windows" "$releaseDir\whisper" -Recurse -Force
           $tag = "${{ github.event.release.tag_name }}"
           Compress-Archive -Path "$releaseDir\*" -DestinationPath "vdub-windows-amd64-$tag.zip"
+          tar -czf "vdub-whisper-windows-amd64.tar.gz" -C "vendor\whisper\windows" .
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
-          files: vdub-windows-amd64-*.zip
+          files: |
+            vdub-windows-amd64-*.zip
+            vdub-whisper-windows-amd64.tar.gz
 
   build-macos:
     runs-on: macos-latest
@@ -111,6 +119,11 @@ jobs:
           fi
           chmod +x vendor/ffmpeg/darwin/ffmpeg
 
+      - name: Build whisper.cpp runtime (macOS ${{ matrix.goarch }})
+        run: |
+          chmod +x scripts/build-whisper-runtime.sh
+          scripts/build-whisper-runtime.sh darwin ${{ matrix.goarch }}
+
       - name: Build Go engine (macOS ${{ matrix.goarch }})
         env:
           GOARCH: ${{ matrix.goarch }}
@@ -132,10 +145,14 @@ jobs:
           APP="ui/build/macos/Build/Products/Release/vdub_ui.app"
           install -m 755 build/darwin_${{ matrix.goarch }}/vdub "$APP/Contents/Resources/vdub"
           install -m 755 vendor/ffmpeg/darwin/ffmpeg "$APP/Contents/Resources/ffmpeg"
+          cp -R vendor/whisper/darwin "$APP/Contents/Resources/whisper"
           TAG="${{ github.event.release.tag_name }}"
           hdiutil create -volname "VDub" -srcfolder "$APP" -ov -format UDZO -imagekey zlib-level=9 "vdub-macos-${{ matrix.goarch }}-$TAG.dmg"
+          tar -czf "vdub-whisper-darwin-${{ matrix.goarch }}.tar.gz" -C vendor/whisper/darwin .
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
-          files: vdub-macos-${{ matrix.goarch }}-*.dmg
+          files: |
+            vdub-macos-${{ matrix.goarch }}-*.dmg
+            vdub-whisper-darwin-${{ matrix.goarch }}.tar.gz

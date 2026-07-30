@@ -150,7 +150,9 @@ func startRuntimeInstall(hub ws.Huber, cfg *conf.Bootstrap) (any, error) {
 			runtimeInstallMu.Unlock()
 		}()
 
-		err := whisperadapter.InstallRuntime(context.Background(), func(line string) {
+		err := whisperadapter.InstallRuntime(context.Background(), whisperadapter.RuntimeInstallOptions{
+			ReleaseTag: cfg.Runtime.BuildVersion,
+		}, func(line string) {
 			if hub != nil {
 				hub.Broadcast(ws.NewMessage("whisper_runtime_log", map[string]any{
 					"message": line,
