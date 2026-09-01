@@ -13,11 +13,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ixugo/goddd/domain/version/versionapi"
 	"github.com/ixugo/goddd/pkg/system"
 	"github.com/ixugo/vdub/internal/app"
 	"github.com/ixugo/vdub/internal/conf"
 	"github.com/ixugo/vdub/internal/core/pipeline"
+	"github.com/ixugo/vdub/internal/web/api"
 )
 
 var (
@@ -99,8 +99,8 @@ func main() {
 		}))
 	}
 
-	versionapi.DBVersion = buildVersion
-	versionapi.DBRemark = gitBranch + "_" + gitHash
+	api.DBVersion = buildVersion
+	api.DBRemark = gitBranch + "_" + gitHash
 
 	app.Run(&bc)
 }

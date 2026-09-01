@@ -2,50 +2,49 @@ package web
 
 import (
 	"expvar"
-	"fmt"
+	"net/http"
 	"net/http/pprof"
 	"runtime"
 	"slices"
-	"strings"
-
-	"github.com/gin-gonic/gin"
 )
 
-// debugAccess 授权指定 ip 访问
-func debugAccess(ips *[]string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		lips := *ips
-		if !strings.HasPrefix(c.Request.URL.Path, "/debug/") || len(lips) == 0 {
-			c.Next()
-			return
-		}
-		if slices.Contains(lips, c.ClientIP()) {
-			c.Next()
-			return
-		}
-		c.AbortWithStatusJSON(400, gin.H{"msg": fmt.Sprintf("%s 无权访问", c.ClientIP())})
+// SetupPProf 在 mux 上注册 pprof 路由，仅允许指定 IP 访问。
+func SetupPProf(mux *http.ServeMux, ips *[]string) {
+	check := debugAccess(ips)
+	mux.Handle("GET /debug/pprof/", check(http.HandlerFunc(pprof.Index)))
+	mux.Handle("GET /debug/pprof/cmdline", check(http.HandlerFunc(pprof.Cmdline)))
+	mux.Handle("GET /debug/pprof/profile", check(http.HandlerFunc(pprof.Profile)))
+	mux.Handle("GET /debug/pprof/symbol", check(http.HandlerFunc(pprof.Symbol)))
+	mux.Handle("POST /debug/pprof/symbol", check(http.HandlerFunc(pprof.Symbol)))
+	mux.Handle("GET /debug/pprof/trace", check(http.HandlerFunc(pprof.Trace)))
+	mux.Handle("GET /debug/pprof/allocs", check(pprof.Handler("allocs")))
+	mux.Handle("GET /debug/pprof/block", check(pprof.Handler("block")))
+	mux.Handle("GET /debug/pprof/goroutine", check(pprof.Handler("goroutine")))
+	mux.Handle("GET /debug/pprof/heap", check(pprof.Handler("heap")))
+	mux.Handle("GET /debug/pprof/mutex", check(pprof.Handler("mutex")))
+	mux.Handle("GET /debug/pprof/threadcreate", check(pprof.Handler("threadcreate")))
+	mux.Handle("GET /debug/vars", expvar.Handler())
+}
+
+// debugAccess 授权指定 IP 访问 debug 路由。
+func debugAccess(ips *[]string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			lips := *ips
+			if len(lips) == 0 {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if slices.Contains(lips, r.RemoteAddr) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			http.Error(w, "forbidden", http.StatusForbidden)
+		})
 	}
 }
 
-func SetupPProf(r gin.IRouter, ips *[]string) {
-	debug := r.Group("/debug", debugAccess(ips))
-	debug.GET("/pprof/", gin.WrapF(pprof.Index))
-	debug.GET("/pprof/cmdline", gin.WrapF(pprof.Cmdline))
-	debug.GET("/pprof/profile", gin.WrapF(pprof.Profile))
-	debug.GET("/pprof/symbol", gin.WrapF(pprof.Symbol))
-	debug.POST("/pprof/symbol", gin.WrapF(pprof.Symbol))
-	debug.GET("/pprof/trace", gin.WrapF(pprof.Trace))
-	debug.GET("/pprof/allocs", gin.WrapH(pprof.Handler("allocs")))
-	debug.GET("/pprof/block", gin.WrapH(pprof.Handler("block")))
-	debug.GET("/pprof/goroutine", gin.WrapH(pprof.Handler("goroutine")))
-	debug.GET("/pprof/heap", gin.WrapH(pprof.Handler("heap")))
-	debug.GET("/pprof/mutex", gin.WrapH(pprof.Handler("mutex")))
-	debug.GET("/pprof/threadcreate", gin.WrapH(pprof.Handler("threadcreate")))
-	debug.GET("/pprof/goroutineleak", gin.WrapH(pprof.Handler("goroutineleak")))
-	debug.GET("/vars", gin.WrapH(expvar.Handler()))
-}
-
-// SetupMutexProfile 启用互斥锁采样，rate=1 开启采样, rate<=0 关闭采样
+// SetupMutexProfile 启用互斥锁采样
 func SetupMutexProfile(rate int) {
 	runtime.SetBlockProfileRate(rate)
 	runtime.SetMutexProfileFraction(rate)

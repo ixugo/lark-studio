@@ -1,12 +1,11 @@
 package api
 
 import (
-	"github.com/gin-gonic/gin"
+	"net/http"
+
 	"github.com/ixugo/goddd/pkg/reason"
 	"github.com/ixugo/vdub/internal/conf"
 )
-
-// 配置 API —— 仅暴露 Pipeline/LLM/TTS 三个业务相关段
 
 type configOutput struct {
 	Pipeline conf.Pipeline `json:"pipeline"`
@@ -21,7 +20,6 @@ type lipSyncOutput struct {
 	APIKey  string `json:"APIKey"`
 }
 
-// llmOutput 遮蔽 APIKey，不将明文推到前端
 type llmOutput struct {
 	Provider  string `json:"provider"`
 	BaseURL   string `json:"base_url"`
@@ -37,7 +35,7 @@ func maskKey(key string) string {
 	return key[:4] + "****" + key[len(key)-4:]
 }
 
-func (uc *Usecase) getConfig(_ *gin.Context, _ *struct{}) (configOutput, error) {
+func (uc *Usecase) getConfig(_ *http.Request, _ *struct{}) (configOutput, error) {
 	c := uc.Conf
 	return configOutput{
 		Pipeline: c.Pipeline,
@@ -100,7 +98,7 @@ type ttsInput struct {
 	Model   *string `json:"model,omitempty"`
 }
 
-func (uc *Usecase) updateConfig(_ *gin.Context, in *updateConfigInput) (configOutput, error) {
+func (uc *Usecase) updateConfig(_ *http.Request, in *updateConfigInput) (configOutput, error) {
 	c := uc.Conf
 
 	if p := in.Pipeline; p != nil {

@@ -1,12 +1,12 @@
 package api
 
 import (
+	"net/http"
 	"strconv"
 
-	"github.com/gin-gonic/gin"
 	"github.com/ixugo/goddd/pkg/reason"
-	"github.com/ixugo/goddd/pkg/web"
 	"github.com/ixugo/vdub/internal/core/term"
+	"github.com/ixugo/vdub/pkg/web"
 )
 
 // TermAPI 术语管理 HTTP 接口
@@ -20,41 +20,37 @@ func NewTermAPI(core term.Core) TermAPI {
 }
 
 // RegisterTerm 注册术语路由
-// gin 路由不允许同层级使用不同参数名，故词库和词条全部使用 :id，
-// 词条嵌套层用 :term_id 避免冲突。
-func RegisterTerm(g gin.IRouter, api TermAPI, handler ...gin.HandlerFunc) {
-	glossaryGroup := g.Group("/glossaries", handler...)
-	glossaryGroup.GET("", web.WrapH(api.listGlossaries))
-	glossaryGroup.POST("", web.WrapH(api.createGlossary))
-	glossaryGroup.PUT("/:id", web.WrapH(api.updateGlossary))
-	glossaryGroup.DELETE("/:id", web.WrapH(api.deleteGlossary))
-	glossaryGroup.GET("/:id/terms", web.WrapH(api.listTerms))
-	glossaryGroup.POST("/:id/terms", web.WrapH(api.createTerm))
-	glossaryGroup.PUT("/:id/terms/:term_id", web.WrapH(api.updateTerm))
-	glossaryGroup.DELETE("/:id/terms/:term_id", web.WrapH(api.deleteTerm))
+func RegisterTerm(mux *http.ServeMux, api TermAPI) {
+	mux.HandleFunc("GET /glossaries", web.WrapH(api.listGlossaries))
+	mux.HandleFunc("POST /glossaries", web.WrapH(api.createGlossary))
+	mux.HandleFunc("PUT /glossaries/{id}", web.WrapH(api.updateGlossary))
+	mux.HandleFunc("DELETE /glossaries/{id}", web.WrapH(api.deleteGlossary))
+	mux.HandleFunc("GET /glossaries/{id}/terms", web.WrapH(api.listTerms))
+	mux.HandleFunc("POST /glossaries/{id}/terms", web.WrapH(api.createTerm))
+	mux.HandleFunc("PUT /glossaries/{id}/terms/{term_id}", web.WrapH(api.updateTerm))
+	mux.HandleFunc("DELETE /glossaries/{id}/terms/{term_id}", web.WrapH(api.deleteTerm))
 
-	legacy := g.Group("/terms", handler...)
-	legacy.GET("", web.WrapH(api.listAllTerms))
-	legacy.POST("", web.WrapH(api.legacyCreateTerm))
-	legacy.DELETE("/:id", web.WrapH(api.legacyDeleteTerm))
+	mux.HandleFunc("GET /terms", web.WrapH(api.listAllTerms))
+	mux.HandleFunc("POST /terms", web.WrapH(api.legacyCreateTerm))
+	mux.HandleFunc("DELETE /terms/{id}", web.WrapH(api.legacyDeleteTerm))
 }
 
 // ---- Glossary ----
 
-func (a TermAPI) listGlossaries(c *gin.Context, _ *struct{}) (any, error) {
-	glossaries, err := a.core.ListGlossaries(c.Request.Context())
+func (a TermAPI) listGlossaries(r *http.Request, _ *struct{}) (any, error) {
+	glossaries, err := a.core.ListGlossaries(r.Context())
 	if err != nil {
 		return nil, reason.ErrDB.Withf("查询词库失败: %s", err)
 	}
-	return gin.H{"items": glossaries, "total": len(glossaries)}, nil
+	return map[string]any{"items": glossaries, "total": len(glossaries)}, nil
 }
 
 type createGlossaryInput struct {
-	Name string `json:"name" binding:"required,max=50"`
+	Name string `json:"name"`
 }
 
-func (a TermAPI) createGlossary(c *gin.Context, in *createGlossaryInput) (*term.Glossary, error) {
-	g, err := a.core.CreateGlossary(c.Request.Context(), in.Name)
+func (a TermAPI) createGlossary(r *http.Request, in *createGlossaryInput) (*term.Glossary, error) {
+	g, err := a.core.CreateGlossary(r.Context(), in.Name)
 	if err != nil {
 		return nil, reason.ErrDB.Withf("创建词库失败: %s", err)
 	}
@@ -62,14 +58,14 @@ func (a TermAPI) createGlossary(c *gin.Context, in *createGlossaryInput) (*term.
 }
 
 type updateGlossaryInput struct {
-	ID       int64  `uri:"id" binding:"required"`
+	ID       int64  `uri:"id"`
 	Name     string `json:"name"`
 	Enabled  *bool  `json:"enabled"`
 	Priority *int   `json:"priority"`
 }
 
-func (a TermAPI) updateGlossary(c *gin.Context, in *updateGlossaryInput) (any, error) {
-	ctx := c.Request.Context()
+func (a TermAPI) updateGlossary(r *http.Request, in *updateGlossaryInput) (any, error) {
+	ctx := r.Context()
 	glossaries, err := a.core.ListGlossaries(ctx)
 	if err != nil {
 		return nil, reason.ErrDB.Withf("查询词库失败: %s", err)
@@ -100,41 +96,40 @@ func (a TermAPI) updateGlossary(c *gin.Context, in *updateGlossaryInput) (any, e
 }
 
 type deleteGlossaryInput struct {
-	ID int64 `uri:"id" binding:"required"`
+	ID int64 `uri:"id"`
 }
 
-func (a TermAPI) deleteGlossary(c *gin.Context, in *deleteGlossaryInput) (any, error) {
-	if err := a.core.DeleteGlossary(c.Request.Context(), in.ID); err != nil {
+func (a TermAPI) deleteGlossary(r *http.Request, in *deleteGlossaryInput) (any, error) {
+	if err := a.core.DeleteGlossary(r.Context(), in.ID); err != nil {
 		return nil, reason.ErrDB.Withf("删除词库失败: %s", err)
 	}
-	return gin.H{"ok": true}, nil
+	return map[string]any{"ok": true}, nil
 }
 
 // ---- Term ----
 
 type listTermsInput struct {
-	ID int64 `uri:"id" binding:"required"`
+	ID int64 `uri:"id"`
 }
 
-// listTerms 列出指定词库下的词条
-func (a TermAPI) listTerms(c *gin.Context, in *listTermsInput) (any, error) {
-	query := c.Query("q")
-	terms, err := a.core.SearchTerms(c.Request.Context(), in.ID, query)
+func (a TermAPI) listTerms(r *http.Request, in *listTermsInput) (any, error) {
+	query := r.URL.Query().Get("q")
+	terms, err := a.core.SearchTerms(r.Context(), in.ID, query)
 	if err != nil {
 		return nil, reason.ErrDB.Withf("查询词条失败: %s", err)
 	}
-	return gin.H{"items": terms, "total": len(terms)}, nil
+	return map[string]any{"items": terms, "total": len(terms)}, nil
 }
 
 type createTermInput struct {
-	ID          int64  `uri:"id" binding:"required"`
-	Text        string `json:"text" binding:"required,max=100"`
+	ID          int64  `uri:"id"`
+	Text        string `json:"text"`
 	Translation string `json:"translation"`
 	Note        string `json:"note"`
 }
 
-func (a TermAPI) createTerm(c *gin.Context, in *createTermInput) (*term.Term, error) {
-	t, err := a.core.Add(c.Request.Context(), in.ID, in.Text, in.Translation, in.Note)
+func (a TermAPI) createTerm(r *http.Request, in *createTermInput) (*term.Term, error) {
+	t, err := a.core.Add(r.Context(), in.ID, in.Text, in.Translation, in.Note)
 	if err != nil {
 		return nil, reason.ErrDB.Withf("添加词条失败: %s", err)
 	}
@@ -143,15 +138,14 @@ func (a TermAPI) createTerm(c *gin.Context, in *createTermInput) (*term.Term, er
 
 type updateTermInput struct {
 	ID          int64  `uri:"id"`
-	TermID      int64  `uri:"term_id" binding:"required"`
-	Text        string `json:"text" binding:"required,max=100"`
+	TermID      int64  `uri:"term_id"`
+	Text        string `json:"text"`
 	Translation string `json:"translation"`
 	Note        string `json:"note"`
 }
 
-// updateTerm 更新词条
-func (a TermAPI) updateTerm(c *gin.Context, in *updateTermInput) (*term.Term, error) {
-	t, err := a.core.Update(c.Request.Context(), in.TermID, in.Text, in.Translation, in.Note)
+func (a TermAPI) updateTerm(r *http.Request, in *updateTermInput) (*term.Term, error) {
+	t, err := a.core.Update(r.Context(), in.TermID, in.Text, in.Translation, in.Note)
 	if err != nil {
 		return nil, reason.ErrDB.Withf("更新词条失败: %s", err)
 	}
@@ -160,34 +154,33 @@ func (a TermAPI) updateTerm(c *gin.Context, in *updateTermInput) (*term.Term, er
 
 type deleteTermInput struct {
 	ID     int64 `uri:"id"`
-	TermID int64 `uri:"term_id" binding:"required"`
+	TermID int64 `uri:"term_id"`
 }
 
-// deleteTerm 删除词条
-func (a TermAPI) deleteTerm(c *gin.Context, in *deleteTermInput) (any, error) {
-	if err := a.core.Remove(c.Request.Context(), in.TermID); err != nil {
+func (a TermAPI) deleteTerm(r *http.Request, in *deleteTermInput) (any, error) {
+	if err := a.core.Remove(r.Context(), in.TermID); err != nil {
 		return nil, reason.ErrDB.Withf("删除词条失败: %s", err)
 	}
-	return gin.H{"ok": true}, nil
+	return map[string]any{"ok": true}, nil
 }
 
 // ---- Legacy /terms ----
 
-func (a TermAPI) listAllTerms(c *gin.Context, _ *struct{}) (any, error) {
-	terms, err := a.core.ListAll(c.Request.Context())
+func (a TermAPI) listAllTerms(r *http.Request, _ *struct{}) (any, error) {
+	terms, err := a.core.ListAll(r.Context())
 	if err != nil {
 		return nil, reason.ErrDB.Withf("查询术语失败: %s", err)
 	}
-	return gin.H{"items": terms, "total": len(terms)}, nil
+	return map[string]any{"items": terms, "total": len(terms)}, nil
 }
 
 type legacyCreateTermInput struct {
-	Text        string `json:"text" binding:"required,max=100"`
+	Text        string `json:"text"`
 	Translation string `json:"translation"`
 }
 
-func (a TermAPI) legacyCreateTerm(c *gin.Context, in *legacyCreateTermInput) (*term.Term, error) {
-	ctx := c.Request.Context()
+func (a TermAPI) legacyCreateTerm(r *http.Request, in *legacyCreateTermInput) (*term.Term, error) {
+	ctx := r.Context()
 	glossaries, err := a.core.ListGlossaries(ctx)
 	if err != nil {
 		return nil, reason.ErrDB.Withf("查询词库失败: %s", err)
@@ -209,14 +202,14 @@ func (a TermAPI) legacyCreateTerm(c *gin.Context, in *legacyCreateTermInput) (*t
 	return t, nil
 }
 
-func (a TermAPI) legacyDeleteTerm(c *gin.Context, _ *struct{}) (any, error) {
-	idStr := c.Param("id")
+func (a TermAPI) legacyDeleteTerm(r *http.Request, _ *struct{}) (any, error) {
+	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		return nil, reason.ErrBadRequest.Withf("无效 ID: %s", idStr)
 	}
-	if err := a.core.Remove(c.Request.Context(), id); err != nil {
+	if err := a.core.Remove(r.Context(), id); err != nil {
 		return nil, reason.ErrDB.Withf("删除术语失败: %s", err)
 	}
-	return gin.H{"ok": true}, nil
+	return map[string]any{"ok": true}, nil
 }

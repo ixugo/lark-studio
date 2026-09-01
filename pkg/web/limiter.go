@@ -1,61 +1,55 @@
 package web
 
 import (
+	"net/http"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/ixugo/goddd/pkg/conc"
 	"github.com/ixugo/goddd/pkg/reason"
 	"golang.org/x/time/rate"
 )
 
-// RateLimiter 限流器
-// r 每秒允许发生的事件
-// b 最大桶容量，处理突发事件
-func RateLimiter(r rate.Limit, b int, ignoreFn ...IngoreOption) gin.HandlerFunc {
-	l := rate.NewLimiter(rate.Limit(r), b)
-	return func(c *gin.Context) {
-		if !l.Allow() {
-			// 达到限流时，可以放行某些路由，依然占用限流次数
-			for _, fn := range ignoreFn {
-				if fn(c) {
-					c.Next()
-					return
+// RateLimiter 全局限流中间件。
+func RateLimiter(r rate.Limit, b int, ignoreFn ...IgnoreOption) Middleware {
+	l := rate.NewLimiter(r, b)
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			if !l.Allow() {
+				for _, fn := range ignoreFn {
+					if fn(req) {
+						next.ServeHTTP(w, req)
+						return
+					}
 				}
+				WriteError(w, req, reason.ErrRateLimit.SetMsg("服务器繁忙"))
+				return
 			}
-			AbortWithStatusJSON(c, reason.ErrRateLimit.SetMsg("服务器繁忙"))
-			return
-		}
-		c.Next()
+			next.ServeHTTP(w, req)
+		})
 	}
 }
 
-// IPRateLimiter IP 限流器
-// 可以在 filter 中执行 AbortWithStatusJSON 相关操作，用于替代默认行为
-// r 每秒允许发生的事件
-// b 最大桶容量，处理突发事件
-// example:
-//
-//	IPRateLimiterForGin(1, 10, IgnorePrefix("/api/v1/login"))
-func IPRateLimiterForGin(r rate.Limit, b int, ignoreFn ...IngoreOption) gin.HandlerFunc {
+// IPRateLimiter 按 IP 限流。
+func IPRateLimiter(r rate.Limit, b int, ignoreFn ...IgnoreOption) Middleware {
 	limiter := IDRateLimiter(r, b, 3*time.Minute)
-
-	return func(c *gin.Context) {
-		if !limiter(c.RemoteIP()) {
-			for _, fn := range ignoreFn {
-				if fn(c) {
-					c.Next()
-					return
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			if !limiter(req.RemoteAddr) {
+				for _, fn := range ignoreFn {
+					if fn(req) {
+						next.ServeHTTP(w, req)
+						return
+					}
 				}
+				WriteError(w, req, reason.ErrRateLimit)
+				return
 			}
-			AbortWithStatusJSON(c, reason.ErrRateLimit)
-			return
-		}
-		c.Next()
+			next.ServeHTTP(w, req)
+		})
 	}
 }
 
-// IDRateLimiter 限流器
+// IDRateLimiter 按标识限流
 func IDRateLimiter(r rate.Limit, b int, ttl time.Duration) func(identifier string) bool {
 	if ttl == 0 {
 		ttl = 3 * time.Minute
@@ -70,19 +64,21 @@ func IDRateLimiter(r rate.Limit, b int, ttl time.Duration) func(identifier strin
 	}
 }
 
-// LimitContentLength 限制请求体大小，比如限制 1MB，可以传入 1024*1024
-func LimitContentLength(limit int, ignoreFn ...IngoreOption) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if c.Request.ContentLength > int64(limit) {
-			for _, fn := range ignoreFn {
-				if fn(c) {
-					c.Next()
-					return
+// LimitContentLength 限制请求体大小。
+func LimitContentLength(limit int, ignoreFn ...IgnoreOption) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.ContentLength > int64(limit) {
+				for _, fn := range ignoreFn {
+					if fn(r) {
+						next.ServeHTTP(w, r)
+						return
+					}
 				}
+				WriteError(w, r, reason.ErrContentTooLarge)
+				return
 			}
-			AbortWithStatusJSON(c, reason.ErrContentTooLarge)
-			return
-		}
-		c.Next()
+			next.ServeHTTP(w, r)
+		})
 	}
 }

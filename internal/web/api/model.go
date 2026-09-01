@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/gin-gonic/gin"
 	whisperadapter "github.com/ixugo/vdub/internal/adapter/whisper"
 	"github.com/ixugo/vdub/internal/conf"
 	"github.com/ixugo/vdub/pkg/web"
@@ -19,7 +18,6 @@ import (
 
 const hfBaseURL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
 
-// whisperModelInfo 模型元数据，硬编码自 HuggingFace 目录
 type whisperModelInfo struct {
 	Name string `json:"name"`
 	Size string `json:"size"`
@@ -62,7 +60,6 @@ var whisperModels = []whisperModelInfo{
 	{"large-v1", "3.09 GiB", "第一代旗舰模型"},
 }
 
-// modelDownloadStatus 模型下载状态，内存中追踪
 type modelDownloadStatus struct {
 	mu       sync.Mutex
 	active   map[string]bool
@@ -74,10 +71,11 @@ var dlStatus = &modelDownloadStatus{
 	progress: make(map[string]int),
 }
 
-var runtimeInstallMu sync.Mutex
-var runtimeInstalling bool
+var (
+	runtimeInstallMu  sync.Mutex
+	runtimeInstalling bool
+)
 
-// start 记录模型开始下载，供多个请求读取一致状态。
 func (s *modelDownloadStatus) start(name string) {
 	s.mu.Lock()
 	s.active[name] = true
@@ -85,7 +83,6 @@ func (s *modelDownloadStatus) start(name string) {
 	s.mu.Unlock()
 }
 
-// finish 清理已结束的下载状态，文件状态由磁盘结果决定。
 func (s *modelDownloadStatus) finish(name string) {
 	s.mu.Lock()
 	delete(s.active, name)
@@ -93,48 +90,42 @@ func (s *modelDownloadStatus) finish(name string) {
 	s.mu.Unlock()
 }
 
-// setProgress 保存模型下载百分比。
 func (s *modelDownloadStatus) setProgress(name string, p int) {
 	s.mu.Lock()
 	s.progress[name] = p
 	s.mu.Unlock()
 }
 
-// isActive 判断指定模型是否正在下载。
 func (s *modelDownloadStatus) isActive(name string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.active[name]
 }
 
-// getProgress 返回指定模型当前下载百分比。
 func (s *modelDownloadStatus) getProgress(name string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.progress[name]
 }
 
-// modelsDir 返回模型存储目录 ~/dsub/models/
 func modelsDir() string {
 	return filepath.Join(conf.DataDir(), "models")
 }
 
-// modelPath 返回指定模型文件的完整路径
 func modelPath(name string) string {
 	return filepath.Join(modelsDir(), fmt.Sprintf("ggml-%s.bin", name))
 }
 
 // RegisterModel 注册 Whisper 运行时与模型管理路由。
-func RegisterModel(r gin.IRouter, hub ws.Huber, cfg *conf.Bootstrap) {
-	g := r.Group("/models")
-	g.GET("", web.WrapH(listModels))
-	g.POST("/download", web.WrapH(func(c *gin.Context, in *modelDownloadInput) (any, error) {
+func RegisterModel(mux *http.ServeMux, hub ws.Huber, cfg *conf.Bootstrap) {
+	mux.HandleFunc("GET /models", web.WrapH(listModels))
+	mux.HandleFunc("POST /models/download", web.WrapH(func(_ *http.Request, in *modelDownloadInput) (any, error) {
 		return startDownload(in.Name, hub)
 	}))
-	g.GET("/runtime", web.WrapH(func(_ *gin.Context, _ *struct{}) (any, error) {
+	mux.HandleFunc("GET /models/runtime", web.WrapH(func(_ *http.Request, _ *struct{}) (any, error) {
 		return inspectWhisperRuntime(cfg), nil
 	}))
-	g.POST("/runtime/install", web.WrapH(func(_ *gin.Context, _ *struct{}) (any, error) {
+	mux.HandleFunc("POST /models/runtime/install", web.WrapH(func(_ *http.Request, _ *struct{}) (any, error) {
 		return startRuntimeInstall(hub, cfg)
 	}))
 }
@@ -144,7 +135,6 @@ type whisperRuntimeOutput struct {
 	Installing bool `json:"installing"`
 }
 
-// inspectWhisperRuntime 返回真实运行时状态，避免界面使用固定假数据。
 func inspectWhisperRuntime(cfg *conf.Bootstrap) whisperRuntimeOutput {
 	runtimeInstallMu.Lock()
 	installing := runtimeInstalling
@@ -155,7 +145,6 @@ func inspectWhisperRuntime(cfg *conf.Bootstrap) whisperRuntimeOutput {
 	}
 }
 
-// startRuntimeInstall 启动唯一安装任务，并把安装输出推送到界面。
 func startRuntimeInstall(hub ws.Huber, cfg *conf.Bootstrap) (any, error) {
 	if info := whisperadapter.InspectRuntime(cfg.Pipeline.WhisperBin); info.Installed {
 		return map[string]string{"status": "already_installed"}, nil
@@ -211,8 +200,7 @@ type modelListOutput struct {
 	Progress    int    `json:"progress"`
 }
 
-// listModels 返回模型列表及下载状态
-func listModels(_ *gin.Context, _ *struct{}) ([]modelListOutput, error) {
+func listModels(_ *http.Request, _ *struct{}) ([]modelListOutput, error) {
 	var out []modelListOutput
 	for _, m := range whisperModels {
 		p := modelPath(m.Name)
@@ -235,10 +223,9 @@ func listModels(_ *gin.Context, _ *struct{}) ([]modelListOutput, error) {
 }
 
 type modelDownloadInput struct {
-	Name string `json:"name" binding:"required"`
+	Name string `json:"name"`
 }
 
-// startDownload 启动后台模型下载，通过 WebSocket 推送进度
 func startDownload(name string, hub ws.Huber) (any, error) {
 	valid := false
 	for _, m := range whisperModels {
@@ -276,7 +263,6 @@ func startDownload(name string, hub ws.Huber) (any, error) {
 	return map[string]string{"status": "started"}, nil
 }
 
-// downloadModel 从 HuggingFace 下载 ggml 模型文件
 func downloadModel(name string, hub ws.Huber) error {
 	url := fmt.Sprintf("%s/ggml-%s.bin", hfBaseURL, name)
 	dest := modelPath(name)

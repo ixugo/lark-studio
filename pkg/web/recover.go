@@ -1,30 +1,31 @@
 package web
 
 import (
+	"encoding/json"
 	"fmt"
+	"log/slog"
+	"net/http"
 	"runtime/debug"
-
-	"github.com/gin-gonic/gin"
 )
 
-// Recover from panics and converts the panic to an error so it is
-// reported in Metrics and handled in Errors.
-func Recover() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// Defer a function to recover from a panic and set the err return
-		// variable after the fact.
-		defer func() {
-			if rec := recover(); rec != nil {
-				trace := debug.Stack()
-				err := fmt.Errorf("PANIC [%v] TRACE[%s]", rec, string(trace))
-				fmt.Println(err)
-
-				traceID := MustTraceID(c)
-				c.AbortWithStatusJSON(500, gin.H{"msg": rec, "trace_id": traceID})
-				return
-			}
-		}()
-
-		c.Next()
+// Recover 从 panic 恢复并返回 500。
+func Recover() Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			defer func() {
+				if rec := recover(); rec != nil {
+					trace := debug.Stack()
+					slog.Error("panic", "err", rec, "stack", string(trace))
+					traceID, _ := TraceID(r.Context())
+					w.Header().Set("Content-Type", "application/json; charset=utf-8")
+					w.WriteHeader(http.StatusInternalServerError)
+					_ = json.NewEncoder(w).Encode(map[string]any{
+						"msg":      fmt.Sprint(rec),
+						"trace_id": traceID,
+					})
+				}
+			}()
+			next.ServeHTTP(w, r)
+		})
 	}
 }

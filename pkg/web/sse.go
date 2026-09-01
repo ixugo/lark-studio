@@ -4,38 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"sync"
 	"time"
-
-	"github.com/gin-gonic/gin"
 )
 
 // SSE 发送事件
-/*
-	使用案例
-
-	http.HandleFunc("/stream", func(w http.ResponseWriter, r *http.Request) {
-		sse := web.NewSSE(1024, time.Minute)
-
-		go func(){
-			defer sse.Close()
-			for range 3 {
-				sse.Publish(web.Event{
-					ID:    uuid.New().String(),
-					Event: "ping",
-					Data: []byte("pong"),
-				})
-				time.Sleep(time.Second)
-			}
-		}()
-		sse.ServeHTTP(w, r)
-	})
-
-
-*/
 type SSE struct {
 	Headers map[string]string
 	stream  chan Event
@@ -72,14 +47,14 @@ func (s *SSE) Publish(v Event) {
 	s.stream <- v
 }
 
-// Stop 会立即停止发送事件，stop 后应该调用 Close()
+// Stop 立即停止发送事件
 func (s *SSE) Stop() {
 	if s.cancel != nil {
 		s.cancel()
 	}
 }
 
-// Close 会确保所有事件被发送完毕
+// Close 确保所有事件被发送完毕
 func (s *SSE) Close() {
 	s.m.Lock()
 	defer s.m.Unlock()
@@ -91,7 +66,7 @@ func (s *SSE) Close() {
 }
 
 func (s *SSE) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	rc := http.NewResponseController(w) // nolint
+	rc := http.NewResponseController(w)
 	_ = rc.SetWriteDeadline(time.Now().Add(s.timeout))
 	_ = rc.SetReadDeadline(time.Now().Add(s.timeout))
 
@@ -132,49 +107,6 @@ func (s *SSE) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-type EventMessage struct {
-	id    string
-	event string
-	data  string
-}
-
-func NewEventMessage(event string, data map[string]any) *EventMessage {
-	b, _ := json.Marshal(data)
-	return &EventMessage{
-		event: event,
-		data:  string(b),
-	}
-}
-
-func SendSSE(ch <-chan EventMessage, c *gin.Context) {
-	c.Header("Cache-Control", "no-store")
-	c.Header("Content-Type", "text/event-stream")
-	tick := time.NewTicker(40 * time.Millisecond)
-	defer tick.Stop()
-	var last *EventMessage
-	var zero EventMessage
-	for {
-		select {
-		case <-tick.C:
-			if last != nil {
-				_, _ = io.WriteString(c.Writer, fmt.Sprintf("%v\n", *last))
-				c.Writer.Flush()
-				last = nil
-			}
-		case v := <-ch:
-			if v != zero {
-				last = &v
-				continue
-			}
-			if last != nil {
-				_, _ = io.WriteString(c.Writer, fmt.Sprintf("%v\n", *last))
-				c.Writer.Flush()
-			}
-			return
-		}
-	}
-}
-
 type Chunk struct {
 	Total   int    `json:"total"`
 	Current int    `json:"current"`
@@ -183,73 +115,22 @@ type Chunk struct {
 	Err     string `json:"err,omitempty"`
 }
 
-// SendChunkPro 高性能版
-func SendChunkPro(ch <-chan Chunk, c *gin.Context) {
-	if c == nil || c.Writer == nil {
-		return
-	}
-	tick := time.NewTicker(40 * time.Millisecond)
-	defer tick.Stop()
-	var last *Chunk
+// SendChunk 发送分块数据（纯 net/http 版本）。
+func SendChunk(ch <-chan Chunk, w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Transfer-Encoding", "chunked")
+	w.Header().Set("Content-Type", "text/plain")
+	rc := http.NewResponseController(w)
 	var zero Chunk
-	var i int
 	for {
-		if i == 1 {
-			c.Header("Cache-Control", "no-store")
-			c.Header("Transfer-Encoding", "chunked")
-			c.Header("Content-Type", "text/plain")
-		}
-		select {
-		case <-tick.C:
-			if last != nil {
-				b, _ := json.Marshal(last)
-				_, err := c.Writer.Write(append(b, '\n'))
-				if err != nil {
-					return
-				}
-				c.Writer.Flush()
-				last = nil
-			}
-		case v := <-ch:
-			i++
-			if v != zero {
-				last = &v
-				continue
-			}
-			if last != nil {
-				b, _ := json.Marshal(last)
-				_, err := c.Writer.Write(append(b, '\n'))
-				if err != nil {
-					return
-				}
-				c.Writer.Flush()
-			}
-			return
-		}
-	}
-}
-
-// SendChunk 发送分块数据
-func SendChunk(ch <-chan Chunk, c *gin.Context) {
-	if c == nil || c.Writer == nil {
-		return
-	}
-	c.Header("Cache-Control", "no-store")
-	c.Header("Transfer-Encoding", "chunked")
-	c.Header("Content-Type", "text/plain")
-	var zero Chunk
-	var i int
-	for {
-		i++
 		v := <-ch
 		if v == zero {
 			return
 		}
 		b, _ := json.Marshal(v)
-		_, err := c.Writer.Write(append(b, '\n'))
-		if err != nil {
+		if _, err := w.Write(append(b, '\n')); err != nil {
 			return
 		}
-		c.Writer.Flush()
+		_ = rc.Flush()
 	}
 }

@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/ixugo/goddd/domain/version/versionapi"
 	"github.com/ixugo/vdub/internal/conf"
 	"github.com/ixugo/vdub/internal/data"
 	"github.com/ixugo/vdub/internal/web/api"
@@ -24,8 +23,8 @@ func WireApp(bc *conf.Bootstrap, log *slog.Logger) (http.Handler, func(), error)
 	if err != nil {
 		return nil, nil, err
 	}
-	core := versionapi.NewVersionCore(db)
-	versionapiAPI := versionapi.New(core)
+	core := api.NewVersionCore(db)
+	versionAPI := api.NewVersionAPI(core)
 	taskCore := api.NewTaskCore(db)
 	termCore := api.NewTermCore(db)
 
@@ -43,7 +42,7 @@ func WireApp(bc *conf.Bootstrap, log *slog.Logger) (http.Handler, func(), error)
 	usecase := &api.Usecase{
 		Conf:      bc,
 		DB:        db,
-		Version:   versionapiAPI,
+		Version:   versionAPI,
 		TaskAPI:   taskAPI,
 		TermAPI:   termAPI,
 		Scheduler: scheduler,

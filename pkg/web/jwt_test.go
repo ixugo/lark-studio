@@ -2,13 +2,8 @@ package web
 
 import (
 	"fmt"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
-
-	"github.com/gin-gonic/gin"
 )
 
 func TestJWT(t *testing.T) {
@@ -20,6 +15,9 @@ func TestJWT(t *testing.T) {
 		t.Fatal(err)
 	}
 	cli, err := ParseToken(token, secret)
+	if err != nil {
+		t.Fatal(err)
+	}
 	v := cli.Data[KeyLevel].(float64)
 	if v != 1 {
 		t.Fatal("level not equal")
@@ -30,7 +28,7 @@ func TestJWT(t *testing.T) {
 	}
 	time.Sleep(time.Second)
 	if err := cli.Valid(); err == nil {
-		t.Fatal("valid faild")
+		t.Fatal("valid failed")
 	}
 }
 
@@ -49,25 +47,4 @@ func TestClaimsData(t *testing.T) {
 	if len(data) != 100001 {
 		t.Errorf("Set failed")
 	}
-}
-
-func TestEtag(t *testing.T) {
-	gin.SetMode(gin.ReleaseMode)
-	g := gin.New()
-	g.Use(EtagHandler())
-
-	g.GET("/", func(ctx *gin.Context) {
-		ctx.String(200, "O1K")
-	})
-
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.Header.Set("If-None-Match", `"e0aa021e21dddbd6d8cecec71e9cf564"`)
-	g.ServeHTTP(w, req)
-
-	resp := w.Result()
-	fmt.Println(resp.StatusCode)
-	fmt.Println(resp.Header.Get("ETag"))
-	s, _ := io.ReadAll(resp.Body)
-	fmt.Println(string(s))
 }

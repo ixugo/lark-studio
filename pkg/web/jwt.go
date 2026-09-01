@@ -2,16 +2,15 @@ package web
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/ixugo/goddd/pkg/reason"
 )
 
-// 为确保兼容性，以下值不可更改
-// uid 和 role_id 是 int 类型，其余未明确标识的是字符串类型
+// JWT context key constants
 const (
 	KeyUserID      = "uid"
 	KeyLevel       = "level"
@@ -20,9 +19,7 @@ const (
 	KeyTokenString = "token"
 )
 
-// Claims ...
-// 注意 int 类型在 json 反序列化后会是 float64
-// 即通过 gin.context 获取的数字参数，都要用 GetFloat64
+// Claims JWT 声明
 type Claims struct {
 	Data map[string]any
 	jwt.RegisteredClaims
@@ -30,21 +27,8 @@ type Claims struct {
 
 type ClaimsData map[string]any
 
-type Geter interface {
-	GetString(key any) string
-	Get(key any) (value any, exists bool)
-}
-
-type (
-	HandlerOption func(*gin.Context) bool
-	IngoreOption  func(*gin.Context) bool
-)
-
 type TokenOptions func(*Claims)
 
-// NewClaimsData 提供了一些默认的设置，例如 SetUserID
-// 提供的不够用时，请使用 Set(k,v)，并实现对应的 GetK() 函数
-// 也可以匿名嵌套实现更多
 func NewClaimsData() ClaimsData {
 	return make(ClaimsData)
 }
@@ -74,68 +58,76 @@ func (c ClaimsData) Set(key string, value any) ClaimsData {
 	return c
 }
 
-// AuthMiddleware 鉴权
-// handler 可以拦截请求，返回 true 则跳过默认鉴权行为，可以通过此参数自定义鉴权方案
-func AuthMiddleware(secret string, handler ...HandlerOption) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		for _, h := range handler {
-			if h(c) {
-				c.Next()
+// claimsCtxKey 用于在 context 中传递 JWT 声明。
+const claimsCtxKey ctxKey = "jwt_claims"
+
+// AuthMiddleware 鉴权中间件。
+func AuthMiddleware(secret string, skip ...func(*http.Request) bool) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			for _, fn := range skip {
+				if fn(r) {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+
+			auth := r.Header.Get("Authorization")
+			if auth == "" {
+				auth = r.URL.Query().Get("token")
+			}
+			const prefix = "Bearer "
+			if len(auth) <= len(prefix) || !strings.EqualFold(auth[:len(prefix)], prefix) {
+				WriteError(w, r, reason.ErrUnauthorizedToken.SetMsg("身份验证失败"))
 				return
 			}
-		}
+			claims, err := ParseToken(auth[len(prefix):], secret)
+			if err != nil {
+				WriteError(w, r, reason.ErrUnauthorizedToken.SetMsg("身份验证失败"))
+				return
+			}
+			if err := claims.Valid(); err != nil {
+				WriteError(w, r, reason.ErrUnauthorizedToken.SetMsg("请重新登录"))
+				return
+			}
 
-		auth := c.Request.Header.Get("Authorization")
-		// header 中没有时，尝试从 query 参数中取
-		if auth == "" {
-			auth = c.Query("token")
-		}
-		const prefix = "Bearer "
-		if len(auth) <= len(prefix) || !strings.EqualFold(auth[:len(prefix)], prefix) {
-			AbortWithStatusJSON(c, reason.ErrUnauthorizedToken.SetMsg("身份验证失败"))
-			return
-		}
-		claims, err := ParseToken(auth[len(prefix):], secret)
-		if err != nil {
-			AbortWithStatusJSON(c, reason.ErrUnauthorizedToken.SetMsg("身份验证失败"))
-			return
-		}
-		if err := claims.Valid(); err != nil {
-			AbortWithStatusJSON(c, reason.ErrUnauthorizedToken.SetMsg("请重新登录"))
-			return
-		}
-
-		c.Set(KeyTokenString, auth)
-		for k, v := range claims.Data {
-			c.Set(k, v)
-		}
-		c.Next()
+			ctx := r.Context()
+			ctx = WithTraceID(ctx, auth)
+			for k, v := range claims.Data {
+				ctx = setCtxValue(ctx, ctxKey(k), v)
+			}
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
 	}
 }
 
 // GetUID 获取用户 ID
-func GetUID(c Geter) int {
-	return GetInt(c, KeyUserID)
+func GetUID(ctx interface{ Value(any) any }) int {
+	return getCtxInt(ctx, ctxKey(KeyUserID))
 }
 
 // GetUsername 获取用户名
-func GetUsername(c Geter) string {
-	return c.GetString(KeyUsername)
+func GetUsername(ctx interface{ Value(any) any }) string {
+	v := ctx.Value(ctxKey(KeyUsername))
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
 }
 
-// GetRole 获取用户角色
-func GetRoleID(c Geter) int {
-	return GetInt(c, KeyRoleID)
+// GetRoleID 获取用户角色
+func GetRoleID(ctx interface{ Value(any) any }) int {
+	return getCtxInt(ctx, ctxKey(KeyRoleID))
 }
 
-// GetToken 获取 token
-func GetToken(c Geter) string {
-	return c.GetString(KeyTokenString)
+// GetLevel 获取用户等级
+func GetLevel(ctx interface{ Value(any) any }) int {
+	return getCtxInt(ctx, ctxKey(KeyLevel))
 }
 
-func GetInt(c Geter, key string) int {
-	v, exist := c.Get(key)
-	if !exist {
+func getCtxInt(ctx interface{ Value(any) any }, key ctxKey) int {
+	v := ctx.Value(key)
+	if v == nil {
 		return 0
 	}
 	switch v := v.(type) {
@@ -145,33 +137,6 @@ func GetInt(c Geter, key string) int {
 		return v
 	}
 	return 0
-}
-
-func GetLevel(c Geter) int {
-	return GetInt(c, KeyLevel)
-}
-
-// AuthLevel 类似日志，可以使用
-// IgnorePrefix,IgnoreMethod,IgnoreBool,IgoreContains 等方法
-// 用于限制特定级别的访问，当访问级别大于 level 时响应权限不足，<= level 时放行
-// 等级从1开始，等级越小，权限越大
-func AuthLevel(level int, ignoreFn ...IngoreOption) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		for _, fn := range ignoreFn {
-			if fn(c) {
-				c.Next()
-				return
-			}
-		}
-
-		l := GetLevel(c)
-		if l > level || l == 0 {
-			Fail(c, reason.ErrBadRequest.SetMsg("权限不足"))
-			c.Abort()
-			return
-		}
-		c.Next()
-	}
 }
 
 // ParseToken 解析 token
@@ -185,42 +150,30 @@ func ParseToken(tokenString string, secret string) (*Claims, error) {
 
 // WithExpiresAt 设置指定过期时间
 func WithExpiresAt(expiresAt time.Time) TokenOptions {
-	return func(c *Claims) {
-		c.ExpiresAt = jwt.NewNumericDate(expiresAt)
-	}
+	return func(c *Claims) { c.ExpiresAt = jwt.NewNumericDate(expiresAt) }
 }
 
 // WithExpires 设置多久过期
 func WithExpires(duration time.Duration) TokenOptions {
-	return func(c *Claims) {
-		c.ExpiresAt = jwt.NewNumericDate(time.Now().Add(duration))
-	}
+	return func(c *Claims) { c.ExpiresAt = jwt.NewNumericDate(time.Now().Add(duration)) }
 }
 
 // WithIssuedAt 设置签发时间
 func WithIssuedAt(issuedAt time.Time) TokenOptions {
-	return func(c *Claims) {
-		c.IssuedAt = jwt.NewNumericDate(issuedAt)
-	}
+	return func(c *Claims) { c.IssuedAt = jwt.NewNumericDate(issuedAt) }
 }
 
 // WithIssuer 设置签发人
 func WithIssuer(issuer string) TokenOptions {
-	return func(c *Claims) {
-		c.Issuer = issuer
-	}
+	return func(c *Claims) { c.Issuer = issuer }
 }
 
 // WithNotBefore 设置生效时间
 func WithNotBefore(notBefore time.Time) TokenOptions {
-	return func(c *Claims) {
-		c.NotBefore = jwt.NewNumericDate(notBefore)
-	}
+	return func(c *Claims) { c.NotBefore = jwt.NewNumericDate(notBefore) }
 }
 
-// NewToken 创建 token
-// 秘钥不能为空，默认过期时间是 6 个小时
-// WithExpires() 指定过期时间
+// NewToken 创建 token，默认 6 小时过期。
 func NewToken(data map[string]any, secret string, opts ...TokenOptions) (string, error) {
 	if secret == "" {
 		return "", fmt.Errorf("secret is required")
@@ -229,9 +182,9 @@ func NewToken(data map[string]any, secret string, opts ...TokenOptions) (string,
 	claims := Claims{
 		Data: data,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(now.Add(6 * time.Hour)), // 失效时间
-			IssuedAt:  jwt.NewNumericDate(now),                    // 签发时间
-			Issuer:    "goddd.golang.space",                       // 签发人
+			ExpiresAt: jwt.NewNumericDate(now.Add(6 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			Issuer:    "goddd.golang.space",
 		},
 	}
 	for _, opt := range opts {

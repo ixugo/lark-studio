@@ -12,59 +12,39 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/ixugo/goddd/domain/version/versionapi"
-	"github.com/ixugo/goddd/pkg/web"
+	"github.com/ixugo/vdub/pkg/web"
 	"github.com/ixugo/vdub/pkg/ws"
 )
 
 var startRuntime = time.Now()
 
-func setupRouter(r *gin.Engine, uc *Usecase) {
-	r.Use(
-		// 格式化输出到控制台，然后记录到日志
-		// 此处不做 recover，底层 http.server 也会 recover，但不会输出方便查看的格式
-		gin.CustomRecovery(func(c *gin.Context, err any) {
-			slog.Error("panic", "err", err, "stack", string(debug.Stack()))
-			c.AbortWithStatus(http.StatusInternalServerError)
-		}),
-		web.Metrics(),
-		web.Logger(),
-		// debug 环境中配合 debug 日志级别，记录请求体与响应体
-		web.LoggerWithBody(web.DefaultBodyLimit, func(_ *gin.Context) bool {
-			// true: 表示忽略记录日志
-			// !debug 表示非调试环境不记录
-			return !uc.Conf.Runtime.Debug
-		}),
-	)
+func setupRouter(mux *http.ServeMux, uc *Usecase) {
 	go web.CountGoroutines(10*time.Minute, 20)
 
-	auth := web.AuthMiddleware(uc.Conf.Server.HTTP.JwtSecret)
-	r.Any("/health", web.WrapH(uc.getHealth))
-	r.GET("/app/metrics/api", web.WrapH(uc.getMetricsAPI))
+	mux.HandleFunc("/health", web.WrapH(uc.getHealth))
+	mux.HandleFunc("GET /app/metrics/api", web.WrapH(uc.getMetricsAPI))
 
-	versionapi.Register(r, uc.Version, auth)
-	RegisterTask(r, uc.TaskAPI)
-	RegisterTerm(r, uc.TermAPI)
-	RegisterModel(r, uc.Hub, uc.Conf)
+	RegisterVersion(mux, uc.Version)
+	RegisterTask(mux, uc.TaskAPI)
+	RegisterTerm(mux, uc.TermAPI)
+	RegisterModel(mux, uc.Hub, uc.Conf)
 
-	r.GET("/config", web.WrapH(uc.getConfig))
-	r.PUT("/config", web.WrapH(uc.updateConfig))
-	r.GET("/ws", gin.WrapF(uc.Hub.ServeHTTP))
+	mux.HandleFunc("GET /config", web.WrapH(uc.getConfig))
+	mux.HandleFunc("PUT /config", web.WrapH(uc.updateConfig))
+	mux.HandleFunc("GET /ws", uc.Hub.ServeHTTP)
 
 	startUIWatchdog(uc.Hub)
 }
 
 // startUIWatchdog 监控 UI WebSocket 连接。
 // 首次连接建立后，若所有连接断开超过 75 秒无重连，则自动退出进程。
-// 用于 Flutter 崩溃/关闭时自动回收 Go 引擎。
 func startUIWatchdog(hub ws.Huber) {
 	const watchdogTimeout = 75 * time.Second
 
 	var (
 		connCount    atomic.Int32
 		hadConn      atomic.Bool
-		lastDropTime atomic.Value // time.Time
+		lastDropTime atomic.Value
 	)
 
 	hub.SetConnectHandler(func(_ *ws.Client) error {
@@ -107,7 +87,8 @@ type getHealthOutput struct {
 	GitHash   string    `json:"git_hash"`
 }
 
-func (uc *Usecase) getHealth(_ *gin.Context, _ *struct{}) (getHealthOutput, error) {
+func (uc *Usecase) getHealth(_ *http.Request, _ *struct{}) (getHealthOutput, error) {
+	_ = debug.ReadBuildInfo
 	return getHealthOutput{
 		Version:   uc.Conf.Runtime.BuildVersion,
 		GitBranch: strings.Trim(expvar.Get("git_branch").String(), `"`),
@@ -117,18 +98,18 @@ func (uc *Usecase) getHealth(_ *gin.Context, _ *struct{}) (getHealthOutput, erro
 }
 
 type getMetricsAPIOutput struct {
-	RealTimeRequests int64  `json:"real_time_requests"` // 实时请求数
-	TotalRequests    int64  `json:"total_requests"`     // 总请求数
-	TotalResponses   int64  `json:"total_responses"`    // 总响应数
-	RequestTop       []KV   `json:"request_top"`        // 请求TOP
-	StatusCodeTop    []KV   `json:"status_code_top"`    // 状态码TOP
-	Goroutines       any    `json:"goroutines"`         // 协程数量
-	NumGC            uint32 `json:"num_gc"`             // gc 次数
-	SysAlloc         uint64 `json:"sys_alloc"`          // 内存占用
-	StartAt          string `json:"start_at"`           // 运行时间
+	RealTimeRequests int64  `json:"real_time_requests"`
+	TotalRequests    int64  `json:"total_requests"`
+	TotalResponses   int64  `json:"total_responses"`
+	RequestTop       []KV   `json:"request_top"`
+	StatusCodeTop    []KV   `json:"status_code_top"`
+	Goroutines       any    `json:"goroutines"`
+	NumGC            uint32 `json:"num_gc"`
+	SysAlloc         uint64 `json:"sys_alloc"`
+	StartAt          string `json:"start_at"`
 }
 
-func (uc *Usecase) getMetricsAPI(_ *gin.Context, _ *struct{}) (*getMetricsAPIOutput, error) {
+func (uc *Usecase) getMetricsAPI(_ *http.Request, _ *struct{}) (*getMetricsAPIOutput, error) {
 	req := expvar.Get("request").(*expvar.Int).Value()
 	reqs := expvar.Get("requests").(*expvar.Int).Value()
 	resps := expvar.Get("responses").(*expvar.Int).Value()

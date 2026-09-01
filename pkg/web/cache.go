@@ -1,76 +1,71 @@
 package web
 
 import (
-	"bytes" // nolint
+	"bytes"
 	"log/slog"
 	"net/http"
 	"strconv"
 
-	"github.com/gin-gonic/gin"
 	"github.com/ixugo/goddd/pkg/hook"
 )
 
-type EtagWriter struct {
-	gin.ResponseWriter
+// etagWriter 缓存响应体用于计算 ETag。
+type etagWriter struct {
+	http.ResponseWriter
 	body bytes.Buffer
 }
 
-func (w *EtagWriter) Unwrap() http.ResponseWriter {
-	return w.ResponseWriter
-}
-
-func (w *EtagWriter) Write(b []byte) (int, error) {
+func (w *etagWriter) Write(b []byte) (int, error) {
 	return w.body.Write(b)
 }
 
-// WebCache 主要用于缓存静态资源
-// Cache-Control: max-age=3600    # 缓存1小时
-// Cache-Control: no-cache        # 每次都需要验证
-// Cache-Control: no-store        # 完全不缓存
-// Cache-Control: private         # 只允许浏览器缓存
-// Cache-Control: public          # 允许中间代理缓存
-func CacheControlMaxAge(second int, ignoreFn ...IngoreOption) gin.HandlerFunc {
+func (w *etagWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
+// CacheControlMaxAge 设置 Cache-Control max-age 头。
+func CacheControlMaxAge(second int, ignoreFn ...IgnoreOption) Middleware {
 	age := strconv.Itoa(second)
-	return func(ctx *gin.Context) {
-		for _, fn := range ignoreFn {
-			if fn(ctx) {
-				ctx.Next()
-				return
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			for _, fn := range ignoreFn {
+				if fn(r) {
+					next.ServeHTTP(w, r)
+					return
+				}
 			}
-		}
-		if ctx.Request.Method == "GET" {
-			ctx.Header("Cache-Control", "max-age="+age)
-		}
-		ctx.Next()
+			if r.Method == http.MethodGet {
+				w.Header().Set("Cache-Control", "max-age="+age)
+			}
+			next.ServeHTTP(w, r)
+		})
 	}
 }
 
-// EtagHandler 添加 ETag 头，用于缓存静态资源
-// 不适合大文件场景，每次都是实时计算的
-func EtagHandler(ignoreFn ...IngoreOption) gin.HandlerFunc {
-	return func(ctx *gin.Context) {
-		for _, fn := range ignoreFn {
-			if fn(ctx) {
-				ctx.Next()
+// EtagHandler 添加 ETag 头，不适合大文件场景。
+func EtagHandler(ignoreFn ...IgnoreOption) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			for _, fn := range ignoreFn {
+				if fn(r) {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+			ew := &etagWriter{ResponseWriter: w}
+			next.ServeHTTP(ew, r)
+
+			buf := ew.body.Bytes()
+			hash := hook.MD5FromBytes(buf)
+			etag := `"` + hash + `"`
+			w.Header().Set("ETag", etag)
+			if match := r.Header.Get("If-None-Match"); match != "" && match == etag {
+				w.WriteHeader(http.StatusNotModified)
 				return
 			}
-		}
-		bw := EtagWriter{
-			ResponseWriter: ctx.Writer,
-		}
-		ctx.Writer = &bw
-		ctx.Next()
-
-		buf := bw.body.Bytes()
-		hash := hook.MD5FromBytes(buf)
-		etag := `"` + hash + `"`
-		ctx.Header("ETag", etag)
-		if match := ctx.GetHeader("If-None-Match"); match != "" && match == etag {
-			ctx.Writer.WriteHeader(http.StatusNotModified)
-			return
-		}
-		if _, err := bw.ResponseWriter.Write(buf); err != nil {
-			slog.ErrorContext(ctx.Request.Context(), "write err", "err", err)
-		}
+			if _, err := w.Write(buf); err != nil {
+				slog.ErrorContext(r.Context(), "write err", "err", err)
+			}
+		})
 	}
 }

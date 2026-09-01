@@ -3,17 +3,17 @@ package api
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"github.com/ixugo/goddd/pkg/reason"
-	"github.com/ixugo/goddd/pkg/web"
 	"github.com/ixugo/vdub/internal/conf"
 	"github.com/ixugo/vdub/internal/core/pipeline"
 	"github.com/ixugo/vdub/internal/core/task"
 	"github.com/ixugo/vdub/internal/core/task/store/taskdb"
+	"github.com/ixugo/vdub/pkg/web"
 	"gorm.io/gorm"
 )
 
@@ -43,65 +43,59 @@ func NewTaskAPI(core task.Core, sched *pipeline.Scheduler, bc *conf.Bootstrap) T
 }
 
 // RegisterTask 注册任务与步骤路由。
-func RegisterTask(g gin.IRouter, api TaskAPI, handler ...gin.HandlerFunc) {
-	{
-		group := g.Group("/tasks", handler...)
-		group.GET("", web.WrapH(api.listTasks))
-		group.POST("", web.WrapH(api.createTask))
-		group.POST("/batch", web.WrapH(api.batchCreateTasks))
-		group.GET("/:id/logs", web.WrapH(api.listTaskLogs))
-		group.GET("/:id", web.WrapH(api.getTask))
-		group.PUT("/:id", web.WrapH(api.updateTask))
-		group.DELETE("/:id", web.WrapH(api.deleteTask))
-		group.POST("/:id/pause", web.WrapH(api.pauseTask))
-		group.POST("/:id/resume", web.WrapH(api.resumeTask))
-	}
+func RegisterTask(mux *http.ServeMux, api TaskAPI) {
+	mux.HandleFunc("GET /tasks", web.WrapH(api.listTasks))
+	mux.HandleFunc("POST /tasks", web.WrapH(api.createTask))
+	mux.HandleFunc("POST /tasks/batch", web.WrapH(api.batchCreateTasks))
+	mux.HandleFunc("GET /tasks/{id}/logs", web.WrapH(api.listTaskLogs))
+	mux.HandleFunc("GET /tasks/{id}", web.WrapH(api.getTask))
+	mux.HandleFunc("PUT /tasks/{id}", web.WrapH(api.updateTask))
+	mux.HandleFunc("DELETE /tasks/{id}", web.WrapH(api.deleteTask))
+	mux.HandleFunc("POST /tasks/{id}/pause", web.WrapH(api.pauseTask))
+	mux.HandleFunc("POST /tasks/{id}/resume", web.WrapH(api.resumeTask))
 
-	{
-		group := g.Group("/steps", handler...)
-		group.GET("", web.WrapH(api.listSteps))
-		group.GET("/:id", web.WrapH(api.getStep))
-		group.PUT("/:id", web.WrapH(api.updateStep))
-		group.POST("", web.WrapH(api.createStep))
-		group.DELETE("/:id", web.WrapH(api.deleteStep))
-	}
+	mux.HandleFunc("GET /steps", web.WrapH(api.listSteps))
+	mux.HandleFunc("GET /steps/{id}", web.WrapH(api.getStep))
+	mux.HandleFunc("PUT /steps/{id}", web.WrapH(api.updateStep))
+	mux.HandleFunc("POST /steps", web.WrapH(api.createStep))
+	mux.HandleFunc("DELETE /steps/{id}", web.WrapH(api.deleteStep))
 }
 
 // listTasks 返回按创建时间倒序排列的任务。
-func (a TaskAPI) listTasks(c *gin.Context, in *task.ListTaskInput) (any, error) {
-	items, total, err := a.taskCore.ListTasks(c.Request.Context(), in)
-	return gin.H{"items": items, "total": total}, err
+func (a TaskAPI) listTasks(r *http.Request, in *task.ListTaskInput) (any, error) {
+	items, total, err := a.taskCore.ListTasks(r.Context(), in)
+	return map[string]any{"items": items, "total": total}, err
 }
 
 // getTask 返回指定任务。
-func (a TaskAPI) getTask(c *gin.Context, in *task.GetTaskInput) (*task.Task, error) {
-	return a.taskCore.GetTask(c.Request.Context(), in.ID)
+func (a TaskAPI) getTask(r *http.Request, in *task.GetTaskInput) (*task.Task, error) {
+	return a.taskCore.GetTask(r.Context(), in.ID)
 }
 
-// listTaskLogs 返回指定任务最近 1000 行日志，顺序从旧到新。
-func (a TaskAPI) listTaskLogs(c *gin.Context, in *task.GetTaskInput) (any, error) {
-	if _, err := a.taskCore.GetTask(c.Request.Context(), in.ID); err != nil {
+// listTaskLogs 返回指定任务最近 1000 行日志。
+func (a TaskAPI) listTaskLogs(r *http.Request, in *task.GetTaskInput) (any, error) {
+	if _, err := a.taskCore.GetTask(r.Context(), in.ID); err != nil {
 		return nil, err
 	}
-	items, err := a.taskCore.ListRecentTaskLogs(c.Request.Context(), in.ID)
-	return gin.H{"items": items}, err
+	items, err := a.taskCore.ListRecentTaskLogs(r.Context(), in.ID)
+	return map[string]any{"items": items}, err
 }
 
 // updateTask 更新指定任务。
-func (a TaskAPI) updateTask(c *gin.Context, in *task.UpdateTaskInput) (*task.Task, error) {
-	return a.taskCore.UpdateTask(c.Request.Context(), in, in.ID)
+func (a TaskAPI) updateTask(r *http.Request, in *task.UpdateTaskInput) (*task.Task, error) {
+	return a.taskCore.UpdateTask(r.Context(), in, in.ID)
 }
 
 // createTask 校验输入文件并提交单个流水线任务。
-func (a TaskAPI) createTask(c *gin.Context, in *task.CreateTaskInput) (*task.Task, error) {
+func (a TaskAPI) createTask(r *http.Request, in *task.CreateTaskInput) (*task.Task, error) {
 	if err := a.prepareTaskInput(in); err != nil {
 		return nil, err
 	}
-	t, err := a.taskCore.CreateTask(c.Request.Context(), in)
+	t, err := a.taskCore.CreateTask(r.Context(), in)
 	if err != nil {
 		return nil, err
 	}
-	if err := a.appendCreationLog(c.Request.Context(), t); err != nil {
+	if err := a.appendCreationLog(r.Context(), t); err != nil {
 		return nil, err
 	}
 	if err := a.scheduler.Submit(taskPipelineJob(t)); err != nil {
@@ -178,7 +172,7 @@ func (a TaskAPI) applyTaskDefaults(in *task.CreateTaskInput) {
 	}
 }
 
-// validateTaskParameters 拒绝未知枚举与过长字符串，避免无效配方进入队列。
+// validateTaskParameters 拒绝未知枚举与过长字符串。
 func validateTaskParameters(in *task.CreateTaskInput) error {
 	if len(in.SourceLang) > maxLanguageCodeLength || len(in.TargetLang) > maxLanguageCodeLength {
 		return reason.ErrBadRequest.SetMsg("语言代码过长")
@@ -204,7 +198,6 @@ func validateTaskParameters(in *task.CreateTaskInput) error {
 	return nil
 }
 
-// oneOf 判断配置枚举是否属于允许集合。
 func oneOf(value string, allowed ...string) bool {
 	for _, item := range allowed {
 		if value == item {
@@ -214,7 +207,6 @@ func oneOf(value string, allowed ...string) bool {
 	return false
 }
 
-// taskModeTitle 返回 API 创建日志所需的中文模式名。
 func taskModeTitle(mode int) string {
 	switch mode {
 	case pipeline.ModeSubtitle:
@@ -228,7 +220,6 @@ func taskModeTitle(mode int) string {
 	}
 }
 
-// taskPipelineJob 将任务模型转换为调度器输入。
 func taskPipelineJob(item *task.Task) pipeline.Job {
 	return pipeline.Job{
 		TaskID:         item.ID,
@@ -247,21 +238,21 @@ func taskPipelineJob(item *task.Task) pipeline.Job {
 }
 
 // deleteTask 删除指定任务。
-func (a TaskAPI) deleteTask(c *gin.Context, in *task.DeleteTaskInput) (*task.Task, error) {
-	return a.taskCore.DeleteTask(c.Request.Context(), in.ID)
+func (a TaskAPI) deleteTask(r *http.Request, in *task.DeleteTaskInput) (*task.Task, error) {
+	return a.taskCore.DeleteTask(r.Context(), in.ID)
 }
 
 // pauseTask 暂停正在运行的任务。
-func (a TaskAPI) pauseTask(_ *gin.Context, in *task.GetTaskInput) (any, error) {
+func (a TaskAPI) pauseTask(_ *http.Request, in *task.GetTaskInput) (any, error) {
 	if !a.scheduler.Pause(in.ID) {
 		return nil, reason.ErrBadRequest.SetMsg("任务未在运行中")
 	}
-	return gin.H{"ok": true}, nil
+	return map[string]any{"ok": true}, nil
 }
 
 // resumeTask 从中断步骤恢复已暂停或失败的任务。
-func (a TaskAPI) resumeTask(c *gin.Context, in *task.GetTaskInput) (*task.Task, error) {
-	t, err := a.taskCore.GetTask(c.Request.Context(), in.ID)
+func (a TaskAPI) resumeTask(r *http.Request, in *task.GetTaskInput) (*task.Task, error) {
+	t, err := a.taskCore.GetTask(r.Context(), in.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -273,7 +264,7 @@ func (a TaskAPI) resumeTask(c *gin.Context, in *task.GetTaskInput) (*task.Task, 
 	}
 
 	resumeFrom := t.CurrentStep
-	if err := a.taskCore.SetTaskStatus(c.Request.Context(), t.ID, func(b *task.Task) {
+	if err := a.taskCore.SetTaskStatus(r.Context(), t.ID, func(b *task.Task) {
 		b.Status = 1
 		b.Error = ""
 	}); err != nil {
@@ -284,13 +275,13 @@ func (a TaskAPI) resumeTask(c *gin.Context, in *task.GetTaskInput) (*task.Task, 
 	if err := a.scheduler.Submit(job); err != nil {
 		return nil, reason.ErrServer.Withf("提交流水线失败: %s", err)
 	}
-	return a.taskCore.GetTask(c.Request.Context(), t.ID)
+	return a.taskCore.GetTask(r.Context(), t.ID)
 }
 
 // batchCreateInput 描述批量任务的共享参数。
 type batchCreateInput struct {
-	Videos         []string `json:"videos" binding:"required,min=1"`
-	Mode           int      `json:"mode" binding:"required,min=1,max=3"`
+	Videos         []string `json:"videos"`
+	Mode           int      `json:"mode"`
 	TargetLang     string   `json:"target_lang"`
 	SourceLang     string   `json:"source_lang"`
 	Translator     string   `json:"translator"`
@@ -303,7 +294,7 @@ type batchCreateInput struct {
 }
 
 // batchCreateTasks 为每个有效视频创建独立任务。
-func (a TaskAPI) batchCreateTasks(c *gin.Context, in *batchCreateInput) (any, error) {
+func (a TaskAPI) batchCreateTasks(r *http.Request, in *batchCreateInput) (any, error) {
 	if in.TargetLang == "" {
 		in.TargetLang = a.conf.Pipeline.DefaultTargetLang
 	}
@@ -318,17 +309,16 @@ func (a TaskAPI) batchCreateTasks(c *gin.Context, in *batchCreateInput) (any, er
 		if err := os.MkdirAll(outputDir, 0o755); err != nil {
 			continue
 		}
-		t, err := a.createBatchTask(c, inputPath, outputDir, in)
+		t, err := a.createBatchTask(r, inputPath, outputDir, in)
 		if err == nil {
 			tasks = append(tasks, t)
 		}
 	}
-	return gin.H{"items": tasks, "total": len(tasks)}, nil
+	return map[string]any{"items": tasks, "total": len(tasks)}, nil
 }
 
-// createBatchTask 创建并提交一个批量任务，避免主循环嵌套过深。
 func (a TaskAPI) createBatchTask(
-	c *gin.Context,
+	r *http.Request,
 	inputPath string,
 	outputDir string,
 	in *batchCreateInput,
@@ -350,11 +340,11 @@ func (a TaskAPI) createBatchTask(
 	if err := a.prepareTaskInput(taskInput); err != nil {
 		return nil, err
 	}
-	t, err := a.taskCore.CreateTask(c.Request.Context(), taskInput)
+	t, err := a.taskCore.CreateTask(r.Context(), taskInput)
 	if err != nil {
 		return nil, err
 	}
-	if err := a.appendCreationLog(c.Request.Context(), t); err != nil {
+	if err := a.appendCreationLog(r.Context(), t); err != nil {
 		return nil, err
 	}
 	if err := a.scheduler.Submit(taskPipelineJob(t)); err != nil {
@@ -364,27 +354,27 @@ func (a TaskAPI) createBatchTask(
 }
 
 // listSteps 返回步骤列表。
-func (a TaskAPI) listSteps(c *gin.Context, in *task.ListStepInput) (any, error) {
-	items, total, err := a.taskCore.ListSteps(c.Request.Context(), in)
-	return gin.H{"items": items, "total": total}, err
+func (a TaskAPI) listSteps(r *http.Request, in *task.ListStepInput) (any, error) {
+	items, total, err := a.taskCore.ListSteps(r.Context(), in)
+	return map[string]any{"items": items, "total": total}, err
 }
 
 // getStep 返回指定步骤。
-func (a TaskAPI) getStep(c *gin.Context, in *task.GetStepInput) (*task.Step, error) {
-	return a.taskCore.GetStep(c.Request.Context(), in.ID)
+func (a TaskAPI) getStep(r *http.Request, in *task.GetStepInput) (*task.Step, error) {
+	return a.taskCore.GetStep(r.Context(), in.ID)
 }
 
 // updateStep 更新指定步骤。
-func (a TaskAPI) updateStep(c *gin.Context, in *task.UpdateStepInput) (*task.Step, error) {
-	return a.taskCore.UpdateStep(c.Request.Context(), in, in.ID)
+func (a TaskAPI) updateStep(r *http.Request, in *task.UpdateStepInput) (*task.Step, error) {
+	return a.taskCore.UpdateStep(r.Context(), in, in.ID)
 }
 
 // createStep 创建步骤记录。
-func (a TaskAPI) createStep(c *gin.Context, in *task.CreateStepInput) (*task.Step, error) {
-	return a.taskCore.CreateStep(c.Request.Context(), in)
+func (a TaskAPI) createStep(r *http.Request, in *task.CreateStepInput) (*task.Step, error) {
+	return a.taskCore.CreateStep(r.Context(), in)
 }
 
 // deleteStep 删除指定步骤。
-func (a TaskAPI) deleteStep(c *gin.Context, in *task.DeleteStepInput) (*task.Step, error) {
-	return a.taskCore.DeleteStep(c.Request.Context(), in.ID)
+func (a TaskAPI) deleteStep(r *http.Request, in *task.DeleteStepInput) (*task.Step, error) {
+	return a.taskCore.DeleteStep(r.Context(), in.ID)
 }

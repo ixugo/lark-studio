@@ -2,42 +2,58 @@ package web
 
 import (
 	"expvar"
+	"net/http"
 	"runtime"
 	"strconv"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/ixugo/goddd/pkg/queue"
 )
 
-// 您可能想了解:
-// 1. 应用程序使用了多少内存? 使用率是如何随着时间变化的?
-// 2. 目前有多少个 Goroutine 正在使用?
-// 3. 有多少个数据库连接正在使用中，有多少个处于空闲状态?
-// 4. HTTP 响应成功和错误的比率是多少?
-// 深入了解以上内容有助于把控程序，并得到预警。
-
-// Metrics ...
-func Metrics() gin.HandlerFunc {
+// Metrics 统计请求数、响应数、URL 热度、状态码分布。
+func Metrics() Middleware {
 	request := expvar.NewInt("request")
 	totalRequests := expvar.NewInt("requests")
 	totalResponses := expvar.NewInt("responses")
 	urls := expvar.NewMap("requestURLs")
 	statusCodes := expvar.NewMap("statusCodes")
 
-	return func(c *gin.Context) {
-		totalRequests.Add(1)
-		request.Add(1)
-		c.Next()
-		request.Add(-1)
-		totalResponses.Add(1)
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			totalRequests.Add(1)
+			request.Add(1)
 
-		status := c.Writer.Status()
-		if status != 404 {
-			urls.Add(c.Request.Method+" "+c.FullPath(), 1)
-		}
-		statusCodes.Add(strconv.Itoa(status), 1)
+			rec := &statusRecorder{ResponseWriter: w, code: http.StatusOK}
+			next.ServeHTTP(rec, r)
+
+			request.Add(-1)
+			totalResponses.Add(1)
+
+			if rec.code != 404 {
+				urls.Add(r.Method+" "+r.URL.Path, 1)
+			}
+			statusCodes.Add(strconv.Itoa(rec.code), 1)
+		})
 	}
+}
+
+// statusRecorder 捕获状态码，供中间件使用。
+type statusRecorder struct {
+	http.ResponseWriter
+	code    int
+	written bool
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	if !r.written {
+		r.code = code
+		r.written = true
+	}
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func (r *statusRecorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
 }
 
 type GoroutineNum struct {

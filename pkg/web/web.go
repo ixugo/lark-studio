@@ -7,9 +7,21 @@ import (
 	"slices"
 	"strings"
 	"time"
-
-	"github.com/gin-gonic/gin"
 )
+
+// Middleware 标准 net/http 中间件。
+type Middleware func(http.Handler) http.Handler
+
+// Chain 按顺序包装中间件，第一个最先执行。
+func Chain(handler http.Handler, mws ...Middleware) http.Handler {
+	for i := len(mws) - 1; i >= 0; i-- {
+		handler = mws[i](handler)
+	}
+	return handler
+}
+
+// IgnoreOption 返回 true 表示跳过当前中间件逻辑。
+type IgnoreOption func(r *http.Request) bool
 
 // ScrollPageOutput 滚动翻页
 type ScrollPageOutput[T any] struct {
@@ -69,8 +81,7 @@ func (d DateFilter) DefaultEndAt(date time.Time) time.Time {
 	return time.UnixMilli(d.EndMs)
 }
 
-// MustSortColumn 忽略安全问题
-// 失败如果是空串，则不做排序处理
+// MustSortColumn 忽略安全问题，失败返回空串
 func (f PagerFilter) MustSortColumn() string {
 	column, ok := f.SortColumn()
 	if !ok {
@@ -133,7 +144,6 @@ func Offset(page, size int) int {
 }
 
 // GetBaseURL 提取请求地址
-// 例如 http://127.0.0.1:8080/health 提取出 http://127.0.0.1:8080
 func GetBaseURL(req *http.Request) string {
 	if v := req.Header.Get("X-Forwarded-Prefix"); v != "" {
 		return v
@@ -148,7 +158,6 @@ func BaseURLJoin(req *http.Request, paths ...string) string {
 }
 
 // GetHost 提取主机 IP 或域名
-// 例如 http://127.0.0.1:8080/health 提取出 127.0.0.1
 func GetHost(req *http.Request) string {
 	if v := req.Header.Get("X-Forwarded-Host"); v != "" {
 		return v
@@ -161,7 +170,6 @@ func GetHost(req *http.Request) string {
 }
 
 // GetScheme 获取请求协议
-// 例如 http://127.0.0.1:8080/health 提取出 http
 func GetScheme(req *http.Request) string {
 	if v := req.Header.Get("X-Forwarded-Scheme"); v != "" {
 		return v
@@ -176,16 +184,19 @@ func GetScheme(req *http.Request) string {
 }
 
 // XForwardedPrefix 解决反向代理路由问题
-func XForwardedPrefix(req *http.Request, path string) string {
-	return strings.TrimSuffix(req.Header.Get("X-Forwarded-Prefix"), "/") + path
+func XForwardedPrefix(req *http.Request, p string) string {
+	return strings.TrimSuffix(req.Header.Get("X-Forwarded-Prefix"), "/") + p
 }
 
-func SetDeadline(dura time.Duration) func(c *gin.Context) {
-	return func(c *gin.Context) {
-		rc := http.NewResponseController(c.Writer)
-		deadline := time.Now().Add(dura)
-		_ = rc.SetWriteDeadline(deadline)
-		_ = rc.SetReadDeadline(deadline)
-		c.Next()
+// SetDeadline 设置读写超时。
+func SetDeadline(dura time.Duration) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rc := http.NewResponseController(w)
+			deadline := time.Now().Add(dura)
+			_ = rc.SetWriteDeadline(deadline)
+			_ = rc.SetReadDeadline(deadline)
+			next.ServeHTTP(w, r)
+		})
 	}
 }

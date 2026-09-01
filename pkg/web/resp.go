@@ -1,53 +1,21 @@
 package web
 
 import (
-	"bytes"
-	"sync"
-
-	"github.com/gin-gonic/gin"
+	"context"
+	"net/http"
 )
 
-type ResponseWriterWrapper struct {
-	gin.ResponseWriter
-	Body *bytes.Buffer // 缓存
+// setCtxValue 向 context 写入键值对。
+func setCtxValue(ctx context.Context, key ctxKey, value any) context.Context {
+	return context.WithValue(ctx, key, value)
 }
 
-func (w ResponseWriterWrapper) Write(b []byte) (int, error) {
-	w.Body.Write(b)
-	return w.ResponseWriter.Write(b)
-}
-
-func (w ResponseWriterWrapper) WriteString(s string) (int, error) {
-	w.Body.WriteString(s)
-	return w.ResponseWriter.WriteString(s)
-}
-
-func RecordResponse() gin.HandlerFunc {
-	pool := sync.Pool{New: func() any {
-		return bytes.NewBuffer(make([]byte, 0, 50))
-	}}
-
-	return func(c *gin.Context) {
-		b := pool.Get().(*bytes.Buffer)
-		b.Reset()
-		c.Writer = &ResponseWriterWrapper{
-			Body:           b,
-			ResponseWriter: c.Writer,
-		}
-		c.Next()
-		// fmt.Println(b.String())
-
-		if b.Len() <= 1024*5 {
-			pool.Put(b)
-		}
-	}
-}
-
-func AddHead() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Vary
-		// 这表示任何缓存响应可能因请求头中 Authorization 而异
-		c.Header("Vary", "Authorization")
-		c.Next()
+// AddVaryAuth 给响应添加 Vary: Authorization 头。
+func AddVaryAuth() Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Vary", "Authorization")
+			next.ServeHTTP(w, r)
+		})
 	}
 }
