@@ -46,11 +46,11 @@ version: ## 显示版本信息
 build: ## 编译 Go 引擎（debug 模式）
 	go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY) .
 
-build-release: ## 编译 Go 引擎（release 模式，注入版本号+裁符号表）
-	go build -ldflags "$(LDFLAGS_REL)" -o $(BUILD_DIR)/$(BINARY) .
+build-release: ## 编译 Go 引擎（release 模式，注入版本号+裁符号表+trimpath）
+	go build -trimpath -ldflags "$(LDFLAGS_REL)" -o $(BUILD_DIR)/$(BINARY) .
 
 build-windows: ## 交叉编译 Windows amd64
-	GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS_REL)" -o build/windows_amd64/$(BINARY).exe .
+	GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS_REL)" -o build/windows_amd64/$(BINARY).exe .
 
 test: ## 运行全量 Go 测试
 	go test ./...
