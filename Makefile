@@ -122,11 +122,12 @@ bundle-macos: ffmpeg-macos whisper-macos build-release ## 打包 macOS .dmg（Go
 	@echo "⚙ 生成 DMG..."
 	@rm -f build/vdub.dmg
 	@mkdir -p build
-	hdiutil create -volname "VDub" -srcfolder "$(APP)" -ov -format UDZO -imagekey zlib-level=9 build/vdub.dmg
+	hdiutil create -volname "VDub" -srcfolder "$(APP)" -ov -format ULMO build/vdub.dmg
 	@echo "✓ build/vdub.dmg"
 	@du -sh build/vdub.dmg
 
 bundle-windows: ffmpeg-windows build-windows ## 打包 Windows zip（Go + ffmpeg 并入 Flutter Release 目录）
+	@command -v upx >/dev/null && { echo "⚙ UPX 压缩 Go 二进制..."; upx --best --lzma build/windows_amd64/$(BINARY).exe; } || echo "⚠ 跳过 UPX（未安装）"
 	cd $(UI_DIR) && flutter build windows --release --split-debug-info=../build/debug-info --obfuscate
 	$(eval WIN := $(UI_DIR)/build/windows/x64/runner/Release)
 	cp build/windows_amd64/$(BINARY).exe  "$(WIN)/$(BINARY).exe"
