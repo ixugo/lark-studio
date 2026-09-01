@@ -11,8 +11,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
@@ -65,7 +65,7 @@ func newClient(conn *websocket.Conn, h *Hub, r *http.Request) *Client {
 		request:  r,
 	}
 	// 连接建立即分配唯一 ID，鉴权处理器可返回业务 ID 覆盖之
-	client.id.Store(uuid.NewString())
+	client.id.Store(uuid.New().String())
 	return client
 }
 

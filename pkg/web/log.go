@@ -9,8 +9,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/ixugo/goddd/pkg/logger"
 )
 

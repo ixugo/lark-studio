@@ -4,8 +4,8 @@ package task
 import (
 	"context"
 	"log/slog"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/ixugo/goddd/pkg/orm"
 	"github.com/ixugo/goddd/pkg/reason"
 	"github.com/jinzhu/copier"
@@ -57,7 +57,7 @@ func (c Core) CreateTask(ctx context.Context, in *CreateTaskInput) (*Task, error
 		slog.ErrorContext(ctx, "Copy", "err", err)
 	}
 	if out.ID == "" {
-		out.ID = uuid.NewString()
+		out.ID = uuid.New().String()
 	}
 
 	if err := c.store.Task().Create(ctx, &out); err != nil {

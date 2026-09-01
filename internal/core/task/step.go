@@ -3,9 +3,10 @@ package task
 
 import (
 	"context"
+	"crypto/sha1"
+	"fmt"
 	"log/slog"
 
-	"github.com/google/uuid"
 	"github.com/ixugo/goddd/pkg/orm"
 	"github.com/ixugo/goddd/pkg/reason"
 	"github.com/jinzhu/copier"
@@ -92,7 +93,7 @@ func (c Core) UpsertStep(
 	name string,
 	changeFn func(*Step),
 ) error {
-	id := uuid.NewSHA1(uuid.NameSpaceOID, []byte(taskID+"/"+name)).String()
+	id := uuidV5([]byte(taskID + "/" + name))
 	current := Step{ID: id}
 	err := c.store.Step().Get(ctx, &current, orm.Where("id=?", id))
 	if err == nil {
@@ -107,4 +108,18 @@ func (c Core) UpsertStep(
 		return reason.ErrDB.Withf("CreateStep task_id[%s] name[%s] err[%s]", taskID, name, err.Error())
 	}
 	return nil
+}
+
+// namespaceOID 是 RFC 4122 OID 命名空间，与 google/uuid.NameSpaceOID 相同。
+var namespaceOID = [16]byte{0x6b, 0xa7, 0xb8, 0x12, 0x9d, 0xad, 0x11, 0xd1, 0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8}
+
+// uuidV5 生成 UUID v5（SHA-1），与 uuid.NewSHA1(uuid.NameSpaceOID, name) 输出一致。
+func uuidV5(name []byte) string {
+	h := sha1.New()
+	h.Write(namespaceOID[:])
+	h.Write(name)
+	s := h.Sum(nil)
+	s[6] = (s[6] & 0x0f) | 0x50
+	s[8] = (s[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", s[0:4], s[4:6], s[6:8], s[8:10], s[10:16])
 }

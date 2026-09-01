@@ -9,8 +9,7 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/google/uuid"
+	"uuid"
 
 	"github.com/gorilla/websocket"
 	"github.com/ixugo/goddd/pkg/assert"
