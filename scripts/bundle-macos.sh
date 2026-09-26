@@ -17,11 +17,14 @@ MACOS_DIR="$APP_DIR/Contents/MacOS"
 RES_DIR="$APP_DIR/Contents/Resources"
 mkdir -p "$MACOS_DIR" "$RES_DIR"
 
-# 1. 拷贝主程序与 ffmpeg
+# 1. 拷贝主程序与 ffmpeg 与 图标
 cp "$BINARY" "$MACOS_DIR/vdub"
 chmod +x "$MACOS_DIR/vdub"
 cp "$FFMPEG" "$MACOS_DIR/ffmpeg"
 chmod +x "$MACOS_DIR/ffmpeg"
+if [ -f "build/AppIcon.icns" ]; then
+  cp "build/AppIcon.icns" "$RES_DIR/AppIcon.icns"
+fi
 
 # 2. Info.plist
 cat > "$APP_DIR/Contents/Info.plist" <<EOF
@@ -35,6 +38,7 @@ cat > "$APP_DIR/Contents/Info.plist" <<EOF
   <key>CFBundleVersion</key><string>${VERSION}</string>
   <key>CFBundleShortVersionString</key><string>${VERSION}</string>
   <key>CFBundleExecutable</key><string>vdub</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>LSMinimumSystemVersion</key><string>12.0</string>
   <key>NSHighResolutionCapable</key><true/>

@@ -180,7 +180,7 @@ func validateTaskParameters(in *task.CreateTaskInput) error {
 	if len(in.TTSVoice) > maxVoiceNameLength || len(in.RecipeName) > maxRecipeNameLength {
 		return reason.ErrBadRequest.SetMsg("配方参数过长")
 	}
-	if !oneOf(in.Translator, "bing", "deeplx", "openai") {
+	if !oneOf(in.Translator, "bing", "deeplx", "openai", "google") {
 		return reason.ErrBadRequest.SetMsg("无效的翻译引擎")
 	}
 	if !oneOf(in.OutputContent, "source", "translated", "bilingual") {

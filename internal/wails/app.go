@@ -2,6 +2,7 @@ package wails
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -14,6 +15,9 @@ import (
 	"github.com/ixugo/vdub/internal/data"
 	"github.com/ixugo/vdub/internal/web/api"
 )
+
+//go:embed appicon.png
+var appIcon []byte
 
 // RunApp 启动基于 Wails3 的单一二进制一体化桌面应用。
 func RunApp(bc *conf.Bootstrap, assets fs.FS) error {
@@ -39,6 +43,7 @@ func RunApp(bc *conf.Bootstrap, assets fs.FS) error {
 	wailsApp := application.New(application.Options{
 		Name:        "VDub",
 		Description: "Video Translation & Dubbing Desktop Client",
+		Icon:        appIcon,
 		Services: []application.Service{
 			application.NewService(svc),
 		},

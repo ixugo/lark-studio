@@ -198,7 +198,7 @@ export const TaskBoardView: React.FC = () => {
           </div>
           <button
             onClick={loadTasks}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-xs text-slate-600 dark:text-slate-300 transition-colors shadow-sm"
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-xs text-slate-600 dark:text-slate-300 transition-colors"
           >
             <RotateCcw size={13} />
             <span>刷新</span>
@@ -215,7 +215,7 @@ export const TaskBoardView: React.FC = () => {
           ].map((item, i) => (
             <div
               key={i}
-              className="bg-white dark:bg-[#1C1C1E] border border-slate-200/90 dark:border-[#2C2C2E] rounded-2xl p-4 shadow-sm"
+              className="bg-white dark:bg-[#1C1C1E] border border-slate-200/90 dark:border-[#2C2C2E] rounded-2xl p-4"
             >
               <span className="text-[11px] font-semibold text-slate-400 block">{item.label}</span>
               <span className={`text-2xl font-bold font-mono mt-1 block ${item.color}`}>
@@ -229,7 +229,7 @@ export const TaskBoardView: React.FC = () => {
         {loading ? (
           <div className="p-16 text-center text-xs text-slate-400">正在载入流水线任务...</div>
         ) : tasks.length === 0 ? (
-          <div className="bg-white dark:bg-[#1C1C1E] border border-slate-200/90 dark:border-[#2C2C2E] rounded-2xl p-16 text-center space-y-3 shadow-sm">
+          <div className="bg-white dark:bg-[#1C1C1E] border border-slate-200/90 dark:border-[#2C2C2E] rounded-2xl p-16 text-center space-y-3">
             <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-white/5 text-slate-400 flex items-center justify-center mx-auto">
               <Sparkles size={20} />
             </div>
@@ -249,7 +249,7 @@ export const TaskBoardView: React.FC = () => {
               return (
                 <div
                   key={task.id}
-                  className="bg-white dark:bg-[#1C1C1E] border border-slate-200/90 dark:border-[#2C2C2E] rounded-2xl p-5 shadow-sm space-y-4 transition-all"
+                  className="bg-white dark:bg-[#1C1C1E] border border-slate-200/90 dark:border-[#2C2C2E] rounded-2xl p-5 space-y-4 transition-all"
                 >
                   {/* 头部：文件名、状态、操作按钮 */}
                   <div className="flex items-start justify-between gap-4">
@@ -272,7 +272,7 @@ export const TaskBoardView: React.FC = () => {
                     <div className="flex items-center space-x-2 shrink-0">
                       <button
                         onClick={() => handleOpenDir(task.output_dir)}
-                        className="p-2 rounded-xl border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 hover:text-slate-800 dark:hover:text-white text-xs transition-colors shadow-sm"
+                        className="p-2 rounded-xl border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 hover:text-slate-800 dark:hover:text-white text-xs transition-colors"
                         title="在系统访达/资源管理器中打开输出目录"
                       >
                         <FolderOpen size={14} />
@@ -281,7 +281,7 @@ export const TaskBoardView: React.FC = () => {
                       {task.status === 1 && (
                         <button
                           onClick={() => handlePause(task.id)}
-                          className="p-2 rounded-xl border border-amber-200 dark:border-amber-500/30 hover:bg-amber-50 dark:hover:bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs transition-colors shadow-sm"
+                          className="p-2 rounded-xl border border-amber-200 dark:border-amber-500/30 hover:bg-amber-50 dark:hover:bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs transition-colors"
                           title="暂停任务"
                         >
                           <Pause size={14} />
@@ -291,7 +291,7 @@ export const TaskBoardView: React.FC = () => {
                       {task.status === 2 && (
                         <button
                           onClick={() => handleResume(task.id)}
-                          className="p-2 rounded-xl border border-blue-200 dark:border-blue-500/30 hover:bg-blue-50 dark:hover:bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs transition-colors shadow-sm"
+                          className="p-2 rounded-xl border border-blue-200 dark:border-blue-500/30 hover:bg-blue-50 dark:hover:bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs transition-colors"
                           title="继续执行任务"
                         >
                           <Play size={14} />
@@ -300,7 +300,7 @@ export const TaskBoardView: React.FC = () => {
 
                       <button
                         onClick={() => toggleLogs(task.id)}
-                        className={`p-2 rounded-xl border text-xs flex items-center space-x-1 transition-colors shadow-sm ${
+                        className={`p-2 rounded-xl border text-xs flex items-center space-x-1 transition-colors ${
                           isExpanded
                             ? 'bg-blue-600 text-white border-blue-600'
                             : 'border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-slate-600 dark:text-slate-300'
@@ -313,7 +313,7 @@ export const TaskBoardView: React.FC = () => {
 
                       <button
                         onClick={() => handleDelete(task.id)}
-                        className="p-2 rounded-xl border border-rose-200 dark:border-rose-500/30 hover:bg-rose-50 dark:hover:bg-rose-500/10 text-rose-600 dark:text-rose-400 text-xs transition-colors shadow-sm"
+                        className="p-2 rounded-xl border border-rose-200 dark:border-rose-500/30 hover:bg-rose-50 dark:hover:bg-rose-500/10 text-rose-600 dark:text-rose-400 text-xs transition-colors"
                         title="删除任务"
                       >
                         <Trash2 size={14} />
@@ -373,7 +373,7 @@ export const TaskBoardView: React.FC = () => {
 
                   {/* 展开的日志终端卡片 */}
                   {isExpanded && (
-                    <div className="mt-4 rounded-2xl bg-[#0D1117] text-slate-200 p-4 font-mono text-xs shadow-inner space-y-2 border border-slate-800 animate-in fade-in">
+                    <div className="mt-4 rounded-2xl bg-[#0D1117] text-slate-200 p-4 font-mono text-xs space-y-2 border border-slate-800 animate-in fade-in">
                       <div className="flex items-center justify-between pb-2 border-b border-slate-800 text-[11px] text-slate-400">
                         <div className="flex items-center space-x-2">
                           <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block" />

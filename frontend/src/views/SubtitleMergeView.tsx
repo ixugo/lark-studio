@@ -128,7 +128,7 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
         <div className="flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-sm">
+              <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center">
                 <Layers className="w-4 h-4" />
               </div>
               <h2 className="text-xl font-bold tracking-tight text-slate-800 dark:text-white">
@@ -157,7 +157,7 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
         )}
 
         {/* 第一步：选择待合成视频 */}
-        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl border border-slate-200/90 dark:border-[#2C2C2E] p-5 shadow-sm space-y-3">
+        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl border border-slate-200/90 dark:border-[#2C2C2E] p-5 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center">
@@ -214,7 +214,7 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
         </div>
 
         {/* 第二步：选择字幕文件 */}
-        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl border border-slate-200/90 dark:border-[#2C2C2E] p-5 shadow-sm space-y-4">
+        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl border border-slate-200/90 dark:border-[#2C2C2E] p-5 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center">
@@ -232,7 +232,7 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
                 onClick={() => setIsBilingual(false)}
                 className={`px-3 py-1 rounded-lg font-medium transition-all ${
                   !isBilingual
-                    ? 'bg-white dark:bg-[#2C2C2E] text-blue-600 dark:text-blue-400 shadow-sm'
+                    ? 'bg-white dark:bg-[#2C2C2E] text-blue-600 dark:text-blue-400 font-semibold'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-800'
                 }`}
               >
@@ -243,7 +243,7 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
                 onClick={() => setIsBilingual(true)}
                 className={`px-3 py-1 rounded-lg font-medium transition-all ${
                   isBilingual
-                    ? 'bg-white dark:bg-[#2C2C2E] text-blue-600 dark:text-blue-400 shadow-sm'
+                    ? 'bg-white dark:bg-[#2C2C2E] text-blue-600 dark:text-blue-400 font-semibold'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-800'
                 }`}
               >
@@ -326,7 +326,7 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
         </div>
 
         {/* 第三步：合成配置与输出 */}
-        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl border border-slate-200/90 dark:border-[#2C2C2E] p-5 shadow-sm space-y-4">
+        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl border border-slate-200/90 dark:border-[#2C2C2E] p-5 space-y-4">
           <div className="flex items-center gap-2">
             <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center">
               3
@@ -360,39 +360,41 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
         </div>
       </div>
 
-      {/* 底部动作悬浮底栏 */}
-      <div className="shrink-0 bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-2xl border-t border-slate-200/90 dark:border-[#2C2C2E] px-8 py-4 flex items-center justify-between shadow-sm z-20 mt-6">
-        <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
-          <span>准备状态:</span>
-          {videoPath && primarySubPath ? (
-            <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> 素材已齐备，可立即合成
-            </span>
-          ) : (
-            <span className="text-amber-500 font-medium">请先选定视频及对应字幕</span>
-          )}
-        </div>
+      {/* 底部动作悬浮底栏 (圆角胶囊形态) */}
+      <div className="sticky bottom-4 mx-auto max-w-4xl w-full z-30 px-4 mt-6">
+        <div className="bg-white/90 dark:bg-[#202024]/90 backdrop-blur-2xl border border-slate-200/90 dark:border-white/10 rounded-2xl px-6 py-3 flex items-center justify-between">
+          <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
+            <span>准备状态:</span>
+            {videoPath && primarySubPath ? (
+              <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5" /> 素材已齐备，可立即合成
+              </span>
+            ) : (
+              <span className="text-amber-500 font-medium">请先选定视频及对应字幕</span>
+            )}
+          </div>
 
-        <button
-          type="button"
-          onClick={handleStartMerge}
-          disabled={loading || !videoPath || !primarySubPath}
-          className={`px-6 py-2.5 rounded-xl text-xs font-bold text-white transition-all flex items-center gap-2 shadow-sm ${
-            loading || !videoPath || !primarySubPath
-              ? 'bg-slate-300 dark:bg-white/20 cursor-not-allowed text-slate-500'
-              : 'bg-blue-600 hover:bg-blue-500 active:scale-95'
-          }`}
-        >
-          {loading ? (
-            <span>正在提交流水线...</span>
-          ) : (
-            <>
-              <Play className="w-3.5 h-3.5 fill-current" />
-              <span>开始压制合成视频</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </>
-          )}
-        </button>
+          <button
+            type="button"
+            onClick={handleStartMerge}
+            disabled={loading || !videoPath || !primarySubPath}
+            className={`px-6 py-2.5 rounded-xl text-xs font-bold text-white transition-all flex items-center gap-2 active:scale-[0.98] ${
+              loading || !videoPath || !primarySubPath
+                ? 'bg-slate-300 dark:bg-white/20 cursor-not-allowed text-slate-500'
+                : 'bg-blue-600 hover:bg-blue-500'
+            }`}
+          >
+            {loading ? (
+              <span>正在提交流水线...</span>
+            ) : (
+              <>
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span>开始压制合成视频</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

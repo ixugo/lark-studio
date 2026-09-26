@@ -55,6 +55,8 @@
 
 # LLM 翻译配置
 [LLM]
+  # 翻译供应商: google (免Key推荐) / bing / openai / deeplx
+  Provider = "google"
   BaseURL = "http://localhost:11434/v1"
   APIKey = ""
   Model = "qwen2.5:7b"

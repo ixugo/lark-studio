@@ -183,6 +183,8 @@ func (c *Client) TranslateWithProvider(
 	provider string,
 ) ([]string, error) {
 	switch strings.ToLower(provider) {
+	case "google":
+		return c.translateGoogle(ctx, sentences, targetLang)
 	case "bing":
 		return c.translateBing(ctx, sentences, targetLang)
 	case "deeplx":

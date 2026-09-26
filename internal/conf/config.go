@@ -36,7 +36,7 @@ type Pipeline struct {
 
 // LLM 大模型配置
 type LLM struct {
-	Provider  string `comment:"翻译服务: bing / deeplx / openai"`
+	Provider  string `comment:"翻译服务: google / bing / deeplx / openai"`
 	BaseURL   string `comment:"OpenAI 兼容 API 地址"`
 	APIKey    string `comment:"API 密钥"`
 	Model     string `comment:"模型名称"`

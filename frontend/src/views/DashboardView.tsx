@@ -395,10 +395,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
         </div>
 
         {/* 第一步：放入文件 */}
-        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl border border-slate-200/90 dark:border-[#2C2C2E] p-5 shadow-sm">
+        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl border border-slate-200/90 dark:border-[#2C2C2E] p-5">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2.5">
-              <span className="w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center shadow-md shadow-blue-500/20">
+              <span className="w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">
                 1
               </span>
               <div>
@@ -426,7 +426,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
               <button
                 type="button"
                 onClick={handlePickFiles}
-                className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 dark:bg-white/10 dark:hover:bg-white/15 text-slate-700 dark:text-white border border-slate-200 dark:border-white/10 transition-all flex items-center gap-1.5 shadow-sm"
+                className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 dark:bg-white/10 dark:hover:bg-white/15 text-slate-700 dark:text-white border border-slate-200 dark:border-white/10 transition-all flex items-center gap-1.5"
               >
                 <UploadCloud className="w-3.5 h-3.5" />
                 <span>选择文件</span>
@@ -459,7 +459,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                       setManualPath('');
                     }
                   }}
-                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition-colors shadow-sm"
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition-colors"
                 >
                   添加
                 </button>
@@ -540,10 +540,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
         </div>
 
         {/* 第二步：我要得到 (统摄 Apple 极简蓝风格) */}
-        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl border border-slate-200/90 dark:border-[#2C2C2E] p-5 shadow-sm space-y-4">
+        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl border border-slate-200/90 dark:border-[#2C2C2E] p-5 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <span className="w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center shadow-md shadow-blue-500/20">
+              <span className="w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">
                 2
               </span>
               <div>
@@ -718,7 +718,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
         </div>
 
         {/* 阶段 1：字幕与翻译设置 */}
-        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl border border-slate-200/90 dark:border-[#2C2C2E] p-5 shadow-sm space-y-4">
+        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl border border-slate-200/90 dark:border-[#2C2C2E] p-5 space-y-4">
           <div className="flex items-center gap-2">
             <Languages className="w-4 h-4 text-blue-600 dark:text-blue-400" />
             <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
@@ -734,7 +734,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                 <select
                   value={whisperModel}
                   onChange={(e) => setWhisperModel(e.target.value)}
-                  className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors shadow-sm"
+                  className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
                 >
                   <option value="Whisper.cpp large-v3-turbo">Whisper.cpp large-v3-turbo (推荐)</option>
                   <option value="Whisper large-v3">Whisper large-v3 (标准质量)</option>
@@ -752,7 +752,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                 <select
                   value={videoLang}
                   onChange={(e) => setVideoLang(e.target.value)}
-                  className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors shadow-sm"
+                  className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
                 >
                   <option value="auto">自动检测 (Auto Detect)</option>
                   <option value="en">英语 (English)</option>
@@ -776,7 +776,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                   value={targetLang}
                   onChange={(e) => setTargetLang(e.target.value)}
                   disabled={!doTranslate}
-                  className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors shadow-sm"
+                  className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
                 >
                   <option value="zh-CN">中文 (简体)</option>
                   <option value="zh-TW">中文 (繁体)</option>
@@ -798,11 +798,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
               <div className="relative">
                 <select
                   value={translateService}
-                  onChange={(e) => setTranslateService(e.target.value as 'bing' | 'openai' | 'deeplx')}
+                  onChange={(e) => setTranslateService(e.target.value as any)}
                   disabled={!doTranslate}
-                  className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors shadow-sm"
+                  className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
                 >
-                  <option value="bing">必应翻译 (微软免费 · 免配置推荐)</option>
+                  <option value="google">谷歌翻译 (官方公共 · 免Key推荐)</option>
+                  <option value="bing">必应翻译 (微软免费 · 免配置)</option>
                   <option value="openai">OpenAI 兼容接口 (支持 DeepSeek / GPT / 本地 Ollama)</option>
                   <option value="deeplx">DeepLX 翻译引擎</option>
                 </select>
@@ -826,7 +827,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                       onClick={() => setOutputContent(item.id)}
                       className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
                         outputContent === item.id
-                          ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                          ? 'bg-blue-600 text-white border-blue-600'
                           : 'bg-slate-100 hover:bg-slate-200/80 dark:bg-white/[0.04] text-slate-600 dark:text-slate-300 border-slate-200 dark:border-white/10'
                       }`}
                     >
@@ -841,7 +842,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
 
         {/* 阶段 2：AI 配音设置 */}
         {doDub && (
-          <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl border border-slate-200/90 dark:border-[#2C2C2E] p-5 shadow-sm space-y-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl border border-slate-200/90 dark:border-[#2C2C2E] p-5 space-y-4 animate-in fade-in duration-200">
             <div className="flex items-center gap-2">
               <Volume2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
               <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
@@ -857,7 +858,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                   <select
                     value={ttsEngine}
                     onChange={(e) => setTtsEngine(e.target.value as 'edge' | 'openai')}
-                    className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors shadow-sm"
+                    className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
                   >
                     <option value="edge">Edge TTS (微软免费高质量音色 · 推荐)</option>
                     <option value="openai">OpenAI 兼容 TTS (云端/自建模型)</option>
@@ -873,7 +874,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                   <select
                     value={ttsVoice}
                     onChange={(e) => setTtsVoice(e.target.value)}
-                    className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors shadow-sm"
+                    className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
                   >
                     <option value="zh-CN-YunxiNeural">云希 (经典纪录片/解说男声)</option>
                     <option value="zh-CN-XiaoxiaoNeural">晓晓 (自然温柔女声)</option>
@@ -895,7 +896,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                   <select
                     value={`${speechRate.toFixed(1)}x`}
                     onChange={(e) => setSpeechRate(parseFloat(e.target.value))}
-                    className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors shadow-sm"
+                    className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
                   >
                     <option value="0.8x">0.8x (慢速稳重)</option>
                     <option value="0.9x">0.9x (微慢)</option>
@@ -919,7 +920,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
 
         {/* 阶段 3：成品视频压制设置 */}
         {doVideo && (
-          <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl border border-slate-200/90 dark:border-[#2C2C2E] p-5 shadow-sm space-y-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl border border-slate-200/90 dark:border-[#2C2C2E] p-5 space-y-4 animate-in fade-in duration-200">
             <div className="flex items-center gap-2">
               <Film className="w-4 h-4 text-blue-600 dark:text-blue-400" />
               <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
@@ -935,7 +936,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                   <select
                     value={subtitleOutput}
                     onChange={(e) => setSubtitleOutput(e.target.value)}
-                    className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors shadow-sm"
+                    className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
                   >
                     <option value="burn">烧录进画面 (硬字幕 · 推荐)</option>
                     <option value="file">封装软字幕轨 (可开关)</option>
@@ -952,7 +953,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                   <select
                     value={subtitleStyle}
                     onChange={(e) => setSubtitleStyle(e.target.value)}
-                    className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors shadow-sm"
+                    className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
                   >
                     <option value="经典白字黑边">经典白字黑边</option>
                     <option value="Apple 毛玻璃底条">Apple 毛玻璃底条</option>
@@ -970,7 +971,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                   <select
                     value={videoQuality}
                     onChange={(e) => setVideoQuality(e.target.value)}
-                    className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors shadow-sm"
+                    className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
                   >
                     <option value="原画质">原画质 (Bitrate Copy)</option>
                     <option value="4K 超高清">4K 超高清 (2160P)</option>
@@ -988,7 +989,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                   <select
                     value={encodeMethod}
                     onChange={(e) => setEncodeMethod(e.target.value)}
-                    className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors shadow-sm"
+                    className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
                   >
                     <option value="Apple VideoToolbox">Apple VideoToolbox (硬件加速)</option>
                     <option value="CPU">CPU libx264 (纯软解)</option>
@@ -1007,7 +1008,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
 
         {/* 阶段 4：人工把关 */}
         {doDub && (
-          <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl border border-slate-200/90 dark:border-[#2C2C2E] p-5 shadow-sm">
+          <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl border border-slate-200/90 dark:border-[#2C2C2E] p-5">
             <div className="flex items-center gap-2 mb-4">
               <UserCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
               <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
@@ -1027,7 +1028,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                   onChange={(e) => setTtsConfirm(e.target.checked)}
                   className="sr-only peer"
                 />
-                <div className="w-11 h-6 bg-slate-200 dark:bg-white/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 shadow-inner" />
+                <div className="w-11 h-6 bg-slate-200 dark:bg-white/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600" />
               </label>
             </div>
 
@@ -1048,7 +1049,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
       </div>
 
       {/* 下半部：独立固定操作底栏（绝不遮挡主内容滚动，左右呼应） */}
-      <div className="shrink-0 bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-2xl border-t border-slate-200/90 dark:border-[#2C2C2E] px-7 py-3.5 flex items-center justify-between shadow-sm z-20">
+      <div className="shrink-0 bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-2xl border-t border-slate-200/90 dark:border-[#2C2C2E] px-7 py-3.5 flex items-center justify-between z-20">
         <div className="flex items-center gap-2.5">
           <div className={`w-2.5 h-2.5 rounded-full ${hasFiles ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
           <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
@@ -1064,7 +1065,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
           <button
             type="button"
             onClick={() => setShowRecipeModal(true)}
-            className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200/80 dark:bg-white/10 dark:hover:bg-white/15 text-slate-700 dark:text-slate-200 text-xs font-semibold border border-slate-200 dark:border-white/10 transition-all flex items-center gap-1.5 shadow-sm"
+            className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200/80 dark:bg-white/10 dark:hover:bg-white/15 text-slate-700 dark:text-slate-200 text-xs font-semibold border border-slate-200 dark:border-white/10 transition-all flex items-center gap-1.5"
           >
             <BookmarkPlus className="w-3.5 h-3.5" />
             <span>保存为配方</span>
@@ -1074,10 +1075,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
             type="button"
             onClick={handleStartTask}
             disabled={loading}
-            className={`px-5 py-2 rounded-xl text-xs font-bold text-white shadow-md transition-all flex items-center gap-2 ${
+            className={`px-5 py-2 rounded-xl text-xs font-bold text-white transition-all flex items-center gap-2 ${
               loading
                 ? 'bg-blue-600/50 cursor-not-allowed'
-                : 'bg-blue-600 hover:bg-blue-500 active:scale-95 shadow-blue-500/25'
+                : 'bg-blue-600 hover:bg-blue-500 active:scale-95'
             }`}
           >
             {loading ? (
@@ -1098,7 +1099,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
       {/* 保存配方对话框 */}
       {showRecipeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="w-96 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/15 rounded-2xl p-5 shadow-2xl space-y-4">
+          <div className="w-96 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/15 rounded-2xl p-5 space-y-4">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white">保存当前配置为配方</h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">配方将保存语言、模型、音色与压制参数，方便下次一键调用。</p>
             <input
@@ -1120,7 +1121,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                 type="button"
                 onClick={handleSaveRecipe}
                 disabled={!recipeName.trim()}
-                className="px-4 py-1.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 transition-colors shadow-sm"
+                className="px-4 py-1.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 transition-colors"
               >
                 保存配方
               </button>
@@ -1131,7 +1132,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
 
       {/* 配方保存成功 Toast */}
       {recipeSavedToast && (
-        <div className="fixed top-6 right-6 z-50 bg-emerald-600 text-white text-xs px-4 py-2.5 rounded-xl shadow-xl flex items-center gap-2 animate-in fade-in">
+        <div className="fixed top-6 right-6 z-50 bg-emerald-600 text-white text-xs px-4 py-2.5 rounded-xl border border-emerald-500/30 flex items-center gap-2 animate-in fade-in">
           <CheckCircle2 className="w-4 h-4" />
           <span>配方已保存，可在顶部快捷模板中再次选用</span>
         </div>

@@ -36,6 +36,8 @@ tables/
 .idea/
 logs/
 build/
+!build/AppIcon.icns
+!build/appicon.png
 __debug_bin*
 tables/
 *.pprof

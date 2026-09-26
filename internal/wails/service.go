@@ -427,7 +427,7 @@ func (s *AppService) prepareTaskInput(in *task.CreateTaskInput) error {
 		} else if s.bc.LLM.Provider != "" {
 			in.Translator = s.bc.LLM.Provider
 		} else {
-			in.Translator = "bing"
+			in.Translator = "google"
 		}
 	}
 	if in.OutputContent == "" {

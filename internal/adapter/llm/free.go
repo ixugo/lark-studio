@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -35,13 +36,29 @@ func (c *Client) translateBing(ctx context.Context, texts []string, targetLang s
 	if err == nil {
 		return result, nil
 	}
-	if !needsBingTokenRefresh(err) {
+	if needsBingTokenRefresh(err) {
+		c.tokenMu.Lock()
+		c.token = ""
+		c.tokenMu.Unlock()
+		result, err = c.requestBing(ctx, texts, targetLang, true)
+		if err == nil {
+			return result, nil
+		}
+	}
+
+	if isBingRateLimit(err) {
 		return nil, err
 	}
-	c.tokenMu.Lock()
-	c.token = ""
-	c.tokenMu.Unlock()
-	return c.requestBing(ctx, texts, targetLang, true)
+
+	// 微软端点失效或 404 时自动容灾降级至 Google 免费公共翻译
+	slog.WarnContext(ctx, "必应翻译端点异常，自动容灾降级至公共免费翻译", "err", err)
+	return c.translateGoogle(ctx, texts, targetLang)
+}
+
+// isBingRateLimit 判断是否为 429 请求过于频繁。
+func isBingRateLimit(err error) bool {
+	var responseErr bingHTTPError
+	return errors.As(err, &responseErr) && responseErr.statusCode == http.StatusTooManyRequests
 }
 
 // requestBing 获取匿名令牌并请求微软翻译接口。
@@ -188,3 +205,84 @@ func deepLLanguage(lang string) string {
 	}
 	return strings.ToUpper(strings.Split(lang, "-")[0])
 }
+
+// translateGoogle 逐句调用 Google 免费翻译接口，稳定极速无需 Key。
+func (c *Client) translateGoogle(ctx context.Context, texts []string, targetLang string) ([]string, error) {
+	tl := googleLanguage(targetLang)
+	result := make([]string, len(texts))
+	for i, text := range texts {
+		trimmed := strings.TrimSpace(text)
+		if trimmed == "" {
+			result[i] = ""
+			continue
+		}
+		translated, err := c.requestGoogleOne(ctx, trimmed, tl)
+		if err != nil {
+			return nil, fmt.Errorf("Google 翻译第 %d 句失败: %w", i+1, err)
+		}
+		result[i] = translated
+	}
+	return result, nil
+}
+
+// requestGoogleOne 单句请求 Google 免费翻译接口。
+func (c *Client) requestGoogleOne(ctx context.Context, text, targetLang string) (string, error) {
+	reqURL := "https://translate.googleapis.com/translate_a/single?client=dict-chrome-ex&sl=auto&tl=" +
+		targetLang + "&dt=t&q=" + strings.ReplaceAll(text, "\n", " ")
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", freeUserAgent)
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("HTTP 状态 %d", resp.StatusCode)
+	}
+
+	var raw []any
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return "", fmt.Errorf("解析响应失败: %w", err)
+	}
+	if len(raw) == 0 {
+		return "", fmt.Errorf("响应为空")
+	}
+
+	sentences, ok := raw[0].([]any)
+	if !ok || len(sentences) == 0 {
+		return "", fmt.Errorf("句子列表为空")
+	}
+
+	var sb strings.Builder
+	for _, s := range sentences {
+		tuple, ok := s.([]any)
+		if ok && len(tuple) > 0 {
+			if transPart, ok := tuple[0].(string); ok {
+				sb.WriteString(transPart)
+			}
+		}
+	}
+	out := strings.TrimSpace(sb.String())
+	if out == "" {
+		return text, nil
+	}
+	return out, nil
+}
+
+// googleLanguage 转换 Google 翻译使用的目标语言代码。
+func googleLanguage(lang string) string {
+	switch strings.ToLower(lang) {
+	case "zh", "zh-cn", "zh-hans":
+		return "zh-CN"
+	case "zh-tw", "zh-hant":
+		return "zh-TW"
+	default:
+		return strings.Split(lang, "-")[0]
+	}
+}
+

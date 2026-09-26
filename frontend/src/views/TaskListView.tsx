@@ -61,7 +61,7 @@ export const TaskListView: React.FC = () => {
         </div>
 
         {/* 列表表格 */}
-        <div className="bg-apple-card dark:bg-apple-darkCard border border-apple-border dark:border-apple-darkBorder rounded-xl overflow-hidden shadow-sm">
+        <div className="bg-apple-card dark:bg-apple-darkCard border border-apple-border dark:border-apple-darkBorder rounded-xl overflow-hidden">
           <table className="w-full text-left text-xs">
             <thead className="bg-black/5 dark:bg-white/5 text-apple-muted border-b border-apple-border dark:border-apple-darkBorder">
               <tr>

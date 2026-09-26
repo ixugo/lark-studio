@@ -27,7 +27,7 @@ export const PlaceholderView: React.FC<PlaceholderViewProps> = ({ type }) => {
   return (
     <div className="h-screen flex items-center justify-center px-8">
       <div className="max-w-md text-center space-y-4">
-        <div className="w-16 h-16 rounded-2xl bg-black/5 dark:bg-white/5 flex items-center justify-center mx-auto shadow-sm">
+        <div className="w-16 h-16 rounded-2xl bg-black/5 dark:bg-white/5 border border-slate-200/60 dark:border-white/10 flex items-center justify-center mx-auto">
           {meta.icon}
         </div>
         <div>

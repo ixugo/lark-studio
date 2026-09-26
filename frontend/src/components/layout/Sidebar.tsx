@@ -8,6 +8,9 @@ import {
   Settings,
   Sun,
   Moon,
+  Languages,
+  Volume2,
+  Cpu,
 } from 'lucide-react';
 
 export type TabKey =
@@ -15,6 +18,9 @@ export type TabKey =
   | 'board'
   | 'list'
   | 'merge'
+  | 'translation-engine'
+  | 'tts-engine'
+  | 'asr-engine'
   | 'glossary'
   | 'settings';
 
@@ -33,76 +39,114 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleTheme,
   runningTasksCount,
 }) => {
-  const navItems: { key: TabKey; label: string; icon: React.ReactNode; badge?: number }[] = [
-    { key: 'dashboard', label: '工作台', icon: <LayoutDashboard size={18} /> },
-    { key: 'board', label: '任务看板', icon: <Kanban size={18} />, badge: runningTasksCount > 0 ? runningTasksCount : undefined },
-    { key: 'list', label: '任务列表', icon: <ListTodo size={18} /> },
-    { key: 'merge', label: '字幕合成', icon: <Layers size={18} /> },
-    { key: 'glossary', label: '术语词库', icon: <BookOpen size={18} /> },
-    { key: 'settings', label: '全局设置', icon: <Settings size={18} /> },
+  const sections: {
+    title: string;
+    items: { key: TabKey; label: string; icon: React.ReactNode; badge?: number }[];
+  }[] = [
+    {
+      title: '创作中心',
+      items: [
+        { key: 'dashboard', label: '工作台', icon: <LayoutDashboard size={17} /> },
+        { key: 'board', label: '任务看板', icon: <Kanban size={17} />, badge: runningTasksCount > 0 ? runningTasksCount : undefined },
+        { key: 'list', label: '任务列表', icon: <ListTodo size={17} /> },
+        { key: 'merge', label: '字幕合成', icon: <Layers size={17} /> },
+      ],
+    },
+    {
+      title: '引擎中心',
+      items: [
+        { key: 'translation-engine', label: '翻译引擎', icon: <Languages size={17} /> },
+        { key: 'tts-engine', label: '语音合成', icon: <Volume2 size={17} /> },
+        { key: 'asr-engine', label: '语音识别', icon: <Cpu size={17} /> },
+      ],
+    },
+    {
+      title: '系统与管理',
+      items: [
+        { key: 'glossary', label: '术语词库', icon: <BookOpen size={17} /> },
+        { key: 'settings', label: '全局设置', icon: <Settings size={17} /> },
+      ],
+    },
   ];
 
   return (
-    <aside className="w-56 h-screen flex flex-col justify-between border-r border-apple-border dark:border-apple-darkBorder bg-apple-sidebar dark:bg-apple-darkSidebar px-3 py-4 transition-colors">
-      <div className="space-y-6">
+    <aside className="w-56 h-screen flex flex-col justify-between border-r border-slate-200/80 dark:border-white/10 bg-white/70 dark:bg-[#18181B]/70 backdrop-blur-2xl px-3 py-4 transition-colors select-none">
+      <div className="space-y-5">
         {/* 顶部标题区（预留 macOS 红黄绿交通灯安全高度与拖拽区） */}
-        <div className="pt-8 px-2 flex items-center justify-between" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
-          <div className="flex items-center space-x-2.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-            <div className="w-7 h-7 rounded-lg bg-apple-accent text-white flex items-center justify-center font-bold text-sm shadow-sm">
-              V
+        <div
+          className="pt-7 px-2 flex items-center justify-between"
+          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+        >
+          <div
+            className="flex items-center space-x-2.5"
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          >
+            <div className="w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center border border-slate-200 dark:border-white/10">
+              <img src="/icon.png" alt="VDub" className="w-full h-full object-cover" />
             </div>
             <div>
-              <h1 className="text-sm font-semibold tracking-tight text-apple-text dark:text-apple-darkText">
+              <h1 className="text-sm font-semibold tracking-tight text-slate-800 dark:text-white">
                 VDub Studio
               </h1>
-              <p className="text-[10px] text-apple-muted">Wails 3 桌面端</p>
+              <p className="text-[10px] text-slate-400">智能翻译与配音</p>
             </div>
           </div>
         </div>
 
-        {/* 导航菜单 */}
-        <nav className="space-y-1">
-          {navItems.map((item) => {
-            const active = currentTab === item.key;
-            return (
-              <button
-                key={item.key}
-                onClick={() => onTabChange(item.key)}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                  active
-                    ? 'bg-apple-accent text-white shadow-sm'
-                    : 'text-apple-text dark:text-apple-darkText hover:bg-black/5 dark:hover:bg-white/5'
-                }`}
-              >
-                <div className="flex items-center space-x-2.5">
-                  <span className={active ? 'text-white' : 'text-apple-muted'}>{item.icon}</span>
-                  <span>{item.label}</span>
-                </div>
-                {item.badge !== undefined && (
-                  <span
-                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                      active ? 'bg-white text-apple-accent' : 'bg-apple-accent text-white'
+        {/* 导航菜单分组 */}
+        <nav className="space-y-4">
+          {sections.map((sec, idx) => (
+            <div key={idx} className="space-y-1">
+              <div className="px-3 text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                {sec.title}
+              </div>
+              {sec.items.map((item) => {
+                const active = currentTab === item.key;
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => onTabChange(item.key)}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all active:scale-[0.98] ${
+                      active
+                        ? 'bg-blue-600 text-white font-semibold'
+                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.06]'
                     }`}
                   >
-                    {item.badge}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+                    <div className="flex items-center space-x-2.5">
+                      <span className={active ? 'text-white' : 'text-slate-500 dark:text-slate-400'}>
+                        {item.icon}
+                      </span>
+                      <span>{item.label}</span>
+                    </div>
+                    {item.badge !== undefined && (
+                      <span
+                        className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                          active ? 'bg-white text-blue-600' : 'bg-blue-600 text-white'
+                        }`}
+                      >
+                        {item.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </nav>
       </div>
 
       {/* 底部控制区 */}
-      <div className="pt-3 border-t border-apple-border dark:border-apple-darkBorder flex items-center justify-between px-2">
+      <div className="pt-3 border-t border-slate-200/80 dark:border-white/10 flex items-center justify-between px-2">
         <button
+          type="button"
           onClick={onToggleTheme}
-          className="p-1.5 rounded-lg text-apple-muted hover:text-apple-text dark:hover:text-apple-darkText hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+          className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-colors active:scale-95"
           title={isDark ? '切换浅色模式' : '切换深色模式'}
         >
           {isDark ? <Sun size={16} /> : <Moon size={16} />}
         </button>
-        <span className="text-[11px] font-mono text-apple-muted">v1.0.0</span>
+        <span className="text-[11px] font-mono text-slate-400">v1.0.0</span>
       </div>
     </aside>
   );

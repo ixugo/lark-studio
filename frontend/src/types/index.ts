@@ -66,8 +66,10 @@ export interface ConfigDTO {
   pipeline: {
     workers: number;
     whisper_mode: string;
+    whisper_bin?: string;
     whisper_model: string;
     ffmpeg_bin: string;
+    default_output_dir?: string;
     default_target_lang: string;
     translate_prompt: string;
     max_speed_factor: number;

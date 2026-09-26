@@ -6,6 +6,9 @@ import { TaskListView } from './views/TaskListView';
 import { SettingsView } from './views/SettingsView';
 import { GlossaryView } from './views/GlossaryView';
 import { SubtitleMergeView } from './views/SubtitleMergeView';
+import { TranslationEngineView } from './views/TranslationEngineView';
+import { TtsEngineView } from './views/TtsEngineView';
+import { AsrEngineView } from './views/AsrEngineView';
 import { api } from './lib/api';
 
 export const App: React.FC = () => {
@@ -62,17 +65,23 @@ export const App: React.FC = () => {
         return <TaskListView />;
       case 'merge':
         return <SubtitleMergeView onTaskCreated={() => setCurrentTab('board')} />;
+      case 'translation-engine':
+        return <TranslationEngineView />;
+      case 'tts-engine':
+        return <TtsEngineView />;
+      case 'asr-engine':
+        return <AsrEngineView />;
       case 'glossary':
         return <GlossaryView />;
       case 'settings':
-        return <SettingsView />;
+        return <SettingsView onNavigate={(tab) => setCurrentTab(tab as TabKey)} />;
       default:
         return <DashboardView onTaskCreated={() => setCurrentTab('board')} />;
     }
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-apple-bg dark:bg-apple-darkBg text-apple-text dark:text-apple-darkText select-none">
+    <div className="flex h-screen w-screen overflow-hidden bg-[#F5F5F7] dark:bg-[#121215] text-[#1D1D1F] dark:text-[#F5F5F7] select-none">
       <Sidebar
         currentTab={currentTab}
         onTabChange={setCurrentTab}
@@ -80,7 +89,7 @@ export const App: React.FC = () => {
         onToggleTheme={toggleTheme}
         runningTasksCount={runningCount}
       />
-      <main className="flex-1 h-screen overflow-hidden bg-apple-bg dark:bg-apple-darkBg">
+      <main className="flex-1 h-screen overflow-hidden bg-[#F5F5F7] dark:bg-[#121215]">
         {renderContent()}
       </main>
     </div>

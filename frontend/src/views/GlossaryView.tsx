@@ -74,7 +74,7 @@ export const GlossaryView: React.FC = () => {
         {/* 新增术语表单卡片 */}
         <form
           onSubmit={handleAdd}
-          className="bg-apple-card dark:bg-apple-darkCard border border-apple-border dark:border-apple-darkBorder rounded-xl p-4 shadow-sm flex items-center space-x-3"
+          className="bg-apple-card dark:bg-apple-darkCard border border-apple-border dark:border-apple-darkBorder rounded-xl p-4 flex items-center space-x-3"
         >
           <input
             type="text"
@@ -92,7 +92,7 @@ export const GlossaryView: React.FC = () => {
           />
           <button
             type="submit"
-            className="flex items-center space-x-1 bg-apple-accent hover:bg-apple-accentHover text-white px-4 py-1.5 rounded-lg text-xs font-semibold shadow-sm shrink-0"
+            className="flex items-center space-x-1 bg-apple-accent hover:bg-apple-accentHover text-white px-4 py-1.5 rounded-lg text-xs font-semibold shrink-0"
           >
             <Plus size={14} />
             <span>添加术语</span>
@@ -100,7 +100,7 @@ export const GlossaryView: React.FC = () => {
         </form>
 
         {/* 词库列表 */}
-        <div className="bg-apple-card dark:bg-apple-darkCard border border-apple-border dark:border-apple-darkBorder rounded-xl overflow-hidden shadow-sm">
+        <div className="bg-apple-card dark:bg-apple-darkCard border border-apple-border dark:border-apple-darkBorder rounded-xl overflow-hidden">
           <div className="p-3 border-b border-apple-border dark:border-apple-darkBorder flex items-center justify-between">
             <span className="text-xs font-semibold text-apple-muted">
               当前收录 ({filteredTerms.length})
