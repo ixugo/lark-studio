@@ -28,6 +28,7 @@ FFMPEG_WIN_URL    := https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essential
 
 .PHONY: build build-release test e2e e2e-dub clip dev run \
         ffmpeg-macos ffmpeg-windows whisper-macos bundle-macos bundle-windows \
+        bundle/macos/arm64 bundle/windows \
         version clean help
 
 # ─── 帮助 ───────────────────────────────────────────────
@@ -86,11 +87,11 @@ dev: ## 开发模式：一键启动 Vite 开发服务与 Go 桌面端联动运�
 		trap cleanup EXIT INT TERM; \
 		(cd $(FRONTEND_DIR) && npm run dev) & \
 		for i in $$(seq 1 30); do \
-			curl -s http://localhost:5173 >/dev/null 2>&1 && break; \
+			curl -s http://127.0.0.1:5173 >/dev/null 2>&1 && break; \
 			sleep 0.2; \
 		done; \
 		echo "✓ 前端热更服务已就绪，正在拉起桌面端..."; \
-		FRONTEND_DEVSERVER_URL=http://localhost:5173 $(BUILD_DIR)/$(BINARY) \
+		FRONTEND_DEVSERVER_URL=http://127.0.0.1:5173 $(BUILD_DIR)/$(BINARY) \
 	'
 
 run: build ## 编译并启动桌面应用（单二进制内嵌模式）
@@ -112,10 +113,11 @@ ffmpeg-windows: ## 下载 Windows 静态 ffmpeg（不存在时自动下载）
 	@mkdir -p $(FFMPEG_DIR)/windows
 	@if [ ! -f $(FFMPEG_DIR)/windows/ffmpeg.exe ]; then \
 		echo "⬇ 下载 ffmpeg (Windows)..."; \
-		curl -fSL $(FFMPEG_WIN_URL) -o /tmp/vdub_ffmpeg_win.zip && \
-		cd /tmp && unzip -o vdub_ffmpeg_win.zip '*/bin/ffmpeg.exe' && \
-		find /tmp -name 'ffmpeg.exe' -path '*/bin/*' -exec cp {} $(CURDIR)/$(FFMPEG_DIR)/windows/ffmpeg.exe \; && \
-		rm -rf /tmp/vdub_ffmpeg_win.zip /tmp/ffmpeg-*-essentials_build; \
+		tmpdir=$$(mktemp -d); \
+		curl -fSL $(FFMPEG_WIN_URL) -o $$tmpdir/ffmpeg.zip && \
+		unzip -o -q $$tmpdir/ffmpeg.zip -d $$tmpdir && \
+		find $$tmpdir -name 'ffmpeg.exe' -path '*/bin/*' -exec cp {} $(CURDIR)/$(FFMPEG_DIR)/windows/ffmpeg.exe \; && \
+		rm -rf $$tmpdir; \
 	else \
 		echo "✓ ffmpeg.exe 已存在"; \
 	fi
@@ -126,12 +128,23 @@ whisper-macos: ## 安装 macOS whisper.cpp 打包依赖
 
 # ─── 打包 ───────────────────────────────────────────────
 
-bundle-macos: ffmpeg-macos whisper-macos build-release ## 打包 macOS 一体化应用包
+DIST_DIR := build/dist
+
+bundle-macos: ffmpeg-macos whisper-macos build-release ## 打包 macOS 一体化应用包（旧别名，仅编译）
 	@echo "✓ 构建一体化 macOS 桌面端: $(BUILD_DIR)/$(BINARY)"
 
-bundle-windows: ffmpeg-windows build-windows ## 打包 Windows 一体化应用包
+bundle-windows: ffmpeg-windows build-windows ## 打包 Windows 一体化应用包（旧别名，仅编译+UPX）
 	@command -v upx >/dev/null && { echo "⚙ UPX 压缩 Go 二进制..."; upx --best --lzma build/windows_amd64/$(BINARY).exe; } || echo "⚠ 跳过 UPX（未安装）"
 	@echo "✓ 构建一体化 Windows 桌面端: build/windows_amd64/$(BINARY).exe"
+
+bundle/macos/arm64: ffmpeg-macos build-release ## 打包 macOS arm64 dmg（vdub.app 内嵌 ffmpeg，ad-hoc 签名）
+	@echo "⚙ 打包 macOS dmg..."
+	@bash scripts/bundle-macos.sh "$(VERSION)" "$(BUILD_DIR)/$(BINARY)" "$(FFMPEG_DIR)/darwin/ffmpeg" "$(DIST_DIR)/$(BINARY)_$(VERSION)_macos_arm64.dmg"
+
+bundle/windows: ffmpeg-windows build-windows ## 打包 Windows amd64 zip（vdub.exe + ffmpeg.exe 同目录，解压即用）
+	@command -v upx >/dev/null && { echo "⚙ UPX 压缩 Go 二进制..."; upx --best --lzma build/windows_amd64/$(BINARY).exe; } || echo "⚠ 跳过 UPX（未安装）"
+	@echo "⚙ 打包 Windows zip..."
+	@bash scripts/bundle-windows.sh "$(VERSION)" "build/windows_amd64/$(BINARY).exe" "$(FFMPEG_DIR)/windows/ffmpeg.exe" "$(DIST_DIR)/$(BINARY)_$(VERSION)_windows_amd64.zip"
 
 # ─── 清理 ───────────────────────────────────────────────
 

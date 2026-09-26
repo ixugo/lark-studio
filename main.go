@@ -84,6 +84,7 @@ func main() {
 	bc.Runtime.BuildVersion = buildVersion
 	bc.Runtime.ConfigDir = fileDir
 	bc.Runtime.ConfigPath = filePath
+	injectBundledFFmpeg(&bc)
 
 	// 命令行 -port 覆盖配置端口，零值表示让操作系统分配空闲端口。
 	if *portFlag >= 0 {
@@ -220,5 +221,26 @@ func configIsNotExistWrite(path string) {
 		if err := conf.WriteConfig(conf.DefaultConfig(), path); err != nil {
 			system.ErrPrintf("WriteConfig", "err", err)
 		}
+	}
+}
+
+// injectBundledFFmpeg 当配置未指定 FFmpegBin 时，优先使用随包分发的 ffmpeg。
+// 约定：macOS .app 内位于 Contents/MacOS/ffmpeg；Windows zip 解压后与 vdub.exe 同目录。
+// 找不到时保持空值，由下游回退到 PATH。
+func injectBundledFFmpeg(bc *conf.Bootstrap) {
+	if bc.Pipeline.FFmpegBin != "" {
+		return
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	name := "ffmpeg"
+	if strings.EqualFold(filepath.Ext(exe), ".exe") {
+		name = "ffmpeg.exe"
+	}
+	candidate := filepath.Join(filepath.Dir(exe), name)
+	if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+		bc.Pipeline.FFmpegBin = candidate
 	}
 }

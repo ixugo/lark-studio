@@ -8,6 +8,7 @@ import (
 	"github.com/ixugo/vdub/internal/conf"
 	"github.com/ixugo/vdub/internal/core/pipeline"
 	"github.com/ixugo/vdub/internal/core/task"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 func TestPrepareTaskInput(t *testing.T) {
@@ -60,4 +61,8 @@ func TestPrepareTaskInput(t *testing.T) {
 			t.Errorf("期望兜底为 bing，实际为: %s", in.Translator)
 		}
 	})
+}
+
+func TestWailsServiceBindings(t *testing.T) {
+	_ = events.Common.WindowFilesDropped
 }

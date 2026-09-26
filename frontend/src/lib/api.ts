@@ -2,10 +2,26 @@ import { Task, TaskLog, CreateTaskInput, ConfigDTO, Term } from '../types';
 
 declare global {
   interface Window {
+    __onWailsFilesDropped?: (files: string[]) => void;
     _wails?: {
-      invoke: (binding: string, args?: unknown) => Promise<unknown>;
+      invoke?: (binding: string, args?: unknown) => Promise<unknown>;
+      flags?: Record<string, unknown>;
+      handlePlatformFileDrop?: (filenames: string[], x: number, y: number) => void;
     };
     wails?: {
+      Call?: {
+        ByName: <T = unknown>(name: string, ...args: unknown[]) => Promise<T>;
+        ByID: <T = unknown>(id: number, ...args: unknown[]) => Promise<T>;
+      };
+      Dialogs?: {
+        OpenFile: (options?: {
+          CanChooseFiles?: boolean;
+          CanChooseDirectories?: boolean;
+          AllowsMultipleSelection?: boolean;
+          Title?: string;
+          Filters?: Array<{ DisplayName: string; Pattern: string }>;
+        }) => Promise<string[] | string>;
+      };
       Events?: {
         On: (event: string, callback: (data: unknown) => void) => () => void;
         Emit: (event: string, data?: unknown) => void;
@@ -137,42 +153,60 @@ let mockTerms: Term[] = [
   { id: 3, glossary_id: 1, text: 'Fine-tuning', translation: '微调', note: '模型调优' },
 ];
 
-const getWailsService = () => (typeof window !== 'undefined' ? window.go?.wails?.AppService : undefined);
-const hasWails = () => typeof window !== 'undefined' && (!!window.go?.wails?.AppService || !!window._wails);
+const WAILS_SERVICE_PREFIX = 'github.com/ixugo/vdub/internal/wails.AppService';
+
+async function invokeWailsMethod<T>(methodName: string, ...args: unknown[]): Promise<{ called: boolean; result?: T }> {
+  if (typeof window === 'undefined') return { called: false };
+
+  // 1. 优先尝试 Wails 3 Call.ByName
+  if (window.wails?.Call?.ByName) {
+    try {
+      const res = await window.wails.Call.ByName<T>(`${WAILS_SERVICE_PREFIX}.${methodName}`, ...args);
+      return { called: true, result: res };
+    } catch (err) {
+      console.warn(`[Wails3] Call.ByName ${methodName} 失败:`, err);
+    }
+  }
+
+  // 2. 兼容 Wails 2 window.go.wails.AppService
+  const wails2Svc = window.go?.wails?.AppService as Record<string, (...a: unknown[]) => Promise<T>> | undefined;
+  if (wails2Svc && typeof wails2Svc[methodName] === 'function') {
+    try {
+      const res = await wails2Svc[methodName](...args);
+      return { called: true, result: res };
+    } catch (err) {
+      console.warn(`[Wails2] ${methodName} 失败:`, err);
+    }
+  }
+
+  return { called: false };
+}
 
 export const api = {
   // ─── 任务操作 ───────────────────────────────────────────
   async listTasks(): Promise<Task[]> {
-    const svc = getWailsService();
-    if (svc?.ListTasks) {
-      return await svc.ListTasks();
-    }
+    const res = await invokeWailsMethod<Task[]>('ListTasks');
+    if (res.called && res.result) return res.result;
     return [...mockTasks];
   },
 
   async getTask(id: string): Promise<Task> {
-    const svc = getWailsService();
-    if (svc?.GetTask) {
-      return await svc.GetTask(id);
-    }
+    const res = await invokeWailsMethod<Task>('GetTask', id);
+    if (res.called && res.result) return res.result;
     const t = mockTasks.find((item) => item.id === id);
     if (!t) throw new Error('任务不存在');
     return t;
   },
 
   async listTaskLogs(id: string): Promise<TaskLog[]> {
-    const svc = getWailsService();
-    if (svc?.ListTaskLogs) {
-      return await svc.ListTaskLogs(id);
-    }
+    const res = await invokeWailsMethod<TaskLog[]>('ListTaskLogs', id);
+    if (res.called && res.result) return res.result;
     return mockLogs[id] || [];
   },
 
   async createTask(input: CreateTaskInput): Promise<Task> {
-    const svc = getWailsService();
-    if (svc?.CreateTask) {
-      return await svc.CreateTask(input);
-    }
+    const res = await invokeWailsMethod<Task>('CreateTask', input);
+    if (res.called && res.result) return res.result;
     const newTask: Task = {
       id: `task_${Date.now()}`,
       created_at: new Date().toISOString(),
@@ -202,10 +236,8 @@ export const api = {
   },
 
   async batchCreateTasks(videos: string[], recipe: CreateTaskInput): Promise<Task[]> {
-    const svc = getWailsService();
-    if (svc?.BatchCreateTasks) {
-      return await svc.BatchCreateTasks(videos, recipe);
-    }
+    const res = await invokeWailsMethod<Task[]>('BatchCreateTasks', videos, recipe);
+    if (res.called && res.result) return res.result;
     const tasks: Task[] = [];
     for (const v of videos) {
       tasks.push(await this.createTask({ ...recipe, input_path: v }));
@@ -214,41 +246,54 @@ export const api = {
   },
 
   async pauseTask(id: string): Promise<void> {
-    const svc = getWailsService();
-    if (svc?.PauseTask) {
-      await svc.PauseTask(id);
-      return;
-    }
+    const res = await invokeWailsMethod<void>('PauseTask', id);
+    if (res.called) return;
     mockTasks = mockTasks.map((t) => (t.id === id ? { ...t, status: 2 } : t));
   },
 
   async resumeTask(id: string): Promise<void> {
-    const svc = getWailsService();
-    if (svc?.ResumeTask) {
-      await svc.ResumeTask(id);
-      return;
-    }
+    const res = await invokeWailsMethod<void>('ResumeTask', id);
+    if (res.called) return;
     mockTasks = mockTasks.map((t) => (t.id === id ? { ...t, status: 1 } : t));
   },
 
   async deleteTask(id: string): Promise<void> {
-    const svc = getWailsService();
-    if (svc?.DeleteTask) {
-      await svc.DeleteTask(id);
-      return;
-    }
+    const res = await invokeWailsMethod<void>('DeleteTask', id);
+    if (res.called) return;
     mockTasks = mockTasks.filter((t) => t.id !== id);
     delete mockLogs[id];
   },
 
   // ─── 文件交互 ───────────────────────────────────────────
   async pickFiles(): Promise<string[]> {
-    const svc = getWailsService();
-    if (svc?.PickFiles) {
-      return await svc.PickFiles();
+    // 1. 优先调用 Wails 3 原生 Dialogs.OpenFile
+    if (typeof window !== 'undefined' && window.wails?.Dialogs?.OpenFile) {
+      try {
+        const selected = await window.wails.Dialogs.OpenFile({
+          CanChooseFiles: true,
+          AllowsMultipleSelection: true,
+          Title: '选择音视频或字幕文件',
+          Filters: [
+            { DisplayName: '音视频与字幕 (*.mp4,*.mkv,*.mov,*.mp3,*.wav,*.srt...)', Pattern: '*.mp4;*.mkv;*.mov;*.avi;*.webm;*.flv;*.mp3;*.wav;*.m4a;*.srt' },
+            { DisplayName: '所有文件 (*.*)', Pattern: '*.*' },
+          ],
+        });
+        if (Array.isArray(selected) && selected.length > 0) return selected;
+        if (typeof selected === 'string' && selected) return [selected];
+        if (Array.isArray(selected) && selected.length === 0) return [];
+      } catch (err) {
+        console.warn('[Wails3] Dialogs.OpenFile 异常，尝试服务方法:', err);
+      }
     }
+
+    // 2. 尝试调用 Go 后端 AppService.PickFiles
+    const res = await invokeWailsMethod<string[]>('PickFiles');
+    if (res.called && res.result) {
+      return res.result;
+    }
+
+    // 3. 浏览器端兜底处理
     if (typeof window === 'undefined') return [];
-    // 浏览器环境兜底
     return new Promise((resolve) => {
       const input = document.createElement('input');
       input.type = 'file';
@@ -267,63 +312,53 @@ export const api = {
   },
 
   async openInFileManager(path: string): Promise<void> {
-    const svc = getWailsService();
-    if (svc?.OpenInFileManager) {
-      await svc.OpenInFileManager(path);
-      return;
-    }
+    const res = await invokeWailsMethod<void>('OpenInFileManager', path);
+    if (res.called) return;
     console.log('Open in file manager:', path);
   },
 
   // ─── 配置与服务 ─────────────────────────────────────────
   async getConfig(): Promise<ConfigDTO> {
-    const svc = getWailsService();
-    if (svc?.GetConfig) {
-      return await svc.GetConfig();
-    }
+    const res = await invokeWailsMethod<ConfigDTO>('GetConfig');
+    if (res.called && res.result) return res.result;
     return { ...mockConfig };
   },
 
   async updateConfig(updates: Record<string, unknown>): Promise<void> {
-    const svc = getWailsService();
-    if (svc?.UpdateConfig) {
-      await svc.UpdateConfig(updates);
-      return;
-    }
+    const res = await invokeWailsMethod<void>('UpdateConfig', updates);
+    if (res.called) return;
     mockConfig = { ...mockConfig, ...(updates as unknown as ConfigDTO) };
   },
 
   // ─── 术语库 ─────────────────────────────────────────────
   async listTerms(): Promise<Term[]> {
-    const svc = getWailsService();
-    if (svc?.ListTerms) {
-      return await svc.ListTerms();
-    }
+    const res = await invokeWailsMethod<Term[]>('ListTerms');
+    if (res.called && res.result) return res.result;
     return [...mockTerms];
   },
 
   async saveTerm(source: string, target: string): Promise<void> {
-    const svc = getWailsService();
-    if (svc?.SaveTerm) {
-      await svc.SaveTerm(source, target);
-      return;
-    }
+    const res = await invokeWailsMethod<void>('SaveTerm', source, target);
+    if (res.called) return;
     mockTerms.push({ id: Date.now(), glossary_id: 1, text: source, translation: target });
   },
 
   async deleteTerm(id: number): Promise<void> {
-    const svc = getWailsService();
-    if (svc?.DeleteTerm) {
-      await svc.DeleteTerm(id);
-      return;
-    }
+    const res = await invokeWailsMethod<void>('DeleteTerm', id);
+    if (res.called) return;
     mockTerms = mockTerms.filter((item) => item.id !== id);
   },
 
   // ─── 事件监听 ───────────────────────────────────────────
   onEvent(event: string, callback: (data: unknown) => void): () => void {
     if (typeof window !== 'undefined' && window.wails?.Events?.On) {
-      return window.wails.Events.On(event, callback);
+      return window.wails.Events.On(event, (eventObj: unknown) => {
+        const payload =
+          eventObj && typeof eventObj === 'object' && 'data' in eventObj
+            ? (eventObj as { data: unknown }).data
+            : eventObj;
+        callback(payload);
+      });
     }
     if (typeof window === 'undefined') return () => {};
     // 本地事件总线模拟
@@ -333,6 +368,6 @@ export const api = {
   },
 
   isWailsEnvironment(): boolean {
-    return hasWails();
-  }
+    return typeof window !== 'undefined' && (!!window.wails?.Call || !!window.wails?.Dialogs || !!window.go?.wails?.AppService);
+  },
 };

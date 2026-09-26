@@ -51,9 +51,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <aside className="w-56 h-screen flex flex-col justify-between border-r border-apple-border dark:border-apple-darkBorder bg-apple-sidebar dark:bg-apple-darkSidebar px-3 py-4 transition-colors">
       <div className="space-y-6">
-        {/* 顶部标题区（预留 macOS 红黄绿交通灯间距） */}
-        <div className="pt-3 px-2 flex items-center justify-between">
-          <div className="flex items-center space-x-2">
+        {/* 顶部标题区（预留 macOS 红黄绿交通灯安全高度与拖拽区） */}
+        <div className="pt-8 px-2 flex items-center justify-between" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
+          <div className="flex items-center space-x-2.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
             <div className="w-7 h-7 rounded-lg bg-apple-accent text-white flex items-center justify-center font-bold text-sm shadow-sm">
               V
             </div>

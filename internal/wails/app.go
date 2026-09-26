@@ -2,9 +2,12 @@ package wails
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"io/fs"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"github.com/ixugo/vdub/internal/app"
 	"github.com/ixugo/vdub/internal/conf"
@@ -47,7 +50,7 @@ func RunApp(bc *conf.Bootstrap, assets fs.FS) error {
 	svc.app = wailsApp
 	eventHub.SetApp(wailsApp)
 
-	wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
+	mainWindow := wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:           "VDub",
 		Width:           1260,
 		Height:          840,
@@ -59,6 +62,23 @@ func RunApp(bc *conf.Bootstrap, assets fs.FS) error {
 		Mac: application.MacWindow{
 			TitleBar: application.MacTitleBarHiddenInset,
 		},
+	})
+
+	mainWindow.OnWindowEvent(events.Common.WindowFilesDropped, func(event *application.WindowEvent) {
+		files := event.Context().DroppedFiles()
+		fmt.Printf("[Wails] 捕获文件拖放事件: %v\n", files)
+		if len(files) > 0 {
+			wailsApp.Event.Emit("files-dropped", files)
+			wailsApp.Event.Emit("common:WindowFilesDropped", files)
+			if payload, err := json.Marshal(files); err == nil {
+				mainWindow.ExecJS(fmt.Sprintf(`
+					if (window.__onWailsFilesDropped) {
+						window.__onWailsFilesDropped(%s);
+					}
+					window.dispatchEvent(new CustomEvent('wails:files-dropped', {detail: %s}));
+				`, payload, payload))
+			}
+		}
 	})
 
 	return wailsApp.Run()

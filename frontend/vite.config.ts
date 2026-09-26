@@ -6,8 +6,12 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    rollupOptions: {
+      external: ['/wails/runtime.js'],
+    },
   },
   server: {
+    host: '127.0.0.1',
     port: 5173,
     strictPort: true,
   },
