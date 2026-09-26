@@ -48,12 +48,14 @@ func RunApp(bc *conf.Bootstrap, assets fs.FS) error {
 	eventHub.SetApp(wailsApp)
 
 	wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:          "VDub",
-		Width:          1260,
-		Height:         840,
-		MinWidth:       960,
-		MinHeight:      640,
-		EnableFileDrop: true,
+		Title:           "VDub",
+		Width:           1260,
+		Height:          840,
+		MinWidth:        960,
+		MinHeight:       640,
+		EnableFileDrop:  true,
+		DevToolsEnabled: true,
+		InitialPosition: application.WindowCentered,
 		Mac: application.MacWindow{
 			TitleBar: application.MacTitleBarHiddenInset,
 		},

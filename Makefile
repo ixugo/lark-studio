@@ -76,10 +76,24 @@ clip: build ## CLI 裁剪+翻译（需设 VDUB_LLM_* 环境变量，VIDEO=路径
 
 # ─── 开发 ───────────────────────────────────────────────
 
-dev: ## 开发模式：启动前端开发服务器
-	@if [ -d "$(FRONTEND_DIR)" ]; then cd $(FRONTEND_DIR) && npm run dev; fi
+dev: ## 开发模式：一键启动 Vite 开发服务与 Go 桌面端联动运行
+	@if [ ! -f "$(FRONTEND_DIR)/dist/index.html" ]; then $(MAKE) build-frontend; fi
+	@echo "🚀 启动开发环境 (Vite 热重载 + Go 桌面客户端)..."
+	@mkdir -p $(BUILD_DIR)
+	@go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY) .
+	@bash -c '\
+		cleanup() { kill 0 2>/dev/null || true; exit 0; }; \
+		trap cleanup EXIT INT TERM; \
+		(cd $(FRONTEND_DIR) && npm run dev) & \
+		for i in $$(seq 1 30); do \
+			curl -s http://localhost:5173 >/dev/null 2>&1 && break; \
+			sleep 0.2; \
+		done; \
+		echo "✓ 前端热更服务已就绪，正在拉起桌面端..."; \
+		FRONTEND_DEVSERVER_URL=http://localhost:5173 $(BUILD_DIR)/$(BINARY) \
+	'
 
-run: build ## 编译并启动桌面应用
+run: build ## 编译并启动桌面应用（单二进制内嵌模式）
 	$(BUILD_DIR)/$(BINARY)
 
 # ─── FFmpeg 静态包下载 ──────────────────────────────────
