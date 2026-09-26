@@ -45,7 +45,7 @@ func RunApp(bc *conf.Bootstrap, assets fs.FS) error {
 	})
 
 	svc.app = wailsApp
-	eventHub.app = wailsApp
+	eventHub.SetApp(wailsApp)
 
 	wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:          "VDub",

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -20,6 +21,7 @@ import (
 
 // AppService 聚合所有暴露给前端界面的 Go 接口方法。
 type AppService struct {
+	mu        sync.RWMutex
 	app       *application.App
 	bc        *conf.Bootstrap
 	taskCore  task.Core
@@ -159,14 +161,18 @@ func (s *AppService) PickFiles() ([]string, error) {
 	return files, nil
 }
 
-// OpenInFileManager 在系统访达/资源管理器中定位文件或目录。
+// OpenInFileManager 在系统访达或文件资源管理器中定位文件，包含路径存在性检查与防注入清洗。
 func (s *AppService) OpenInFileManager(targetPath string) error {
-	if targetPath == "" {
-		return fmt.Errorf("路径为空")
+	cleanPath := filepath.Clean(strings.TrimSpace(targetPath))
+	if cleanPath == "" || cleanPath == "." {
+		return fmt.Errorf("路径为空或无效")
 	}
-	absPath, err := filepath.Abs(targetPath)
+	absPath, err := filepath.Abs(cleanPath)
 	if err != nil {
-		absPath = targetPath
+		return fmt.Errorf("获取绝对路径失败: %w", err)
+	}
+	if _, err := os.Stat(absPath); err != nil {
+		return fmt.Errorf("目标文件或目录不存在: %s", absPath)
 	}
 
 	var cmd *exec.Cmd
@@ -204,8 +210,11 @@ type LLMDTO struct {
 	DeepLXURL string `json:"deeplx_url"`
 }
 
-// GetConfig 获取当前系统所有配置。
+// GetConfig 获取当前系统所有配置，采用读锁保护并发安全。
 func (s *AppService) GetConfig() ConfigDTO {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	c := s.bc
 	return ConfigDTO{
 		Pipeline: c.Pipeline,
@@ -222,8 +231,11 @@ func (s *AppService) GetConfig() ConfigDTO {
 	}
 }
 
-// UpdateConfig 更新系统配置并自动持久化写入 config.toml。
+// UpdateConfig 更新系统配置并自动持久化写入 config.toml，采用写锁保护。
 func (s *AppService) UpdateConfig(updates map[string]any) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	c := s.bc
 	if p, ok := updates["pipeline"].(map[string]any); ok {
 		if v, ok := p["workers"].(float64); ok {

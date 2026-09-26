@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"sync/atomic"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -12,17 +13,27 @@ import (
 
 // WailsEventHub 实现 ws.Huber 接口，将后端进度和日志直推至 Wails3 客户端。
 type WailsEventHub struct {
-	app *application.App
+	app atomic.Pointer[application.App]
 }
 
 // NewWailsEventHub 创建 Wails 事件桥接器。
 func NewWailsEventHub(app *application.App) *WailsEventHub {
-	return &WailsEventHub{app: app}
+	hub := &WailsEventHub{}
+	if app != nil {
+		hub.app.Store(app)
+	}
+	return hub
+}
+
+// SetApp 线程安全地设置 Wails 应用实例指针。
+func (h *WailsEventHub) SetApp(app *application.App) {
+	h.app.Store(app)
 }
 
 // Broadcast 广播消息到前端事件监听器。
 func (h *WailsEventHub) Broadcast(msg ws.Message) {
-	if h.app == nil || msg == nil {
+	appInstance := h.app.Load()
+	if appInstance == nil || msg == nil {
 		return
 	}
 	raw := msg.Data()
@@ -33,7 +44,7 @@ func (h *WailsEventHub) Broadcast(msg ws.Message) {
 	if payload == nil {
 		payload = string(raw)
 	}
-	h.app.Event.Emit(msg.Type(), payload)
+	appInstance.Event.Emit(msg.Type(), payload)
 }
 
 func (h *WailsEventHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {}
