@@ -157,7 +157,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
               <ExternalLink size={14} className="text-slate-300 group-hover:text-indigo-500 transition-colors" />
             </div>
             <div className="mt-3">
-              <div className="text-xs font-bold text-slate-800 dark:text-white">语音合成 (TTS)</div>
+              <div className="text-xs font-bold text-slate-800 dark:text-white">语音合成</div>
               <div className="text-[11px] text-slate-400 mt-0.5">
                 当前: {config.tts.type || 'edge'}
               </div>
@@ -176,7 +176,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
               <ExternalLink size={14} className="text-slate-300 group-hover:text-cyan-500 transition-colors" />
             </div>
             <div className="mt-3">
-              <div className="text-xs font-bold text-slate-800 dark:text-white">语音识别 (ASR)</div>
+              <div className="text-xs font-bold text-slate-800 dark:text-white">语音识别</div>
               <div className="text-[11px] text-slate-400 mt-0.5">
                 当前: {config.pipeline.whisper_mode || 'whisper-cpp'}
               </div>
@@ -196,7 +196,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
           <div className="grid grid-cols-2 gap-6">
             <div>
               <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                并发任务数 (Workers)
+                并发任务数
               </label>
               <input
                 type="number"

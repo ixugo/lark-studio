@@ -26,17 +26,17 @@ interface AsrEngineItem {
 const ASR_ENGINES: AsrEngineItem[] = [
   {
     id: 'whisper-cpp',
-    name: 'Whisper.cpp (本地硬件加速)',
-    tag: '离线 · Metal加速',
-    desc: '基于 GGML 框架的高性能纯 C/C++ 离线识别',
+    name: 'Whisper.cpp',
+    tag: '离线硬件加速',
+    desc: '基于 GGML 框架的高性能纯 C/C++ 离线识别，支持 Metal GPU 硬件加速',
     icon: <Cpu size={18} className="text-blue-500" />,
     badge: '推荐',
   },
   {
     id: 'sense-voice',
-    name: 'SenseVoice (多语言端到端)',
-    tag: '极速语音识别',
-    desc: '轻量端到端富文本语音识别模型',
+    name: 'SenseVoice',
+    tag: '多语言极速',
+    desc: '轻量端到端多语言富文本语音识别模型，极速推理转录',
     icon: <Radio size={18} className="text-indigo-500" />,
   },
 ];
@@ -157,7 +157,7 @@ export const AsrEngineView: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-xl font-bold tracking-tight text-slate-800 dark:text-white">
-                语音识别 (ASR) 引擎
+                语音识别引擎
               </h2>
               <span className="px-2 py-0.5 text-[11px] font-medium bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20 rounded-md">
                 当前默认: {ASR_ENGINES.find(e => e.id === (config.pipeline.whisper_mode || 'whisper-cpp').toLowerCase())?.name || config.pipeline.whisper_mode}
@@ -201,33 +201,28 @@ export const AsrEngineView: React.FC = () => {
                     key={item.id}
                     type="button"
                     onClick={() => setActiveEngine(item.id)}
-                    className={`w-full text-left p-3 rounded-xl border transition-all relative flex flex-col gap-1 active:scale-[0.98] ${
+                    className={`w-full text-left px-3.5 py-3 rounded-xl border transition-all relative flex items-center justify-between active:scale-[0.98] ${
                       isSelected
-                        ? 'bg-blue-50/70 dark:bg-blue-500/15 border-blue-500/40 text-blue-900 dark:text-blue-100'
+                        ? 'bg-blue-50/70 dark:bg-blue-500/15 border-blue-500/40 text-blue-900 dark:text-blue-100 font-medium'
                         : 'bg-transparent hover:bg-slate-50 dark:hover:bg-white/[0.04] border-transparent text-slate-700 dark:text-slate-300'
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 font-medium text-xs">
-                        {item.icon}
-                        <span>{item.name}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {item.badge && (
-                          <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 rounded">
-                            {item.badge}
-                          </span>
-                        )}
-                        {isDefault && (
-                          <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-blue-600 text-white rounded flex items-center gap-0.5">
-                            <Check size={10} /> 默认
-                          </span>
-                        )}
-                      </div>
+                    <div className="flex items-center gap-2.5 text-xs">
+                      {item.icon}
+                      <span>{item.name}</span>
                     </div>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1 pl-6">
-                      {item.desc}
-                    </p>
+                    <div className="flex items-center gap-1.5">
+                      {item.badge && (
+                        <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 rounded">
+                          {item.badge}
+                        </span>
+                      )}
+                      {isDefault && (
+                        <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-blue-600 text-white rounded flex items-center gap-0.5">
+                          <Check size={10} /> 默认
+                        </span>
+                      )}
+                    </div>
                   </button>
                 );
               })}
@@ -246,38 +241,50 @@ export const AsrEngineView: React.FC = () => {
           <div className="col-span-8 bg-white dark:bg-[#1C1C1E] border border-slate-200/90 dark:border-[#2C2C2E] rounded-2xl p-6 flex flex-col justify-between space-y-6">
             <div className="space-y-6">
               {/* 头部状态与默认切换 */}
-              <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-white/5">
-                <div>
-                  <h3 className="text-base font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                    {ASR_ENGINES.find((e) => e.id === activeEngine)?.name}
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    {ASR_ENGINES.find((e) => e.id === activeEngine)?.desc}
-                  </p>
-                </div>
-                <div>
-                  {isCurrentDefault ? (
-                    <span className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 rounded-xl text-xs font-semibold flex items-center gap-1.5">
-                      <Check size={14} /> 正在作为默认引擎生效
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => handleSetDefault(activeEngine)}
-                      className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5"
-                    >
-                      设为默认引擎
-                    </button>
-                  )}
-                </div>
-              </div>
+              {(() => {
+                const currentMeta = ASR_ENGINES.find((e) => e.id === activeEngine);
+                return (
+                  <div className="flex items-start justify-between pb-4 border-b border-slate-100 dark:border-white/5">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-base font-bold text-slate-800 dark:text-white">
+                          {currentMeta?.name}
+                        </h3>
+                        {currentMeta?.tag && (
+                          <span className="px-2 py-0.5 text-[11px] font-medium bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 rounded-md">
+                            {currentMeta.tag}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {currentMeta?.desc}
+                      </p>
+                    </div>
+                    <div>
+                      {isCurrentDefault ? (
+                        <span className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 rounded-xl text-xs font-semibold flex items-center gap-1.5">
+                          <Check size={14} /> 默认引擎
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleSetDefault(activeEngine)}
+                          className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5"
+                        >
+                          设为默认引擎
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Whisper.cpp 配置 */}
               {activeEngine === 'whisper-cpp' && (
                 <div className="space-y-5 animate-in fade-in">
                   <div>
                     <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                      GGML 模型文件路径 (*.bin)
+                      GGML 模型文件路径
                     </label>
                     <div className="flex gap-2">
                       <input
@@ -311,7 +318,7 @@ export const AsrEngineView: React.FC = () => {
 
                   <div>
                     <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                      whisper-cli 可执行程序路径 (留空优先使用应用内置运行时)
+                      whisper-cli 程序路径
                     </label>
                     <div className="flex gap-2">
                       <input
@@ -344,7 +351,7 @@ export const AsrEngineView: React.FC = () => {
                     <Info size={16} className="text-blue-500 shrink-0 mt-0.5" />
                     <div>
                       <span className="font-semibold text-slate-700 dark:text-slate-200">提示：</span>
-                      macOS Apple Silicon (M1/M2/M3/M4) 设备已自动启用 Metal GPU 硬件加速，推理速度相较纯 CPU 提升 3~5 倍。
+                      macOS Apple Silicon 系列芯片设备已自动启用 Metal GPU 硬件加速，推理速度相较纯 CPU 提升 3~5 倍。
                     </div>
                   </div>
                 </div>

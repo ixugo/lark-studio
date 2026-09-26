@@ -27,31 +27,31 @@ interface EngineItem {
 const ENGINES: EngineItem[] = [
   {
     id: 'google',
-    name: '谷歌翻译 (Google)',
-    tag: '免配置 · 免Key',
-    desc: '基于官方公共接口，稳定可靠，推荐首选',
+    name: '谷歌翻译',
+    tag: '免Key推荐',
+    desc: '基于官方公共接口，近百种语言支持，速度极快且稳定可靠，推荐首选',
     icon: <Globe size={18} className="text-blue-500" />,
     badge: '推荐',
   },
   {
     id: 'bing',
-    name: '必应翻译 (Bing)',
-    tag: '免Key · 自动容灾',
-    desc: 'Edge 浏览器匿名端点，异常自动平滑切换',
+    name: '必应翻译',
+    tag: '免Key容灾',
+    desc: '微软 Edge 翻译通道，端点异常时由系统自动平滑降级至谷歌翻译',
     icon: <Cloud size={18} className="text-cyan-500" />,
   },
   {
     id: 'openai',
-    name: 'OpenAI 兼容接口',
-    tag: '大模型 · 自定义',
-    desc: '支持 DeepSeek, GPT-4o, Ollama 本地模型',
+    name: 'OpenAI 兼容',
+    tag: '大模型自定义',
+    desc: '支持 DeepSeek、GPT-4o、Claude、Ollama 等任何兼容协议的大模型端点',
     icon: <Sparkles size={18} className="text-indigo-500" />,
   },
   {
     id: 'deeplx',
-    name: 'DeepLX 自建端点',
-    tag: '自建服务',
-    desc: '私有化部署的高性能 DeepL 反代翻译端点',
+    name: 'DeepLX 自建',
+    tag: '自建端点',
+    desc: '基于自建或私有化部署的高性能 DeepL 反向代理翻译服务',
     icon: <Server size={18} className="text-emerald-500" />,
   },
 ];
@@ -178,33 +178,28 @@ export const TranslationEngineView: React.FC = () => {
                     key={item.id}
                     type="button"
                     onClick={() => setActiveEngine(item.id)}
-                    className={`w-full text-left p-3 rounded-xl border transition-all relative flex flex-col gap-1 active:scale-[0.98] ${
+                    className={`w-full text-left px-3.5 py-3 rounded-xl border transition-all relative flex items-center justify-between active:scale-[0.98] ${
                       isSelected
-                        ? 'bg-blue-50/70 dark:bg-blue-500/15 border-blue-500/40 text-blue-900 dark:text-blue-100'
+                        ? 'bg-blue-50/70 dark:bg-blue-500/15 border-blue-500/40 text-blue-900 dark:text-blue-100 font-medium'
                         : 'bg-transparent hover:bg-slate-50 dark:hover:bg-white/[0.04] border-transparent text-slate-700 dark:text-slate-300'
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 font-medium text-xs">
-                        {item.icon}
-                        <span>{item.name}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {item.badge && (
-                          <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 rounded">
-                            {item.badge}
-                          </span>
-                        )}
-                        {isDefault && (
-                          <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-blue-600 text-white rounded flex items-center gap-0.5">
-                            <Check size={10} /> 默认
-                          </span>
-                        )}
-                      </div>
+                    <div className="flex items-center gap-2.5 text-xs">
+                      {item.icon}
+                      <span>{item.name}</span>
                     </div>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1 pl-6">
-                      {item.desc}
-                    </p>
+                    <div className="flex items-center gap-1.5">
+                      {item.badge && (
+                        <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 rounded">
+                          {item.badge}
+                        </span>
+                      )}
+                      {isDefault && (
+                        <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-blue-600 text-white rounded flex items-center gap-0.5">
+                          <Check size={10} /> 默认
+                        </span>
+                      )}
+                    </div>
                   </button>
                 );
               })}
@@ -223,48 +218,60 @@ export const TranslationEngineView: React.FC = () => {
           <div className="col-span-8 bg-white dark:bg-[#1C1C1E] border border-slate-200/90 dark:border-[#2C2C2E] rounded-2xl p-6 flex flex-col justify-between space-y-6">
             <div className="space-y-6">
               {/* 头部状态与默认切换 */}
-              <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-white/5">
-                <div>
-                  <h3 className="text-base font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                    {ENGINES.find((e) => e.id === activeEngine)?.name}
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    {ENGINES.find((e) => e.id === activeEngine)?.desc}
-                  </p>
-                </div>
-                <div>
-                  {isCurrentDefault ? (
-                    <span className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 rounded-xl text-xs font-semibold flex items-center gap-1.5">
-                      <Check size={14} /> 正在作为默认引擎生效
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => handleSetDefault(activeEngine)}
-                      className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5"
-                    >
-                      设为默认引擎
-                    </button>
-                  )}
-                </div>
-              </div>
+              {(() => {
+                const currentMeta = ENGINES.find((e) => e.id === activeEngine);
+                return (
+                  <div className="flex items-start justify-between pb-4 border-b border-slate-100 dark:border-white/5">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-base font-bold text-slate-800 dark:text-white">
+                          {currentMeta?.name}
+                        </h3>
+                        {currentMeta?.tag && (
+                          <span className="px-2 py-0.5 text-[11px] font-medium bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 rounded-md">
+                            {currentMeta.tag}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {currentMeta?.desc}
+                      </p>
+                    </div>
+                    <div>
+                      {isCurrentDefault ? (
+                        <span className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 rounded-xl text-xs font-semibold flex items-center gap-1.5">
+                          <Check size={14} /> 默认引擎
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleSetDefault(activeEngine)}
+                          className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5"
+                        >
+                          设为默认引擎
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* 谷歌翻译配置 */}
               {activeEngine === 'google' && (
                 <div className="space-y-4 animate-in fade-in">
                   <div className="p-4 rounded-xl bg-blue-50/60 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20 text-xs text-blue-900 dark:text-blue-200 space-y-2">
                     <div className="font-semibold flex items-center gap-1.5">
-                      <Globe size={16} /> 谷歌官方公共翻译接口（免配置即开即用）
+                      <Globe size={16} /> 谷歌公共翻译通道 · 免配置即开即用
                     </div>
                     <p className="text-[12px] leading-relaxed opacity-90">
-                      谷歌翻译公共服务支持近百种语言，速度极快，无需配置 API Key、Token 令牌或自建代理，开箱即用。已作为 VDub 全局高可靠兜底服务。
+                      谷歌翻译支持近百种语言，速度极快，无需配置密钥或自建代理，开箱即用。已作为全局高可靠兜底服务。
                     </p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4 pt-2">
                     <div>
                       <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                        单次切片句子数 (Chunk Size)
+                        单次切片句子数
                       </label>
                       <input
                         type="number"
@@ -282,7 +289,7 @@ export const TranslationEngineView: React.FC = () => {
                         }
                         className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                       />
-                      <p className="text-[11px] text-slate-400 mt-1">推荐 10~15 句/批，兼顾上下文连贯与响应速度</p>
+                      <p className="text-[11px] text-slate-400 mt-1">推荐 10~15 句，兼顾上下文连贯与响应速度</p>
                     </div>
 
                     <div>
@@ -314,10 +321,10 @@ export const TranslationEngineView: React.FC = () => {
                 <div className="space-y-4 animate-in fade-in">
                   <div className="p-4 rounded-xl bg-cyan-50/60 dark:bg-cyan-500/10 border border-cyan-100 dark:border-cyan-500/20 text-xs text-cyan-900 dark:text-cyan-200 space-y-2">
                     <div className="font-semibold flex items-center gap-1.5">
-                      <Cloud size={16} /> 必应 (Edge 浏览器翻译端点)
+                      <Cloud size={16} /> 必应翻译 · Edge 浏览器通道
                     </div>
                     <p className="text-[12px] leading-relaxed opacity-90">
-                      使用微软 Edge 浏览器的匿名认证凭据。注：因微软官方接口策略偶尔调整，当必应端点不可用时，VDub 内部会自动容灾平滑降级到 Google 免费翻译，保障任务顺利完成。
+                      使用微软 Edge 浏览器的匿名认证凭据。当必应端点异常时，系统会自动容灾平滑降级到谷歌翻译，保障任务顺利完成。
                     </p>
                   </div>
 
@@ -328,7 +335,7 @@ export const TranslationEngineView: React.FC = () => {
                       </label>
                       <div className="h-10 px-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-600 dark:text-slate-300 flex items-center">
                         <span className="w-2 h-2 rounded-full bg-emerald-500 mr-2" />
-                        已默认启用 (自动回退至 Google 免费翻译)
+                        已默认启用 · 自动回退至谷歌翻译
                       </div>
                     </div>
                     <div>
@@ -362,7 +369,7 @@ export const TranslationEngineView: React.FC = () => {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                        Base URL (API 接口地址)
+                        接口地址 Base URL
                       </label>
                       <input
                         type="text"
@@ -381,7 +388,7 @@ export const TranslationEngineView: React.FC = () => {
 
                     <div>
                       <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                        API Key (密钥)
+                        访问密钥 API Key
                       </label>
                       <div className="relative">
                         <input
@@ -411,7 +418,7 @@ export const TranslationEngineView: React.FC = () => {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                        模型名称 (Model)
+                        模型名称 Model
                       </label>
                       <input
                         type="text"

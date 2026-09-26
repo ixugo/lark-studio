@@ -25,29 +25,29 @@ interface TtsEngineItem {
 const TTS_ENGINES: TtsEngineItem[] = [
   {
     id: 'edge',
-    name: 'Edge TTS (微软免费大声库)',
-    tag: '免配置 · 免Key',
-    desc: '微软官方神经音色，超高拟真度，自然流畅',
+    name: 'Edge TTS',
+    tag: '免Key推荐',
+    desc: '微软官方超拟真神经音色，发音自然流畅且无需配置密钥，推荐首选',
     icon: <Volume2 size={18} className="text-blue-500" />,
     badge: '推荐',
   },
   {
     id: 'openai',
-    name: 'OpenAI TTS (大模型语音)',
-    tag: 'API 接入',
-    desc: '官方与兼容协议的高自然度 AI 语音合成',
+    name: 'OpenAI TTS',
+    tag: '大模型接口',
+    desc: '兼容 OpenAI 协议的高保真语音合成大模型，音质细腻生动',
     icon: <Sparkles size={18} className="text-indigo-500" />,
   },
 ];
 
 const POPULAR_EDGE_VOICES = [
-  { value: 'zh-CN-YunjianNeural', label: '云健 (男声 · 沉稳/纪录片/解说推荐)' },
-  { value: 'zh-CN-XiaoxiaoNeural', label: '晓晓 (女声 · 温柔亲切/旁白推荐)' },
-  { value: 'zh-CN-YunxiNeural', label: '云希 (男声 · 阳光活力/短视频推荐)' },
-  { value: 'zh-CN-YunxiaNeural', label: '云夏 (男声 · 少年感/动漫推荐)' },
-  { value: 'zh-CN-XiaoyiNeural', label: '晓伊 (女声 · 抒情阅读/自然)' },
-  { value: 'en-US-ChristopherNeural', label: 'Christopher (美式男声 · 专业稳重)' },
-  { value: 'en-US-JennyNeural', label: 'Jenny (美式女声 · 自然清晰)' },
+  { value: 'zh-CN-YunjianNeural', label: '云健 · 男声沉稳推荐' },
+  { value: 'zh-CN-XiaoxiaoNeural', label: '晓晓 · 女声亲切推荐' },
+  { value: 'zh-CN-YunxiNeural', label: '云希 · 男声阳光解说' },
+  { value: 'zh-CN-YunxiaNeural', label: '云夏 · 男声少年感' },
+  { value: 'zh-CN-XiaoyiNeural', label: '晓伊 · 女声抒情阅读' },
+  { value: 'en-US-ChristopherNeural', label: 'Christopher · 美式英语男声' },
+  { value: 'en-US-JennyNeural', label: 'Jenny · 美式英语女声' },
 ];
 
 export const TtsEngineView: React.FC = () => {
@@ -128,7 +128,7 @@ export const TtsEngineView: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-xl font-bold tracking-tight text-slate-800 dark:text-white">
-                语音合成 (TTS) 引擎
+                语音合成引擎
               </h2>
               <span className="px-2 py-0.5 text-[11px] font-medium bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20 rounded-md">
                 当前默认: {TTS_ENGINES.find(e => e.id === (config.tts.type || 'edge').toLowerCase())?.name || config.tts.type}
@@ -172,33 +172,28 @@ export const TtsEngineView: React.FC = () => {
                     key={item.id}
                     type="button"
                     onClick={() => setActiveEngine(item.id)}
-                    className={`w-full text-left p-3 rounded-xl border transition-all relative flex flex-col gap-1 active:scale-[0.98] ${
+                    className={`w-full text-left px-3.5 py-3 rounded-xl border transition-all relative flex items-center justify-between active:scale-[0.98] ${
                       isSelected
-                        ? 'bg-blue-50/70 dark:bg-blue-500/15 border-blue-500/40 text-blue-900 dark:text-blue-100'
+                        ? 'bg-blue-50/70 dark:bg-blue-500/15 border-blue-500/40 text-blue-900 dark:text-blue-100 font-medium'
                         : 'bg-transparent hover:bg-slate-50 dark:hover:bg-white/[0.04] border-transparent text-slate-700 dark:text-slate-300'
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 font-medium text-xs">
-                        {item.icon}
-                        <span>{item.name}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {item.badge && (
-                          <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 rounded">
-                            {item.badge}
-                          </span>
-                        )}
-                        {isDefault && (
-                          <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-blue-600 text-white rounded flex items-center gap-0.5">
-                            <Check size={10} /> 默认
-                          </span>
-                        )}
-                      </div>
+                    <div className="flex items-center gap-2.5 text-xs">
+                      {item.icon}
+                      <span>{item.name}</span>
                     </div>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1 pl-6">
-                      {item.desc}
-                    </p>
+                    <div className="flex items-center gap-1.5">
+                      {item.badge && (
+                        <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 rounded">
+                          {item.badge}
+                        </span>
+                      )}
+                      {isDefault && (
+                        <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-blue-600 text-white rounded flex items-center gap-0.5">
+                          <Check size={10} /> 默认
+                        </span>
+                      )}
+                    </div>
                   </button>
                 );
               })}
@@ -217,38 +212,50 @@ export const TtsEngineView: React.FC = () => {
           <div className="col-span-8 bg-white dark:bg-[#1C1C1E] border border-slate-200/90 dark:border-[#2C2C2E] rounded-2xl p-6 flex flex-col justify-between space-y-6">
             <div className="space-y-6">
               {/* 头部状态与默认切换 */}
-              <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-white/5">
-                <div>
-                  <h3 className="text-base font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                    {TTS_ENGINES.find((e) => e.id === activeEngine)?.name}
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    {TTS_ENGINES.find((e) => e.id === activeEngine)?.desc}
-                  </p>
-                </div>
-                <div>
-                  {isCurrentDefault ? (
-                    <span className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 rounded-xl text-xs font-semibold flex items-center gap-1.5">
-                      <Check size={14} /> 正在作为默认引擎生效
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => handleSetDefault(activeEngine)}
-                      className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5"
-                    >
-                      设为默认引擎
-                    </button>
-                  )}
-                </div>
-              </div>
+              {(() => {
+                const currentMeta = TTS_ENGINES.find((e) => e.id === activeEngine);
+                return (
+                  <div className="flex items-start justify-between pb-4 border-b border-slate-100 dark:border-white/5">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-base font-bold text-slate-800 dark:text-white">
+                          {currentMeta?.name}
+                        </h3>
+                        {currentMeta?.tag && (
+                          <span className="px-2 py-0.5 text-[11px] font-medium bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 rounded-md">
+                            {currentMeta.tag}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {currentMeta?.desc}
+                      </p>
+                    </div>
+                    <div>
+                      {isCurrentDefault ? (
+                        <span className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 rounded-xl text-xs font-semibold flex items-center gap-1.5">
+                          <Check size={14} /> 默认引擎
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleSetDefault(activeEngine)}
+                          className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5"
+                        >
+                          设为默认引擎
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Edge TTS 配置 */}
               {activeEngine === 'edge' && (
                 <div className="space-y-4 animate-in fade-in">
                   <div>
                     <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                      默认神经音色 (Voice)
+                      默认神经音色
                     </label>
                     <select
                       value={config.tts.voice}
@@ -271,7 +278,7 @@ export const TtsEngineView: React.FC = () => {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                        TTS 调速上限 (Max Speed Factor)
+                        TTS 调速上限
                       </label>
                       <input
                         type="number"
@@ -343,7 +350,7 @@ export const TtsEngineView: React.FC = () => {
 
                     <div>
                       <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                        API Key (密钥)
+                        访问密钥 API Key
                       </label>
                       <div className="relative">
                         <input
@@ -384,8 +391,8 @@ export const TtsEngineView: React.FC = () => {
                         }
                         className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                       >
-                        <option value="tts-1">tts-1 (标准延迟/响应快)</option>
-                        <option value="tts-1-hd">tts-1-hd (高保真无损/音质极佳)</option>
+                        <option value="tts-1">tts-1 · 标准低延迟</option>
+                        <option value="tts-1-hd">tts-1-hd · 高保真高清</option>
                       </select>
                     </div>
 
@@ -403,12 +410,12 @@ export const TtsEngineView: React.FC = () => {
                         }
                         className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                       >
-                        <option value="alloy">alloy (中性沉稳)</option>
-                        <option value="echo">echo (圆润男声)</option>
-                        <option value="fable">fable (英伦腔调)</option>
-                        <option value="onyx">onyx (低沉浑厚男声)</option>
-                        <option value="nova">nova (明亮女声)</option>
-                        <option value="shimmer">shimmer (清脆女声)</option>
+                        <option value="alloy">alloy · 中性沉稳</option>
+                        <option value="echo">echo · 圆润男声</option>
+                        <option value="fable">fable · 英伦质感</option>
+                        <option value="onyx">onyx · 低沉浑厚男声</option>
+                        <option value="nova">nova · 明亮女声</option>
+                        <option value="shimmer">shimmer · 清脆女声</option>
                       </select>
                     </div>
                   </div>
