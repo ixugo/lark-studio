@@ -9,7 +9,7 @@ permissions:
 
 env:
   GO_VERSION: '1.27'
-  FLUTTER_VERSION: '3.44.4'
+  NODE_VERSION: '20'
   FFMPEG_WIN_URL: 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip'
   FFMPEG_MACOS_ARM64_URL: 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-darwin-arm64.gz'
   FFMPEG_MACOS_X64_URL: 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-darwin-x64.gz'
@@ -28,10 +28,15 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - uses: subosito/flutter-action@v2
+      - uses: actions/setup-node@v4
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Build Frontend (Windows)
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
 
       - name: Download ffmpeg (Windows)
         shell: pwsh
@@ -47,7 +52,7 @@ jobs:
         shell: pwsh
         run: ./scripts/build-whisper-runtime.ps1 -TargetOS windows -TargetArch amd64
 
-      - name: Build Go engine (Windows amd64)
+      - name: Build Go desktop single binary (Windows amd64)
         shell: pwsh
         env:
           GOOS: windows
@@ -61,12 +66,6 @@ jobs:
           $ldflags = "-X main.buildVersion=$version -X main.gitBranch=$branch -X main.gitHash=$hash -X main.buildTime=$time -X main.release=true -s -w"
           go build -trimpath -ldflags $ldflags -o build\windows_amd64\vdub.exe .
 
-      - name: Build Flutter UI (Windows)
-        working-directory: ui
-        run: |
-          flutter pub get
-          flutter build windows --release --split-debug-info=../build/debug-info --obfuscate
-
       - name: Compress binaries with UPX
         shell: pwsh
         run: |
@@ -77,7 +76,8 @@ jobs:
       - name: Assemble release package
         shell: pwsh
         run: |
-          $releaseDir = "ui\build\windows\x64\runner\Release"
+          $releaseDir = "build\windows_release"
+          New-Item -ItemType Directory -Force -Path $releaseDir
           Copy-Item "build\windows_amd64\vdub.exe" "$releaseDir\vdub.exe"
           Copy-Item "vendor\ffmpeg\windows\ffmpeg.exe" "$releaseDir\ffmpeg.exe"
           Copy-Item "vendor\whisper\windows" "$releaseDir\whisper" -Recurse -Force
@@ -103,10 +103,15 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - uses: subosito/flutter-action@v2
+      - uses: actions/setup-node@v4
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Build Frontend (macOS)
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
 
       - name: Download ffmpeg (macOS arm64)
         run: |
@@ -119,7 +124,7 @@ jobs:
           chmod +x scripts/build-whisper-runtime.sh
           scripts/build-whisper-runtime.sh darwin arm64
 
-      - name: Build Go engine (macOS arm64)
+      - name: Build Go desktop single binary (macOS arm64)
         env:
           GOARCH: arm64
         run: |
@@ -129,28 +134,22 @@ jobs:
           TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
           go build -trimpath -ldflags "-X main.buildVersion=$VERSION -X main.gitBranch=$BRANCH -X main.gitHash=$HASH -X main.buildTime=$TIME -X main.release=true -s -w" -o build/darwin_arm64/vdub .
 
-      - name: Build Flutter UI (macOS)
-        working-directory: ui
+      - name: Assemble release package
         run: |
-          flutter pub get
-          flutter build macos --release --split-debug-info=../build/debug-info --obfuscate
-
-      - name: Assemble .app and create DMG
-        run: |
-          APP="ui/build/macos/Build/Products/Release/vdub_ui.app"
-          install -m 755 build/darwin_arm64/vdub "$APP/Contents/Resources/vdub"
-          install -m 755 vendor/ffmpeg/darwin/ffmpeg "$APP/Contents/Resources/ffmpeg"
-          cp -R vendor/whisper/darwin "$APP/Contents/Resources/whisper"
-          codesign --force --deep --sign - "$APP"
+          RELEASE_DIR="build/macos_release"
+          mkdir -p "$RELEASE_DIR"
+          cp build/darwin_arm64/vdub "$RELEASE_DIR/vdub"
+          cp vendor/ffmpeg/darwin/ffmpeg "$RELEASE_DIR/ffmpeg"
+          cp -R vendor/whisper/darwin "$RELEASE_DIR/whisper"
           TAG="${{ github.event.release.tag_name }}"
-          hdiutil create -volname "VDub" -srcfolder "$APP" -ov -format ULMO "vdub-macos-arm64-$TAG.dmg"
+          tar -czf "vdub-macos-arm64-$TAG.tar.gz" -C "$RELEASE_DIR" .
           tar -czf "vdub-whisper-darwin-arm64.tar.gz" -C vendor/whisper/darwin .
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            vdub-macos-arm64-*.dmg
+            vdub-macos-arm64-*.tar.gz
             vdub-whisper-darwin-arm64.tar.gz
 
   build-linux:
@@ -177,16 +176,21 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - uses: subosito/flutter-action@v2
+      - uses: actions/setup-node@v4
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Build Frontend (Linux)
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
 
       - name: Install Linux build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build pkg-config \
-            libgtk-3-dev libblkid-dev liblzma-dev \
+            libgtk-3-dev libwebkit2gtk-4.1-dev \
             ${{ matrix.cross_pkgs }}
 
       - name: Download ffmpeg (Linux ${{ matrix.goarch }})
@@ -200,11 +204,10 @@ jobs:
           chmod +x scripts/build-whisper-runtime.sh
           scripts/build-whisper-runtime.sh linux ${{ matrix.goarch }}
 
-      - name: Build Go engine (Linux ${{ matrix.goarch }})
+      - name: Build Go desktop single binary (Linux ${{ matrix.goarch }})
         env:
           GOOS: linux
           GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: '0'
         run: |
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
           BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
@@ -218,36 +221,16 @@ jobs:
           sudo apt-get install -y upx-ucl || true
           upx --best --lzma build/linux_${{ matrix.goarch }}/vdub || true
 
-      - name: Build Flutter UI (Linux)
-        if: matrix.goarch == 'amd64'
-        working-directory: ui
+      - name: Assemble release package
         run: |
-          flutter pub get
-          flutter build linux --release --split-debug-info=../build/debug-info --obfuscate
-
-      - name: Assemble release package (amd64 full)
-        if: matrix.goarch == 'amd64'
-        run: |
-          RELEASE_DIR="ui/build/linux/x64/release/bundle"
-          cp build/linux_amd64/vdub "$RELEASE_DIR/vdub"
+          RELEASE_DIR="build/linux_${{ matrix.goarch }}_release"
+          mkdir -p "$RELEASE_DIR"
+          cp build/linux_${{ matrix.goarch }}/vdub "$RELEASE_DIR/vdub"
           cp vendor/ffmpeg/linux/ffmpeg "$RELEASE_DIR/ffmpeg"
           cp -R vendor/whisper/linux "$RELEASE_DIR/whisper"
-          chmod +x "$RELEASE_DIR/vdub" "$RELEASE_DIR/ffmpeg"
           TAG="${{ github.event.release.tag_name }}"
-          tar -czf "vdub-linux-amd64-$TAG.tar.gz" -C "$RELEASE_DIR" .
-          tar -czf "vdub-whisper-linux-amd64.tar.gz" -C vendor/whisper/linux .
-
-      - name: Assemble release package (arm64 headless)
-        if: matrix.goarch == 'arm64'
-        run: |
-          TAG="${{ github.event.release.tag_name }}"
-          mkdir -p dist
-          cp build/linux_arm64/vdub dist/
-          cp vendor/ffmpeg/linux/ffmpeg dist/
-          cp -R vendor/whisper/linux dist/whisper
-          chmod +x dist/vdub dist/ffmpeg
-          tar -czf "vdub-linux-arm64-$TAG.tar.gz" -C dist .
-          tar -czf "vdub-whisper-linux-arm64.tar.gz" -C vendor/whisper/linux .
+          tar -czf "vdub-linux-${{ matrix.goarch }}-$TAG.tar.gz" -C "$RELEASE_DIR" .
+          tar -czf "vdub-whisper-linux-${{ matrix.goarch }}.tar.gz" -C vendor/whisper/linux .
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2

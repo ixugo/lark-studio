@@ -48,3 +48,5 @@ tmp/
 vdub
 .cursor/skills/
 vendor
+.preask/
+frontend/node_modules/

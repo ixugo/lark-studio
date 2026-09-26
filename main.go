@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"embed"
 	"expvar"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -17,8 +19,12 @@ import (
 	"github.com/ixugo/vdub/internal/app"
 	"github.com/ixugo/vdub/internal/conf"
 	"github.com/ixugo/vdub/internal/core/pipeline"
+	"github.com/ixugo/vdub/internal/wails"
 	"github.com/ixugo/vdub/internal/web/api"
 )
+
+//go:embed all:frontend/dist
+var assetsFS embed.FS
 
 var (
 	buildVersion = "0.0.1" // 构建版本号
@@ -29,14 +35,15 @@ var (
 )
 
 var (
-	configDir = flag.String("conf", "", "config directory (default: ~/dsub/configs/)")
-	portFlag  = flag.Int("port", -1, "override HTTP listen port (0 = select an available port)")
-	runFile   = flag.String("run", "", "directly run pipeline on a video file, skip HTTP server")
-	runMode   = flag.Int("mode", 2, "processing mode: 1=subtitle, 2=translate, 3=dub")
-	runLang   = flag.String("lang", "", "target language (default from config)")
-	runSS     = flag.Float64("ss", 0, "clip start time in seconds")
-	runTo     = flag.Float64("to", 0, "clip end time in seconds")
-	runOutput = flag.String("output", "", "output directory (default: video dir + _vdub)")
+	configDir  = flag.String("conf", "", "config directory (default: ~/dsub/configs/)")
+	portFlag   = flag.Int("port", -1, "override HTTP listen port (0 = select an available port)")
+	runFile    = flag.String("run", "", "directly run pipeline on a video file, skip HTTP server")
+	runMode    = flag.Int("mode", 2, "processing mode: 1=subtitle, 2=translate, 3=dub")
+	runLang    = flag.String("lang", "", "target language (default from config)")
+	runSS      = flag.Float64("ss", 0, "clip start time in seconds")
+	runTo      = flag.Float64("to", 0, "clip end time in seconds")
+	runOutput  = flag.String("output", "", "output directory (default: video dir + _vdub)")
+	serverFlag = flag.Bool("server", false, "run as headless HTTP server instead of desktop app")
 )
 
 func getBuildRelease() bool {
@@ -102,7 +109,22 @@ func main() {
 	api.DBVersion = buildVersion
 	api.DBRemark = gitBranch + "_" + gitHash
 
-	app.Run(&bc)
+	// 兼容纯无头服务模式，缺省默认启动 Wails3 单一二进制桌面应用
+	if *serverFlag {
+		app.Run(&bc)
+		return
+	}
+
+	distFS, err := fs.Sub(assetsFS, "frontend/dist")
+	if err != nil {
+		slog.Error("加载前端嵌入静态资源失败", "err", err)
+		panic(err)
+	}
+
+	if err := wails.RunApp(&bc, distFS); err != nil {
+		slog.Error("启动桌面应用失败", "err", err)
+		os.Exit(1)
+	}
 }
 
 // runCLI 终端直接运行流水线，不启动 HTTP 服务

@@ -2,7 +2,7 @@
 # ─────────────────────────────────────────────────────────
 
 BINARY      := vdub
-UI_DIR      := ui
+FRONTEND_DIR := frontend
 GOOS        ?= $(shell go env GOOS)
 GOARCH      ?= $(shell go env GOARCH)
 BUILD_DIR   := build/$(GOOS)_$(GOARCH)
@@ -43,17 +43,25 @@ version: ## 显示版本信息
 
 # ─── 编译 ───────────────────────────────────────────────
 
-build: ## 编译 Go 引擎（debug 模式）
+build-frontend: ## 编译前端静态资产
+	@echo "⚙ 构建前端资产..."
+	@cd $(FRONTEND_DIR) && npm run build
+
+build: build-frontend ## 编译 Go + Wails3 一体化桌面应用（debug 模式）
+	@mkdir -p $(BUILD_DIR)
 	go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY) .
 
-build-release: ## 编译 Go 引擎（release 模式，注入版本号+裁符号表+trimpath）
+build-release: build-frontend ## 编译 Go + Wails3 一体化桌面应用（release 模式，注入版本号+裁符号表+trimpath）
+	@mkdir -p $(BUILD_DIR)
 	go build -trimpath -ldflags "$(LDFLAGS_REL)" -o $(BUILD_DIR)/$(BINARY) .
 
-build-windows: ## 交叉编译 Windows amd64
+build-windows: build-frontend ## 交叉编译 Windows amd64
+	@mkdir -p build/windows_amd64
 	GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS_REL)" -o build/windows_amd64/$(BINARY).exe .
 
-test: ## 运行全量 Go 测试
+test: ## 运行全量测试（含 Go 与前端）
 	go test ./...
+	cd $(FRONTEND_DIR) && npm test
 
 # ─── E2E / CLI 测试 ─────────────────────────────────────
 
@@ -68,11 +76,10 @@ clip: build ## CLI 裁剪+翻译（需设 VDUB_LLM_* 环境变量，VIDEO=路径
 
 # ─── 开发 ───────────────────────────────────────────────
 
-dev: build ## 开发模式：编译 Go + Flutter debug
-	@echo "Go binary: $(BUILD_DIR)/$(BINARY)"
-	cd $(UI_DIR) && flutter run -d macos
+dev: ## 开发模式：启动前端开发服务器
+	@if [ -d "$(FRONTEND_DIR)" ]; then cd $(FRONTEND_DIR) && npm run dev; fi
 
-run: build ## 仅启动 Go 引擎（HTTP 模式）
+run: build ## 编译并启动桌面应用
 	$(BUILD_DIR)/$(BINARY)
 
 # ─── FFmpeg 静态包下载 ──────────────────────────────────
@@ -105,40 +112,18 @@ whisper-macos: ## 安装 macOS whisper.cpp 打包依赖
 
 # ─── 打包 ───────────────────────────────────────────────
 
-bundle-macos: ffmpeg-macos whisper-macos build-release ## 打包 macOS .dmg（Go + ffmpeg + whisper.cpp 内嵌）
-	cd $(UI_DIR) && flutter build macos --release --split-debug-info=../build/debug-info --obfuscate
-	$(eval APP := $(UI_DIR)/build/macos/Build/Products/Release/vdub_ui.app)
-	@mkdir -p "$(APP)/Contents/Resources"
-	@rm -f "$(APP)/Contents/Resources/ffprobe"
-	install -m 755 $(BUILD_DIR)/$(BINARY)       "$(APP)/Contents/Resources/$(BINARY)"
-	install -m 755 $(FFMPEG_DIR)/darwin/ffmpeg   "$(APP)/Contents/Resources/ffmpeg"
-	@mkdir -p "$(APP)/Contents/Resources/whisper/bin" "$(APP)/Contents/Resources/whisper/lib/backends"
-	install -m 755 "$(WHISPER_PREFIX)/bin/whisper-cli" "$(APP)/Contents/Resources/whisper/bin/whisper-cli"
-	cp "$(WHISPER_PREFIX)"/lib/*.dylib "$(APP)/Contents/Resources/whisper/lib/"
-	cp "$(GGML_PREFIX)"/lib/*.dylib "$(APP)/Contents/Resources/whisper/lib/"
-	cp "$(GGML_PREFIX)"/libexec/*.so "$(APP)/Contents/Resources/whisper/lib/backends/"
-	cp "$(LIBOMP_PREFIX)"/lib/libomp.dylib "$(APP)/Contents/Resources/whisper/lib/"
-	@echo "✓ $(APP)"
-	@echo "⚙ 生成 DMG..."
-	@rm -f build/vdub.dmg
-	@mkdir -p build
-	hdiutil create -volname "VDub" -srcfolder "$(APP)" -ov -format ULMO build/vdub.dmg
-	@echo "✓ build/vdub.dmg"
-	@du -sh build/vdub.dmg
+bundle-macos: ffmpeg-macos whisper-macos build-release ## 打包 macOS 一体化应用包
+	@echo "✓ 构建一体化 macOS 桌面端: $(BUILD_DIR)/$(BINARY)"
 
-bundle-windows: ffmpeg-windows build-windows ## 打包 Windows zip（Go + ffmpeg 并入 Flutter Release 目录）
+bundle-windows: ffmpeg-windows build-windows ## 打包 Windows 一体化应用包
 	@command -v upx >/dev/null && { echo "⚙ UPX 压缩 Go 二进制..."; upx --best --lzma build/windows_amd64/$(BINARY).exe; } || echo "⚠ 跳过 UPX（未安装）"
-	cd $(UI_DIR) && flutter build windows --release --split-debug-info=../build/debug-info --obfuscate
-	$(eval WIN := $(UI_DIR)/build/windows/x64/runner/Release)
-	cp build/windows_amd64/$(BINARY).exe  "$(WIN)/$(BINARY).exe"
-	cp $(FFMPEG_DIR)/windows/ffmpeg.exe   "$(WIN)/ffmpeg.exe"
-	@echo "✓ $(WIN)"
+	@echo "✓ 构建一体化 Windows 桌面端: build/windows_amd64/$(BINARY).exe"
 
 # ─── 清理 ───────────────────────────────────────────────
 
 clean: ## 清理构建产物（不删 vendor/ffmpeg）
 	rm -rf build/
-	cd $(UI_DIR) && flutter clean
+	@if [ -d "$(FRONTEND_DIR)/dist" ]; then rm -rf $(FRONTEND_DIR)/dist; fi
 
 clean-all: clean ## 清理全部（含下载的 ffmpeg）
 	rm -rf $(FFMPEG_DIR)
