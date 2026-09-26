@@ -100,6 +100,68 @@ func (s *AppService) BatchCreateTasks(videos []string, recipe task.CreateTaskInp
 	return created, nil
 }
 
+// MergeSubtitleInput 独立字幕合成输入参数
+type MergeSubtitleInput struct {
+	VideoPath        string `json:"video_path"`
+	PrimarySubPath   string `json:"primary_sub_path"`
+	SecondarySubPath string `json:"secondary_sub_path"`
+	OutputDir        string `json:"output_dir"`
+	OutputContent    string `json:"output_content"`
+}
+
+// MergeSubtitle 将外部字幕与视频合成为成片视频。
+func (s *AppService) MergeSubtitle(in MergeSubtitleInput) (*task.Task, error) {
+	if in.VideoPath == "" {
+		return nil, fmt.Errorf("请选择视频文件")
+	}
+	if in.PrimarySubPath == "" {
+		return nil, fmt.Errorf("请选择字幕文件")
+	}
+	if _, err := os.Stat(in.VideoPath); err != nil {
+		return nil, fmt.Errorf("视频文件不存在: %s", in.VideoPath)
+	}
+	if _, err := os.Stat(in.PrimarySubPath); err != nil {
+		return nil, fmt.Errorf("字幕文件不存在: %s", in.PrimarySubPath)
+	}
+
+	if in.OutputDir == "" {
+		baseName := strings.TrimSuffix(filepath.Base(in.VideoPath), filepath.Ext(in.VideoPath))
+		in.OutputDir = filepath.Join(filepath.Dir(in.VideoPath), baseName+"_vdub")
+	}
+	if err := os.MkdirAll(in.OutputDir, 0o755); err != nil {
+		return nil, fmt.Errorf("创建输出目录失败: %w", err)
+	}
+
+	if in.OutputContent == "bilingual" && in.SecondarySubPath != "" {
+		secData, err := os.ReadFile(in.SecondarySubPath)
+		if err == nil {
+			_ = os.WriteFile(filepath.Join(in.OutputDir, "src.srt"), secData, 0o644)
+		}
+		priData, err := os.ReadFile(in.PrimarySubPath)
+		if err != nil {
+			return nil, fmt.Errorf("读取主字幕失败: %w", err)
+		}
+		_ = os.WriteFile(filepath.Join(in.OutputDir, "trans.srt"), priData, 0o644)
+	} else {
+		in.OutputContent = "source"
+		priData, err := os.ReadFile(in.PrimarySubPath)
+		if err != nil {
+			return nil, fmt.Errorf("读取字幕失败: %w", err)
+		}
+		_ = os.WriteFile(filepath.Join(in.OutputDir, "src.srt"), priData, 0o644)
+	}
+
+	taskInput := task.CreateTaskInput{
+		InputPath:      in.VideoPath,
+		OutputDir:      in.OutputDir,
+		Mode:           pipeline.ModeSubtitle,
+		OutputContent:  in.OutputContent,
+		SubtitleOutput: "burn",
+	}
+
+	return s.CreateTask(taskInput)
+}
+
 // PauseTask 暂停进行中的任务。
 func (s *AppService) PauseTask(id string) error {
 	ctx := context.Background()

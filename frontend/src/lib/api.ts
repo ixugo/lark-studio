@@ -265,19 +265,22 @@ export const api = {
   },
 
   // ─── 文件交互 ───────────────────────────────────────────
-  async pickFiles(): Promise<string[]> {
+  async pickFiles(options?: { title?: string; multiple?: boolean; extensions?: string[] }): Promise<string[]> {
     // 1. 优先调用 Wails 3 原生 Dialogs.OpenFile
     if (typeof window !== 'undefined' && window.wails?.Dialogs?.OpenFile) {
       try {
-        const selected = await window.wails.Dialogs.OpenFile({
+        const dialogOpts: Record<string, unknown> = {
           CanChooseFiles: true,
-          AllowsMultipleSelection: true,
-          Title: '选择音视频或字幕文件',
-          Filters: [
-            { DisplayName: '音视频与字幕 (*.mp4,*.mkv,*.mov,*.mp3,*.wav,*.srt...)', Pattern: '*.mp4;*.mkv;*.mov;*.avi;*.webm;*.flv;*.mp3;*.wav;*.m4a;*.srt' },
-            { DisplayName: '所有文件 (*.*)', Pattern: '*.*' },
-          ],
-        });
+          AllowsMultipleSelection: options?.multiple ?? true,
+          Title: options?.title || '选择音视频或字幕文件',
+          Filters: options?.extensions
+            ? [{ DisplayName: '支持的文件', Pattern: options.extensions.map((ext) => (ext.startsWith('*') ? ext : `*.${ext}`)).join(';') }]
+            : [
+                { DisplayName: '音视频与字幕 (*.mp4,*.mkv,*.mov,*.mp3,*.wav,*.srt...)', Pattern: '*.mp4;*.mkv;*.mov;*.avi;*.webm;*.flv;*.mp3;*.wav;*.m4a;*.srt;*.vtt;*.ass' },
+                { DisplayName: '所有文件 (*.*)', Pattern: '*.*' },
+              ],
+        };
+        const selected = await window.wails.Dialogs.OpenFile(dialogOpts);
         if (Array.isArray(selected) && selected.length > 0) return selected;
         if (typeof selected === 'string' && selected) return [selected];
         if (Array.isArray(selected) && selected.length === 0) return [];
@@ -297,8 +300,12 @@ export const api = {
     return new Promise((resolve) => {
       const input = document.createElement('input');
       input.type = 'file';
-      input.multiple = true;
-      input.accept = 'video/*,audio/*,.srt';
+      input.multiple = options?.multiple ?? true;
+      if (options?.extensions && options.extensions.length > 0) {
+        input.accept = options.extensions.map((ext) => (ext.startsWith('.') ? ext : `.${ext}`)).join(',');
+      } else {
+        input.accept = 'video/*,audio/*,.srt,.vtt,.ass';
+      }
       input.onchange = () => {
         if (!input.files || input.files.length === 0) {
           resolve([]);
@@ -309,6 +316,41 @@ export const api = {
       };
       input.click();
     });
+  },
+
+  async mergeSubtitle(input: {
+    video_path: string;
+    primary_sub_path: string;
+    secondary_sub_path?: string;
+    output_dir?: string;
+    output_content?: string;
+  }): Promise<Task> {
+    const res = await invokeWailsMethod<Task>('MergeSubtitle', input);
+    if (res.called && res.result) return res.result;
+
+    const newTask: Task = {
+      id: `merge_${Date.now()}`,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      input_path: input.video_path,
+      output_dir: input.output_dir || `${input.video_path}_vdub`,
+      mode: 1,
+      status: 1,
+      current_step: 'burn',
+      current_detail: '字幕压制合成',
+      progress: 30,
+      step_progress: 30,
+      target_lang: 'zh-CN',
+      source_lang: 'auto',
+      translator: 'bing',
+      output_content: input.output_content || 'source',
+      tts_engine: 'edge',
+      tts_voice: '',
+      speech_rate: 1.0,
+      subtitle_output: 'burn',
+    };
+    mockTasks = [newTask, ...mockTasks];
+    return newTask;
   },
 
   async openInFileManager(path: string): Promise<void> {

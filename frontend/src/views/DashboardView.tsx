@@ -117,7 +117,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
   const [encodeMethod, setEncodeMethod] = useState('Apple VideoToolbox');
 
   // 子阶段 4：人工把关开关
-  const [proofread, setProofread] = useState(true);
   const [ttsConfirm, setTtsConfirm] = useState(false);
 
   // 配方弹窗与提交状态
@@ -799,13 +798,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
               <div className="relative">
                 <select
                   value={translateService}
-                  onChange={(e) => setTranslateService(e.target.value as 'openai' | 'local' | 'bing' | 'deeplx')}
+                  onChange={(e) => setTranslateService(e.target.value as 'bing' | 'openai' | 'deeplx')}
                   disabled={!doTranslate}
                   className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors shadow-sm"
                 >
-                  <option value="openai">OpenAI / GPT-4o (推荐)</option>
-                  <option value="local">Local LLM (本地 Ollama/Qwen)</option>
-                  <option value="bing">必应翻译 (免费免配置)</option>
+                  <option value="bing">必应翻译 (微软免费 · 免配置推荐)</option>
+                  <option value="openai">OpenAI 兼容接口 (支持 DeepSeek / GPT / 本地 Ollama)</option>
                   <option value="deeplx">DeepLX 翻译引擎</option>
                 </select>
                 <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
@@ -858,13 +856,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                 <div className="relative">
                   <select
                     value={ttsEngine}
-                    onChange={(e) => setTtsEngine(e.target.value as 'edge' | 'local' | 'openai' | 'elevenlabs')}
+                    onChange={(e) => setTtsEngine(e.target.value as 'edge' | 'openai')}
                     className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors shadow-sm"
                   >
-                    <option value="edge">EdgeTTS (免费免配置 · 推荐)</option>
-                    <option value="local">Local (ChatTTS / CosyVoice)</option>
-                    <option value="openai">OpenAI TTS-1-HD</option>
-                    <option value="elevenlabs">ElevenLabs (专业级)</option>
+                    <option value="edge">Edge TTS (微软免费高质量音色 · 推荐)</option>
+                    <option value="openai">OpenAI 兼容 TTS (云端/自建模型)</option>
                   </select>
                   <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
                 </div>
@@ -882,8 +878,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                     <option value="zh-CN-YunxiNeural">云希 (经典纪录片/解说男声)</option>
                     <option value="zh-CN-XiaoxiaoNeural">晓晓 (自然温柔女声)</option>
                     <option value="zh-CN-YunjianNeural">云健 (沉稳专业男声)</option>
+                    <option value="zh-CN-YunyangNeural">云扬 (新闻播报男声)</option>
                     <option value="en-US-JennyNeural">Jenny (标准美语女声)</option>
-                    <option value="1234">自定义音色克隆: 1234</option>
+                    <option value="alloy">OpenAI: Alloy</option>
+                    <option value="echo">OpenAI: Echo</option>
+                    <option value="nova">OpenAI: Nova</option>
                   </select>
                   <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
                 </div>
@@ -1007,42 +1006,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
         )}
 
         {/* 阶段 4：人工把关 */}
-        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl border border-slate-200/90 dark:border-[#2C2C2E] p-5 shadow-sm">
-          <div className="flex items-center gap-2 mb-4">
-            <UserCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-            <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
-              人工把关与确认 (可选)
-            </h3>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* 开关 1: 字幕校对 */}
-            <div className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200/80 dark:border-white/[0.08]">
-              <div>
-                <div className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
-                  <span>字幕校对</span>
-                  <span className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full border border-blue-200 dark:bg-blue-500/15 dark:text-blue-400 dark:border-blue-500/20">
-                    推荐开启
-                  </span>
-                </div>
-                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">字幕完成后先停下等你检查，再进行配音/合成</div>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={proofread}
-                  onChange={(e) => setProofread(e.target.checked)}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-slate-200 dark:bg-white/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 shadow-inner" />
-              </label>
+        {doDub && (
+          <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl border border-slate-200/90 dark:border-[#2C2C2E] p-5 shadow-sm">
+            <div className="flex items-center gap-2 mb-4">
+              <UserCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                人工把关与确认 (可选)
+              </h3>
             </div>
 
-            {/* 开关 2: 配音确认 */}
-            <div className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200/80 dark:border-white/[0.08]">
+            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200/80 dark:border-white/[0.08] flex items-center justify-between">
               <div>
-                <div className="text-xs font-bold text-slate-800 dark:text-white">配音确认</div>
-                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">配音完成后先停下试听确认，满意后再压制合成</div>
+                <div className="text-xs font-bold text-slate-800 dark:text-white">配音试听确认</div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">配音完成后先暂停供试听确认，满意后再执行最终压制与合成</div>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
@@ -1054,13 +1030,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                 <div className="w-11 h-6 bg-slate-200 dark:bg-white/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 shadow-inner" />
               </label>
             </div>
-          </div>
 
-          <div className="mt-3 text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-            <Clock className="w-3.5 h-3.5 text-slate-400" />
-            <span>到点系统将发送系统通知；校对/确认后点击「放行」自动继续，若全关则后台全自动极速产出。</span>
+            <div className="mt-3 text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-slate-400" />
+              <span>未开启时后台全自动极速产出，开启后将在配音完毕时暂停并等待放行。</span>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* 错误提示浮条 */}
         {errorMessage && (

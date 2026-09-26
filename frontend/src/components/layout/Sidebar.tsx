@@ -3,9 +3,7 @@ import {
   LayoutDashboard,
   Kanban,
   ListTodo,
-  FileEdit,
   Layers,
-  Mic,
   BookOpen,
   Settings,
   Sun,
@@ -16,9 +14,7 @@ export type TabKey =
   | 'dashboard'
   | 'board'
   | 'list'
-  | 'proofread'
   | 'merge'
-  | 'dubbing'
   | 'glossary'
   | 'settings';
 
@@ -41,9 +37,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { key: 'dashboard', label: '工作台', icon: <LayoutDashboard size={18} /> },
     { key: 'board', label: '任务看板', icon: <Kanban size={18} />, badge: runningTasksCount > 0 ? runningTasksCount : undefined },
     { key: 'list', label: '任务列表', icon: <ListTodo size={18} /> },
-    { key: 'proofread', label: '字幕校对', icon: <FileEdit size={18} /> },
     { key: 'merge', label: '字幕合成', icon: <Layers size={18} /> },
-    { key: 'dubbing', label: '配音克隆', icon: <Mic size={18} /> },
     { key: 'glossary', label: '术语词库', icon: <BookOpen size={18} /> },
     { key: 'settings', label: '全局设置', icon: <Settings size={18} /> },
   ];

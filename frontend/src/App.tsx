@@ -5,7 +5,7 @@ import { TaskBoardView } from './views/TaskBoardView';
 import { TaskListView } from './views/TaskListView';
 import { SettingsView } from './views/SettingsView';
 import { GlossaryView } from './views/GlossaryView';
-import { PlaceholderView } from './views/PlaceholderView';
+import { SubtitleMergeView } from './views/SubtitleMergeView';
 import { api } from './lib/api';
 
 export const App: React.FC = () => {
@@ -60,12 +60,8 @@ export const App: React.FC = () => {
         return <TaskBoardView />;
       case 'list':
         return <TaskListView />;
-      case 'proofread':
-        return <PlaceholderView type="proofread" />;
       case 'merge':
-        return <PlaceholderView type="merge" />;
-      case 'dubbing':
-        return <PlaceholderView type="dubbing" />;
+        return <SubtitleMergeView onTaskCreated={() => setCurrentTab('board')} />;
       case 'glossary':
         return <GlossaryView />;
       case 'settings':
