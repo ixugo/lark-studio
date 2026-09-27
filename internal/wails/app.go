@@ -16,7 +16,7 @@ import (
 	"github.com/ixugo/vdub/internal/web/api"
 )
 
-//go:embed appicon.png
+//go:embed lark-logo.png
 var appIcon []byte
 
 // RunApp 启动基于 Wails3 的单一二进制一体化桌面应用。

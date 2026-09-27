@@ -92,7 +92,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="pt-7 px-2 flex items-center justify-between wails-drag">
           <div className="flex items-center space-x-2.5 wails-no-drag">
             <div className="w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center border border-slate-200 dark:border-white/10">
-              <img src="/lark-logo.svg" alt={t('common.appTitle')} className="w-full h-full object-contain" />
+              <img src="/lark-logo.webp" alt={t('common.appTitle')} className="w-full h-full object-contain" />
             </div>
             <div>
               <h1 className="text-sm font-semibold tracking-tight text-slate-800 dark:text-white">

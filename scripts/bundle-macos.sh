@@ -22,9 +22,16 @@ cp "$BINARY" "$MACOS_DIR/vdub"
 chmod +x "$MACOS_DIR/vdub"
 cp "$FFMPEG" "$MACOS_DIR/ffmpeg"
 chmod +x "$MACOS_DIR/ffmpeg"
-if [ -f "build/AppIcon.icns" ]; then
-  cp "build/AppIcon.icns" "$RES_DIR/AppIcon.icns"
-fi
+ICONSET_DIR="$WORK_DIR/LarkStudio.iconset"
+mkdir -p "$ICONSET_DIR"
+for size in 16 32 128 256 512; do
+  sips -z "$size" "$size" internal/wails/lark-logo.png \
+    --out "$ICONSET_DIR/icon_${size}x${size}.png" >/dev/null
+  doubled=$((size * 2))
+  sips -z "$doubled" "$doubled" internal/wails/lark-logo.png \
+    --out "$ICONSET_DIR/icon_${size}x${size}@2x.png" >/dev/null
+done
+iconutil -c icns "$ICONSET_DIR" -o "$RES_DIR/AppIcon.icns"
 
 # 2. Info.plist
 cat > "$APP_DIR/Contents/Info.plist" <<EOF

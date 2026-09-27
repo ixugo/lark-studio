@@ -28,7 +28,7 @@ export const AboutView: React.FC = () => {
       {/* 头部产品主卡片 */}
       <div className="bg-white dark:bg-[#1C1C1E] border border-slate-200/90 dark:border-white/10 rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row items-center sm:items-start gap-6 shadow-sm">
         <div className="w-20 h-20 rounded-2xl overflow-hidden shrink-0 border border-slate-200 dark:border-white/10 shadow-md">
-          <img src="/lark-logo.svg" alt={t('about.appName')} className="w-full h-full object-contain p-3" />
+          <img src="/lark-logo.webp" alt={t('about.appName')} className="w-full h-full object-contain p-3" />
         </div>
         <div className="space-y-2 text-center sm:text-left flex-1">
           <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5">
