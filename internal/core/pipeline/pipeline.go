@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -66,6 +67,7 @@ type Config struct {
 	CleanIntermediate  bool    // 成功后删除中间产物
 	SubtitleOutput     string  // "burn" 烧录到视频 / "file" 仅输出字幕文件
 	LipSyncEnabled     bool    // 是否启用对口型（仅 ModeDub 生效）
+	SemanticSplitReady bool    // OpenAI 兼容翻译端点具备分词所需配置时启用语义分句
 }
 
 // Core 流水线调度核心
@@ -79,8 +81,9 @@ type Core struct {
 	termLister TermLister
 
 	// 资源互斥锁：翻译和 TTS 同一时间只能一个 worker 使用
-	llmMu sync.Mutex
-	ttsMu sync.Mutex
+	llmMu                   sync.Mutex
+	ttsMu                   sync.Mutex
+	semanticSplitConfigured atomic.Bool
 }
 
 // Option 配置选项
@@ -96,6 +99,14 @@ func (c *Core) Notifier() Notifier {
 		return nil
 	}
 	return c.notifier
+}
+
+// SetTranslationClient 在当前翻译段结束后切换客户端与语义分句状态。
+func (c *Core) SetTranslationClient(client LLMClient, splitReady bool) {
+	c.llmMu.Lock()
+	defer c.llmMu.Unlock()
+	c.llm = client
+	c.semanticSplitConfigured.Store(splitReady)
 }
 
 // WithTermLister 注入术语列表查询，翻译时自动将匹配术语写入 prompt
@@ -119,6 +130,7 @@ func NewCore(cfg Config, whisper WhisperRunner, llm LLMClient, tts TTSClient, op
 	for _, opt := range opts {
 		opt(c)
 	}
+	c.semanticSplitConfigured.Store(cfg.SemanticSplitReady)
 	if c.notifier == nil {
 		c.notifier = &noopNotifier{}
 	}
@@ -336,14 +348,14 @@ func (c *Core) buildSteps(job Job) []string {
 	case ModeSubtitle:
 		steps = []string{StepWhisper, StepBurn}
 	case ModeTranslate:
-		steps = translationSteps(job.Translator, StepWhisper, StepTranslate, StepBurn)
+		steps = translationSteps(c.semanticSplitReady(job.Translator), StepWhisper, StepTranslate, StepBurn)
 	case ModeDub:
 		if c.cfg.LipSyncEnabled && c.lipSync != nil {
 			steps = translationSteps(
-				job.Translator, StepWhisper, StepTranslate, StepTTS, StepMerge, StepLipSync, StepBurn,
+				c.semanticSplitReady(job.Translator), StepWhisper, StepTranslate, StepTTS, StepMerge, StepLipSync, StepBurn,
 			)
 		} else {
-			steps = translationSteps(job.Translator, StepWhisper, StepTranslate, StepTTS, StepMerge, StepBurn)
+			steps = translationSteps(c.semanticSplitReady(job.Translator), StepWhisper, StepTranslate, StepTTS, StepMerge, StepBurn)
 		}
 	case ModeDirectDub:
 		// 1-3-4 流程：听写转录(1) -> 跳过翻译 -> 原文配音(3) -> 压制成片(4)
@@ -377,11 +389,16 @@ func (c *Core) buildSteps(job Job) []string {
 }
 
 // translationSteps 仅在 OpenAI 翻译时插入语义分句，必应与 DeepLX 直接保留 Whisper 时间轴。
-func translationSteps(translator string, steps ...string) []string {
-	if !RequiresSemanticSplit(translator) {
+func translationSteps(splitReady bool, steps ...string) []string {
+	if !splitReady {
 		return steps
 	}
 	return append([]string{steps[0], StepSplit}, steps[1:]...)
+}
+
+// semanticSplitReady 防止 OpenAI 兼容端点缺配置时调用分词服务。
+func (c *Core) semanticSplitReady(translator string) bool {
+	return c.semanticSplitConfigured.Load() && RequiresSemanticSplit(translator)
 }
 
 // RequiresSemanticSplit 表示翻译引擎是否需要大模型参与语义分句与上下文翻译。

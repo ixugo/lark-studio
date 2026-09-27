@@ -31,6 +31,7 @@ type whisperModelInfo struct {
 
 var whisperModels = []whisperModelInfo{
 	{"large-v3-turbo", "1.62 GiB", "旗舰加速推荐，多语言高精度识别"},
+	{"tiny", "75 MiB", "最小型多语言模型，适合轻量转写与设备测试"},
 	{"medium", "1.53 GiB", "多语中型模型，中文识别效果佳"},
 	{"small", "488 MiB", "多语轻量模型，速度与质量均衡"},
 	{"medium.en", "1.53 GiB", "英文专用高质量模型，英语转录首选"},

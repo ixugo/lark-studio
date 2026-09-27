@@ -1,12 +1,14 @@
 package wails
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	asradapter "github.com/ixugo/vdub/internal/adapter/asr"
@@ -15,6 +17,37 @@ import (
 	"github.com/ixugo/vdub/internal/core/task"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
+
+// TestOpenAITTSReturnsPlayableAudio 保证试听接口返回浏览器可播放的数据地址。
+func TestOpenAITTSReturnsPlayableAudio(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/audio/speech" {
+			t.Errorf("试听请求路径错误: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "audio/mpeg")
+		if _, err := w.Write([]byte("sample-audio")); err != nil {
+			t.Errorf("写入测试音频失败: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	got, err := (&AppService{}).TestOpenAITTS(server.URL+"/v1", "", "custom-model", "custom-voice", "hello")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "data:audio/mpeg;base64," + base64.StdEncoding.EncodeToString([]byte("sample-audio"))
+	if got != want {
+		t.Fatalf("试听数据地址错误: got=%q want=%q", got, want)
+	}
+}
+
+// TestOpenAITTSRejectsMissingConfiguration 避免空配置发送无效试听请求。
+func TestOpenAITTSRejectsMissingConfiguration(t *testing.T) {
+	_, err := (&AppService{}).TestOpenAITTS("", "", "", "", "hello")
+	if err == nil || !strings.Contains(err.Error(), "均不能为空") {
+		t.Fatalf("空配置应返回校验错误，实际为 %v", err)
+	}
+}
 
 // TestWhisperModelConfigRoundTrip 保证模型路径经前端配置、TOML 持久化与重载后保持一致。
 func TestWhisperModelConfigRoundTrip(t *testing.T) {

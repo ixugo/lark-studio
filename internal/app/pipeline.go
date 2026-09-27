@@ -50,6 +50,7 @@ func NewPipelineCoreWithASR(bc *conf.Bootstrap, asrRouter *asradapter.Router, op
 		CleanIntermediate:  bc.Pipeline.CleanIntermediate,
 		SubtitleOutput:     bc.Pipeline.SubtitleOutput,
 		LipSyncEnabled:     bc.LipSync.Enabled,
+		SemanticSplitReady: strings.EqualFold(bc.LLM.Provider, "openai") && strings.TrimSpace(bc.LLM.BaseURL) != "" && strings.TrimSpace(bc.LLM.Model) != "",
 	}
 
 	lc := llm.NewRoutingClient(
@@ -153,13 +154,14 @@ func handlePipelineDone(
 
 // dbNotifier 将流水线进度事件回写到 Task DB 并通过 WebSocket 广播
 type dbNotifier struct {
-	taskCore      task.Core
-	hub           ws.Huber
-	details       map[string]string
-	lipSync       bool
-	mu            sync.Mutex
-	stepProgress  map[string]map[string]int
-	stepStartTime map[string]map[string]time.Time
+	taskCore           task.Core
+	hub                ws.Huber
+	details            map[string]string
+	lipSync            bool
+	semanticSplitReady bool
+	mu                 sync.Mutex
+	stepProgress       map[string]map[string]int
+	stepStartTime      map[string]map[string]time.Time
 }
 
 // newDBNotifier 创建带单调进度状态和步骤模型名称的通知器。
@@ -176,10 +178,18 @@ func newDBNotifier(taskCore task.Core, hub ws.Huber, bc *conf.Bootstrap) *dbNoti
 			pipeline.StepLipSync:   "MuseTalk",
 			pipeline.StepBurn:      "画面压制",
 		},
-		lipSync:       bc.LipSync.Enabled,
-		stepProgress:  make(map[string]map[string]int),
-		stepStartTime: make(map[string]map[string]time.Time),
+		lipSync:            bc.LipSync.Enabled,
+		semanticSplitReady: strings.EqualFold(bc.LLM.Provider, "openai") && strings.TrimSpace(bc.LLM.BaseURL) != "" && strings.TrimSpace(bc.LLM.Model) != "",
+		stepProgress:       make(map[string]map[string]int),
+		stepStartTime:      make(map[string]map[string]time.Time),
 	}
+}
+
+// SetSemanticSplitReady 让总进度权重跟随当前翻译配置。
+func (n *dbNotifier) SetSemanticSplitReady(ready bool) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.semanticSplitReady = ready
 }
 
 // whisperModelName 提取适合界面显示的模型名称。
@@ -491,12 +501,12 @@ func (n *dbNotifier) progressWeights(mode int, subtitleOutput, translator string
 		weights[pipeline.StepWhisper] = 65
 	case pipeline.ModeTranslate:
 		weights[pipeline.StepWhisper] = 35
-		if pipeline.RequiresSemanticSplit(translator) {
+		if n.semanticSplitReady && pipeline.RequiresSemanticSplit(translator) {
 			weights[pipeline.StepSplit] = 5
 		}
 		weights[pipeline.StepTranslate] = 25
 	case pipeline.ModeDub:
-		if pipeline.RequiresSemanticSplit(translator) {
+		if n.semanticSplitReady && pipeline.RequiresSemanticSplit(translator) {
 			weights[pipeline.StepSplit] = 5
 		}
 		weights[pipeline.StepTranslate] = 20

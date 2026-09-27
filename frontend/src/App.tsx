@@ -9,9 +9,11 @@ import { SubtitleMergeView } from './views/SubtitleMergeView';
 import { TranslationEngineView } from './views/TranslationEngineView';
 import { TtsEngineView } from './views/TtsEngineView';
 import { AsrEngineView } from './views/AsrEngineView';
+import { AboutView } from './views/AboutView';
 import { api } from './lib/api';
+import { LanguageProvider } from './i18n';
 
-export const App: React.FC = () => {
+export const AppContent: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<TabKey>('dashboard');
   const [isDark, setIsDark] = useState(false);
   const [runningCount, setRunningCount] = useState(0);
@@ -75,6 +77,8 @@ export const App: React.FC = () => {
         return <GlossaryView />;
       case 'settings':
         return <SettingsView onNavigate={(tab) => setCurrentTab(tab as TabKey)} />;
+      case 'about':
+        return <AboutView />;
       default:
         return <DashboardView onTaskCreated={() => setCurrentTab('board')} />;
     }
@@ -93,5 +97,13 @@ export const App: React.FC = () => {
         {renderContent()}
       </main>
     </div>
+  );
+};
+
+export const App: React.FC = () => {
+  return (
+    <LanguageProvider>
+      <AppContent />
+    </LanguageProvider>
   );
 };

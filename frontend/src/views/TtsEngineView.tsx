@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Volume2,
   Sparkles,
@@ -9,9 +9,12 @@ import {
   Eye,
   EyeOff,
   ShieldCheck,
+  Play,
+  Loader2,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { ConfigDTO } from '../types';
+import { useTranslation } from '../i18n';
 
 interface TtsEngineItem {
   id: 'edge' | 'openai';
@@ -51,17 +54,41 @@ const POPULAR_EDGE_VOICES = [
 ];
 
 export const TtsEngineView: React.FC = () => {
+  const { locale } = useTranslation();
+  const english = locale === 'en-US';
+  // 让配置页所有说明与全局语言切换保持一致。
+  const tr = (zh: string, en: string) => english ? en : zh;
   const [config, setConfig] = useState<ConfigDTO | null>(null);
   const [activeEngine, setActiveEngine] = useState<'edge' | 'openai'>('edge');
   const [showApiKey, setShowApiKey] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [testingTTS, setTestingTTS] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const engineDetails = {
+    edge: { name: 'Edge TTS', tag: tr('免 Key 推荐', 'Recommended · No Key'), desc: tr('微软神经语音服务，音色自然且无需单独配置密钥。', 'Microsoft neural voices with natural speech and no API key setup.'), badge: tr('推荐', 'Recommended') },
+    openai: { name: 'OpenAI TTS', tag: tr('兼容接口', 'Compatible API'), desc: tr('可连接 OpenAI 兼容的语音合成服务。', 'Connect to any OpenAI-compatible speech synthesis service.'), badge: undefined },
+  };
 
   useEffect(() => {
     api.getConfig().then((cfg) => {
-      setConfig(cfg);
-      const current = (cfg.tts?.type?.toLowerCase() || 'edge') as any;
+      const patched: ConfigDTO = {
+        ...cfg,
+        pipeline: {
+          ...cfg.pipeline,
+          max_speed_factor: cfg.pipeline?.max_speed_factor ? cfg.pipeline.max_speed_factor : 1.2,
+          tts_workers: cfg.pipeline?.tts_workers ? cfg.pipeline.tts_workers : 2,
+        },
+        tts: {
+          ...cfg.tts,
+          voice: cfg.tts?.voice || 'zh-CN-YunjianNeural',
+          model: cfg.tts?.model || 'tts-1',
+        },
+      };
+      setConfig(patched);
+      const current = (patched.tts?.type?.toLowerCase() || 'edge') as any;
       if (['edge', 'openai'].includes(current)) {
         setActiveEngine(current);
       }
@@ -110,10 +137,35 @@ export const TtsEngineView: React.FC = () => {
     handleSave(engineId);
   };
 
+  // 用目标语言试听当前兼容接口，尽早发现模型名、音色名或服务地址错误。
+  const handleTestTTS = async () => {
+    if (!config) return;
+    setTestingTTS(true);
+    setTestResult(null);
+    try {
+      const text = locale === 'en-US' ? 'Hello, I am using Lark Studio.' : '你好，我正在使用云雀工坊。';
+      const audioURL = await api.testOpenAITTS(
+        config.tts.base_url || '',
+        config.tts.api_key || '',
+        config.tts.model || '',
+        config.tts.voice || '',
+        text,
+      );
+      audioRef.current?.pause();
+      audioRef.current = new Audio(audioURL);
+      await audioRef.current.play();
+      setTestResult({ success: true, message: locale === 'en-US' ? 'Preview is playing.' : '试听已开始播放。' });
+    } catch (err) {
+      setTestResult({ success: false, message: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setTestingTTS(false);
+    }
+  };
+
   if (!config) {
     return (
       <div className="h-screen flex items-center justify-center text-xs text-slate-400">
-        正在读取语音合成配置...
+        {tr('正在读取语音合成配置...', 'Loading speech synthesis settings...')}
       </div>
     );
   }
@@ -128,14 +180,14 @@ export const TtsEngineView: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-xl font-bold tracking-tight text-slate-800 dark:text-white">
-                语音合成引擎
+                {tr('语音合成引擎', 'Speech Synthesis Engine')}
               </h2>
               <span className="px-2 py-0.5 text-[11px] font-medium bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20 rounded-md">
-                当前默认: {TTS_ENGINES.find(e => e.id === (config.tts.type || 'edge').toLowerCase())?.name || config.tts.type}
+                {tr('当前默认：', 'Current default: ')}{TTS_ENGINES.find(e => e.id === (config.tts.type || 'edge').toLowerCase())?.name || config.tts.type}
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              配置视频配音与语音合成音色、并发线程及自动语速调整
+              {tr('配置视频配音与语音合成音色、并发线程及自动语速调整', 'Configure voices, concurrency, and automatic speech rate for dubbing.')}
             </p>
           </div>
         </div>
@@ -144,14 +196,14 @@ export const TtsEngineView: React.FC = () => {
         {savedSuccess && (
           <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center space-x-2 text-xs text-emerald-600 dark:text-emerald-400 animate-in fade-in">
             <CheckCircle2 size={16} />
-            <span>语音合成配置已保存并生效！</span>
+            <span>{tr('语音合成配置已保存并生效！', 'Speech synthesis settings saved and applied.')}</span>
           </div>
         )}
 
         {errorMsg && (
           <div className="p-3 bg-rose-50 border border-rose-200 dark:bg-rose-500/10 dark:border-rose-500/30 rounded-xl flex items-center gap-2 text-xs text-rose-600 dark:text-rose-300 animate-in fade-in">
             <AlertCircle size={16} />
-            <span>保存失败: {errorMsg}</span>
+            <span>{tr('保存失败：', 'Save failed: ')}{errorMsg}</span>
           </div>
         )}
 
@@ -161,7 +213,7 @@ export const TtsEngineView: React.FC = () => {
           <div className="col-span-4 bg-white dark:bg-[#1C1C1E] border border-slate-200/90 dark:border-[#2C2C2E] rounded-2xl p-3 flex flex-col justify-between">
             <div className="space-y-1.5">
               <div className="px-3 py-2 text-[11px] font-semibold text-slate-400 dark:text-slate-500 tracking-wider uppercase">
-                合成引擎列表
+                {tr('合成引擎列表', 'Synthesis Engines')}
               </div>
               {TTS_ENGINES.map((item) => {
                 const isSelected = activeEngine === item.id;
@@ -183,14 +235,14 @@ export const TtsEngineView: React.FC = () => {
                       <span>{item.name}</span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      {item.badge && (
+                      {engineDetails[item.id].badge && (
                         <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 rounded">
-                          {item.badge}
+                          {engineDetails[item.id].badge}
                         </span>
                       )}
                       {isDefault && (
                         <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-blue-600 text-white rounded flex items-center gap-0.5">
-                          <Check size={10} /> 默认
+                          <Check size={10} /> {tr('默认', 'Default')}
                         </span>
                       )}
                     </div>
@@ -202,9 +254,9 @@ export const TtsEngineView: React.FC = () => {
             <div className="p-3 bg-slate-50 dark:bg-white/[0.03] border border-slate-200/70 dark:border-white/5 rounded-xl text-[11px] text-slate-500 dark:text-slate-400 space-y-1">
               <div className="flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-300">
                 <ShieldCheck size={14} className="text-emerald-500" />
-                <span>智能音画对齐</span>
+                <span>{tr('智能音画对齐', 'Audio and Video Alignment')}</span>
               </div>
-              <p>系统内置动态调速算法，确保生成的译文配音与原视频片段精准对齐，无吞字、无拖沓。</p>
+              <p>{tr('系统内置动态调速算法，确保生成的译文配音与原视频片段精准对齐，无吞字、无拖沓。', 'Dynamic speed adjustment keeps translated speech aligned with each source video segment.')}</p>
             </div>
           </div>
 
@@ -213,7 +265,7 @@ export const TtsEngineView: React.FC = () => {
             <div className="space-y-6">
               {/* 头部状态与默认切换 */}
               {(() => {
-                const currentMeta = TTS_ENGINES.find((e) => e.id === activeEngine);
+                const currentMeta = engineDetails[activeEngine];
                 return (
                   <div className="flex items-start justify-between pb-4 border-b border-slate-100 dark:border-white/5">
                     <div className="space-y-1">
@@ -234,7 +286,7 @@ export const TtsEngineView: React.FC = () => {
                     <div>
                       {isCurrentDefault ? (
                         <span className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 rounded-xl text-xs font-semibold flex items-center gap-1.5">
-                          <Check size={14} /> 默认引擎
+                          <Check size={14} /> {tr('默认引擎', 'Default Engine')}
                         </span>
                       ) : (
                         <button
@@ -242,7 +294,7 @@ export const TtsEngineView: React.FC = () => {
                           onClick={() => handleSetDefault(activeEngine)}
                           className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5"
                         >
-                          设为默认引擎
+                          {tr('设为默认引擎', 'Set as Default')}
                         </button>
                       )}
                     </div>
@@ -255,7 +307,7 @@ export const TtsEngineView: React.FC = () => {
                 <div className="space-y-4 animate-in fade-in">
                   <div>
                     <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                      默认神经音色
+                        {tr('默认神经音色', 'Default Neural Voice')}
                     </label>
                     <select
                       value={config.tts.voice}
@@ -269,7 +321,15 @@ export const TtsEngineView: React.FC = () => {
                     >
                       {POPULAR_EDGE_VOICES.map((v) => (
                         <option key={v.value} value={v.value}>
-                          {v.label}
+                          {english ? ({
+                            'zh-CN-YunjianNeural': 'Yunjian · Calm male voice',
+                            'zh-CN-XiaoxiaoNeural': 'Xiaoxiao · Friendly female voice',
+                            'zh-CN-YunxiNeural': 'Yunxi · Bright male narration',
+                            'zh-CN-YunxiaNeural': 'Yunxia · Youthful male voice',
+                            'zh-CN-XiaoyiNeural': 'Xiaoyi · Expressive female voice',
+                            'en-US-ChristopherNeural': 'Christopher · US English male',
+                            'en-US-JennyNeural': 'Jenny · US English female',
+                          } as Record<string, string>)[v.value] : v.label}
                         </option>
                       ))}
                     </select>
@@ -278,14 +338,15 @@ export const TtsEngineView: React.FC = () => {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                        TTS 调速上限
+                        {tr('TTS 调速上限', 'TTS Speed Limit')}
                       </label>
                       <input
                         type="number"
                         step="0.05"
                         min="1.0"
                         max="2.0"
-                        value={config.pipeline.max_speed_factor}
+                        placeholder="1.2"
+                        value={config.pipeline.max_speed_factor ?? 1.2}
                         onChange={(e) =>
                           setConfig({
                             ...config,
@@ -297,18 +358,19 @@ export const TtsEngineView: React.FC = () => {
                         }
                         className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                       />
-                      <p className="text-[11px] text-slate-400 mt-1">推荐 1.2 ~ 1.3，译文超时时自动轻微倍速压制</p>
+                      <p className="text-[11px] text-slate-400 mt-1">{tr('推荐 1.2 ~ 1.3，译文超时时自动轻微倍速压制', '1.2–1.3 is recommended; speech speeds up slightly when a segment exceeds its duration.')}</p>
                     </div>
 
                     <div>
                       <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                        TTS 并发生成协程数
+                        {tr('TTS 并发生成协程数', 'Concurrent TTS Workers')}
                       </label>
                       <input
                         type="number"
                         min={1}
                         max={6}
-                        value={config.pipeline.tts_workers}
+                        placeholder="2"
+                        value={config.pipeline.tts_workers ?? 2}
                         onChange={(e) =>
                           setConfig({
                             ...config,
@@ -320,7 +382,7 @@ export const TtsEngineView: React.FC = () => {
                         }
                         className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                       />
-                      <p className="text-[11px] text-slate-400 mt-1">默认 2 协程并发，兼顾速度与避免被服务端流控</p>
+                      <p className="text-[11px] text-slate-400 mt-1">{tr('默认 2 协程并发，兼顾速度与避免被服务端流控', 'Two workers by default balance speed with provider rate limits.')}</p>
                     </div>
                   </div>
                 </div>
@@ -350,7 +412,7 @@ export const TtsEngineView: React.FC = () => {
 
                     <div>
                       <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                        访问密钥 API Key
+                        {tr('访问密钥 API Key', 'API Key')}
                       </label>
                       <div className="relative">
                         <input
@@ -379,9 +441,11 @@ export const TtsEngineView: React.FC = () => {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                        TTS 模型
+                        {tr('TTS 模型', 'TTS Model')}
                       </label>
-                      <select
+                      <input
+                        type="text"
+                        placeholder={tr('如 tts-1 或自定义模型名', 'For example: tts-1 or a custom model name')}
                         value={config.tts.model || 'tts-1'}
                         onChange={(e) =>
                           setConfig({
@@ -390,17 +454,16 @@ export const TtsEngineView: React.FC = () => {
                           })
                         }
                         className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-                      >
-                        <option value="tts-1">tts-1 · 标准低延迟</option>
-                        <option value="tts-1-hd">tts-1-hd · 高保真高清</option>
-                      </select>
+                      />
                     </div>
 
                     <div>
                       <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                        默认音色
+                        {tr('默认音色', 'Default Voice')}
                       </label>
-                      <select
+                      <input
+                        type="text"
+                        placeholder={tr('如 alloy 或服务端支持的音色名', 'For example: alloy or a voice supported by your service')}
                         value={config.tts.voice || 'alloy'}
                         onChange={(e) =>
                           setConfig({
@@ -409,22 +472,32 @@ export const TtsEngineView: React.FC = () => {
                           })
                         }
                         className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-                      >
-                        <option value="alloy">alloy · 中性沉稳</option>
-                        <option value="echo">echo · 圆润男声</option>
-                        <option value="fable">fable · 英伦质感</option>
-                        <option value="onyx">onyx · 低沉浑厚男声</option>
-                        <option value="nova">nova · 明亮女声</option>
-                        <option value="shimmer">shimmer · 清脆女声</option>
-                      </select>
+                      />
                     </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleTestTTS}
+                      disabled={testingTTS}
+                      className="px-3.5 py-1.5 rounded-xl border border-blue-500/30 bg-blue-50/70 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      {testingTTS ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
+                      <span>{testingTTS ? (locale === 'en-US' ? 'Generating preview…' : '正在生成试听…') : (locale === 'en-US' ? 'Test voice and play' : '测试音色并播放')}</span>
+                    </button>
+                    {testResult && (
+                      <span className={`text-xs ${testResult.success ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                        {testResult.message}
+                      </span>
+                    )}
                   </div>
                 </div>
               )}
             </div>
 
             <div className="pt-4 border-t border-slate-100 dark:border-white/5 flex items-center justify-between text-xs text-slate-500">
-              <span>所做配置自动保存至本地配置中心</span>
+              <span>{tr('所做配置自动保存至本地配置中心', 'Settings are saved locally.')}</span>
               <button
                 type="button"
                 onClick={() => handleSave()}
@@ -432,7 +505,7 @@ export const TtsEngineView: React.FC = () => {
                 className="px-5 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition-all flex items-center gap-1.5 active:scale-[0.98] disabled:opacity-50"
               >
                 <Save size={14} />
-                <span>{loading ? '正在保存...' : '保存语音配置'}</span>
+                <span>{loading ? tr('正在保存...', 'Saving...') : tr('保存语音配置', 'Save Speech Settings')}</span>
               </button>
             </div>
           </div>

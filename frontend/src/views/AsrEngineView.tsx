@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  Cpu,
   Cloud,
   CheckCircle2,
   AlertCircle,
@@ -11,7 +10,6 @@ import {
   Download,
   Trash2,
   RefreshCw,
-  HardDrive,
   Sparkles,
   Terminal,
   ChevronDown,
@@ -36,7 +34,7 @@ const ASR_ENGINES: AsrEngineItem[] = [
     id: 'whisper-cpp',
     name: 'Whisper.cpp',
     tagKey: 'asr.offlineAcceleration',
-    icon: <Cpu size={18} className="text-blue-500" />,
+    icon: <ShieldCheck size={18} className="text-blue-500" />,
     badge: '推荐',
   },
   {
@@ -421,19 +419,6 @@ export const AsrEngineView: React.FC = () => {
               })}
             </div>
 
-            <div className="p-3 bg-slate-50 dark:bg-white/[0.03] border border-slate-200/70 dark:border-white/5 rounded-xl text-[11px] text-slate-500 dark:text-slate-400 space-y-1.5">
-              <div className="flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-300">
-                <ShieldCheck size={14} className="text-emerald-500" />
-                <span>{t('asr.privacyTitle')}</span>
-              </div>
-              <p className="leading-relaxed">
-                {t('asr.privacyDesc')}
-              </p>
-              <div className="pt-1 border-t border-slate-200/60 dark:border-white/5 flex items-center gap-1.5 text-[10px] text-slate-400">
-                <HardDrive size={11} className="text-slate-400" />
-                <span>{locale === 'en-US' ? 'Local Storage & Offline Engine' : '本地安全存储 · 离线加速'}</span>
-              </div>
-            </div>
           </div>
 
           {/* 右侧详细配置展示 */}

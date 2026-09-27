@@ -1,4 +1,4 @@
-import { Task, TaskLog, CreateTaskInput, ConfigDTO, Term } from '../types';
+import { Task, TaskLog, TaskStep, CreateTaskInput, RerunTaskOptions, ConfigDTO, Term, AppInfo } from '../types';
 
 declare global {
   interface Window {
@@ -114,14 +114,14 @@ let mockConfig: ConfigDTO = {
     ffmpeg_bin: 'ffmpeg',
     default_target_lang: 'zh-CN',
     translate_prompt: '',
-    max_speed_factor: 1.5,
+    max_speed_factor: 1.2,
     translate_chunk_size: 10,
     tts_workers: 2,
     clean_intermediate: false,
     subtitle_output: 'burn',
   },
   llm: {
-    provider: 'openai',
+    provider: 'bing',
     base_url: 'https://api.openai.com/v1',
     api_key: '',
     model: 'gpt-4o-mini',
@@ -153,18 +153,40 @@ let mockTerms: Term[] = [
   { id: 3, glossary_id: 1, text: 'Fine-tuning', translation: '微调', note: '模型调优' },
 ];
 
-const WAILS_SERVICE_PREFIX = 'github.com/ixugo/vdub/internal/wails.AppService';
+const WAILS_SERVICE_CANDIDATES = [
+  'github.com/ixugo/vdub/internal/wails.AppService',
+  'AppService',
+  'main.AppService',
+  '',
+];
+
+let detectedServicePrefix: string | null = null;
 
 async function invokeWailsMethod<T>(methodName: string, ...args: unknown[]): Promise<{ called: boolean; result?: T }> {
   if (typeof window === 'undefined') return { called: false };
 
   // 1. 优先尝试 Wails 3 Call.ByName
   if (window.wails?.Call?.ByName) {
-    try {
-      const res = await window.wails.Call.ByName<T>(`${WAILS_SERVICE_PREFIX}.${methodName}`, ...args);
-      return { called: true, result: res };
-    } catch (err) {
-      console.warn(`[Wails3] Call.ByName ${methodName} 失败:`, err);
+    const candidates = detectedServicePrefix
+      ? [detectedServicePrefix]
+      : WAILS_SERVICE_CANDIDATES;
+
+    for (const prefix of candidates) {
+      const fullMethod = prefix ? `${prefix}.${methodName}` : methodName;
+      try {
+        const res = await window.wails.Call.ByName<T>(fullMethod, ...args);
+        detectedServicePrefix = prefix;
+        return { called: true, result: res };
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        // 若为方法未注册，尝试下一个前缀候选
+        if (errMsg.includes('unknown bound method') || errMsg.includes('not found')) {
+          continue;
+        }
+        // 若已命中绑定方法但后端执行抛错（如目录不存在），锁定前缀并向上抛出业务异常
+        detectedServicePrefix = prefix;
+        throw err;
+      }
     }
   }
 
@@ -176,6 +198,7 @@ async function invokeWailsMethod<T>(methodName: string, ...args: unknown[]): Pro
       return { called: true, result: res };
     } catch (err) {
       console.warn(`[Wails2] ${methodName} 失败:`, err);
+      throw err;
     }
   }
 
@@ -202,6 +225,12 @@ export const api = {
     const res = await invokeWailsMethod<TaskLog[]>('ListTaskLogs', id);
     if (res.called && res.result) return res.result;
     return mockLogs[id] || [];
+  },
+
+  async listTaskSteps(taskId: string): Promise<TaskStep[]> {
+    const res = await invokeWailsMethod<TaskStep[]>('ListTaskSteps', taskId);
+    if (res.called && res.result) return res.result;
+    return [];
   },
 
   async createTask(input: CreateTaskInput): Promise<Task> {
@@ -257,11 +286,41 @@ export const api = {
     mockTasks = mockTasks.map((t) => (t.id === id ? { ...t, status: 1 } : t));
   },
 
+  async rerunTaskFromStep(id: string, fromStep: string): Promise<void> {
+    const res = await invokeWailsMethod<void>('RerunTaskFromStep', id, fromStep);
+    if (res.called) return;
+    mockTasks = mockTasks.map((t) =>
+      t.id === id ? { ...t, status: 1, current_step: fromStep, current_detail: `重跑节点: ${fromStep}` } : t
+    );
+  },
+
+  async rerunTaskWithRecipe(id: string, opts: RerunTaskOptions): Promise<void> {
+    const res = await invokeWailsMethod<void>('RerunTaskWithRecipe', id, opts);
+    if (res.called) return;
+    mockTasks = mockTasks.map((t) =>
+      t.id === id
+        ? {
+            ...t,
+            status: 1,
+            current_step: opts.from_step,
+            current_detail: `重跑节点: ${opts.from_step}`,
+            ...(opts.mode ? { mode: opts.mode } : {}),
+            ...(opts.speech_rate ? { speech_rate: opts.speech_rate } : {}),
+            ...(opts.tts_voice ? { tts_voice: opts.tts_voice } : {}),
+            ...(opts.subtitle_output ? { subtitle_output: opts.subtitle_output } : {}),
+            ...(opts.target_lang ? { target_lang: opts.target_lang } : {}),
+            ...(opts.output_content ? { output_content: opts.output_content } : {}),
+            ...(opts.recipe_name ? { recipe_name: opts.recipe_name } : {}),
+          }
+        : t
+    );
+  },
+
   async deleteTask(id: string): Promise<void> {
     const res = await invokeWailsMethod<void>('DeleteTask', id);
-    if (res.called) return;
     mockTasks = mockTasks.filter((t) => t.id !== id);
     delete mockLogs[id];
+    if (res.called) return;
   },
 
   // ─── 文件交互 ───────────────────────────────────────────
@@ -389,6 +448,150 @@ export const api = {
     const res = await invokeWailsMethod<void>('DeleteTerm', id);
     if (res.called) return;
     mockTerms = mockTerms.filter((item) => item.id !== id);
+  },
+
+  // ─── 配方管理 (SQLite 存储) ──────────────────────────────
+  async listRecipes(): Promise<import('../types').RecipeItem[]> {
+    const res = await invokeWailsMethod<import('../types').RecipeItem[]>('ListRecipes');
+    if (res.called && res.result) return res.result;
+    try {
+      const saved = localStorage.getItem('vdub_custom_recipes');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return parsed.map((p: any) => ({
+          id: p.id,
+          title: p.title,
+          subtitle: p.subtitle,
+          badge: p.badge || '我的配方',
+          is_custom: true,
+          do_sub: p.goals?.sub ?? true,
+          do_translate: p.goals?.translate ?? true,
+          do_dub: p.goals?.dub ?? true,
+          do_video: p.goals?.video ?? true,
+          target_lang: p.config?.targetLang,
+          tts_voice: p.config?.ttsVoice,
+          speech_rate: p.config?.speechRate,
+          subtitle_output: p.config?.subtitleOutput,
+        }));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return [];
+  },
+
+  async saveRecipe(recipe: Partial<import('../types').RecipeItem>): Promise<import('../types').RecipeItem> {
+    const res = await invokeWailsMethod<import('../types').RecipeItem>('SaveRecipe', recipe);
+    if (res.called && res.result) return res.result;
+    const item: import('../types').RecipeItem = {
+      id: recipe.id || `rcp_${Date.now()}`,
+      title: recipe.title || '自定义配方',
+      subtitle: recipe.subtitle || '',
+      badge: recipe.badge || '我的配方',
+      is_custom: true,
+      do_sub: recipe.do_sub ?? true,
+      do_translate: recipe.do_translate ?? true,
+      do_dub: recipe.do_dub ?? true,
+      do_video: recipe.do_video ?? true,
+      target_lang: recipe.target_lang,
+      tts_voice: recipe.tts_voice,
+      speech_rate: recipe.speech_rate,
+      subtitle_output: recipe.subtitle_output,
+    };
+    return item;
+  },
+
+  async deleteRecipe(id: string): Promise<void> {
+    const res = await invokeWailsMethod<void>('DeleteRecipe', id);
+    if (res.called) return;
+  },
+
+  // ─── Whisper 模型与运行时管理 ──────────────────────────────
+  async listWhisperModels(): Promise<import('../types').WhisperModelItem[]> {
+    const res = await invokeWailsMethod<import('../types').WhisperModelItem[]>('ListWhisperModels');
+    if (res.called && res.result) return res.result;
+
+    // 浏览器开发模式下的模拟列表
+    return [
+      { name: 'tiny', size: '75 MiB', desc: '最小最快，适合极速测试', downloaded: true, path: 'models/ggml-tiny.bin' },
+      { name: 'base', size: '148 MiB', desc: '轻量首选，日常快速转写', downloaded: true, path: 'models/ggml-base.bin' },
+      { name: 'small', size: '488 MiB', desc: '性价比极佳，兼顾速度与准确度', downloaded: false },
+      { name: 'medium', size: '1.53 GiB', desc: '中文效果好，适合正式视频', downloaded: false },
+      { name: 'large-v3-turbo', size: '1.62 GiB', desc: '最新旗舰 Turbo，极致精度与极佳速度推荐', downloaded: true, path: 'models/ggml-large-v3-turbo.bin' },
+      { name: 'large-v3', size: '3.1 GiB', desc: '最高精度旗舰模型', downloaded: false },
+    ];
+  },
+
+  async downloadWhisperModel(name: string): Promise<void> {
+    const res = await invokeWailsMethod<void>('DownloadWhisperModel', name);
+    if (res.called) return;
+    console.log('触发模型下载:', name);
+  },
+
+  async deleteWhisperModel(name: string): Promise<void> {
+    const res = await invokeWailsMethod<void>('DeleteWhisperModel', name);
+    if (res.called) return;
+    console.log('删除模型:', name);
+  },
+
+  async inspectWhisperRuntime(): Promise<import('../types').WhisperRuntimeInfo> {
+    const res = await invokeWailsMethod<import('../types').WhisperRuntimeInfo>('InspectWhisperRuntime');
+    if (res.called && res.result) return res.result;
+
+    return {
+      installed: true,
+      binary: 'whisper-cli',
+      version: 'whisper.cpp (v1.7.4)',
+      acceleration: 'Metal (Apple Silicon)',
+    };
+  },
+
+  async installWhisperRuntime(): Promise<void> {
+    const res = await invokeWailsMethod<void>('InstallWhisperRuntime');
+    if (res.called) return;
+    console.log('触发运行时安装');
+  },
+
+  async setActiveWhisperModel(nameOrPath: string): Promise<void> {
+    const res = await invokeWailsMethod<void>('SetActiveWhisperModel', nameOrPath);
+    if (res.called) return;
+    console.log('设为默认模型:', nameOrPath);
+  },
+
+  async testOpenAITranslate(baseUrl: string, apiKey: string, model: string): Promise<string> {
+    const res = await invokeWailsMethod<string>('TestOpenAITranslate', baseUrl, apiKey, model);
+    if (res.called && res.result) return res.result;
+
+    // 浏览器开发模式下模拟
+    await new Promise((r) => setTimeout(r, 600));
+    if (!baseUrl) {
+      throw new Error('API Base URL 不能为空');
+    }
+    return '测试连通成功！延迟 128ms';
+  },
+
+  async testOpenAITTS(baseUrl: string, apiKey: string, model: string, voice: string, text: string): Promise<string> {
+    const res = await invokeWailsMethod<string>('TestOpenAITTS', baseUrl, apiKey, model, voice, text);
+    if (res.called && res.result) return res.result;
+    throw new Error('TTS试听需要在桌面应用中运行');
+  },
+
+  // ─── 系统信息与版本 ───────────────────────────────────────
+  async getAppInfo(): Promise<AppInfo> {
+    try {
+      const res = await invokeWailsMethod<AppInfo>('GetAppInfo');
+      if (res.called && res.result && res.result.build_version) {
+        return res.result;
+      }
+    } catch {
+      // ignore
+    }
+    return {
+      app_name: 'Lark Studio',
+      build_version: '0.1.0',
+      platform: 'darwin',
+      arch: 'arm64',
+    };
   },
 
   // ─── 事件监听 ───────────────────────────────────────────

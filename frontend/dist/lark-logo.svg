@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <title>Lark Studio</title>
+  <defs>
+    <linearGradient id="background" x1="72" y1="48" x2="440" y2="472" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3978F6"/>
+      <stop offset="1" stop-color="#1747B8"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="url(#background)"/>
+  <path d="M96 312c46-56 91-115 137-166 19-21 54-20 72 3l24 31c48-1 85 22 108 65l20 37c-27-2-50-8-72-19-23 37-57 63-99 75-63 18-123 1-190-26Z" fill="#fff"/>
+  <path d="M165 309c45-34 85-75 126-122 13-15 38-14 51 3l9 12c-6 48-39 88-89 105-32 11-64 12-97 2Z" fill="#4DE0D0"/>
+  <circle cx="324" cy="236" r="9" fill="#1747B8"/>
+</svg>

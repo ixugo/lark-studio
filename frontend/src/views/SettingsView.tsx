@@ -14,12 +14,15 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { ConfigDTO } from '../types';
+import { useTranslation } from '../i18n';
 
 interface SettingsViewProps {
   onNavigate?: (tab: string) => void;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
+  const { locale } = useTranslation();
+  const english = locale === 'en-US';
   const [config, setConfig] = useState<ConfigDTO | null>(null);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -34,7 +37,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
       const wails = (window as any)?.wails;
       if (wails?.Dialogs?.OpenFile) {
         const filePath = await wails.Dialogs.OpenFile({
-          Title: '选择 ffmpeg 可执行程序',
+          Title: english ? 'Select FFmpeg executable' : '选择 ffmpeg 可执行程序',
         });
         if (filePath && config) {
           setConfig({
@@ -53,7 +56,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
       const wails = (window as any)?.wails;
       if (wails?.Dialogs?.OpenDirectory) {
         const dirPath = await wails.Dialogs.OpenDirectory({
-          Title: '选择默认视频输出目录',
+          Title: english ? 'Select default video output folder' : '选择默认视频输出目录',
         });
         if (dirPath && config) {
           setConfig({
@@ -89,7 +92,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
   if (!config) {
     return (
       <div className="h-screen flex items-center justify-center text-xs text-slate-400">
-        正在读取系统全局配置...
+        {english ? 'Loading global settings...' : '正在读取系统全局配置...'}
       </div>
     );
   }
@@ -101,10 +104,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold tracking-tight text-slate-800 dark:text-white">
-              全局系统设置
+              {english ? 'Global Settings' : '全局系统设置'}
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              管理核心任务流水线调度、多媒体工具环境、输出目录及中间文件清理
+              {english
+                ? 'Manage task scheduling, media tools, output folders, and temporary file cleanup.'
+              : '管理任务调度、多媒体工具、输出目录及临时文件清理。'}
             </p>
           </div>
         </div>
@@ -113,14 +118,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
         {savedSuccess && (
           <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center space-x-2 text-xs text-emerald-600 dark:text-emerald-400 animate-in fade-in">
             <CheckCircle2 size={16} />
-            <span>全局配置已成功保存并实时生效！</span>
+            <span>{english ? 'Global settings saved and applied.' : '全局配置已成功保存并实时生效！'}</span>
           </div>
         )}
 
         {errorMsg && (
           <div className="p-3.5 bg-rose-50 border border-rose-200 dark:bg-rose-500/10 dark:border-rose-500/30 rounded-xl flex items-center gap-2 text-xs text-rose-600 dark:text-rose-300 animate-in fade-in">
             <AlertCircle size={16} />
-            <span>保存失败: {errorMsg}</span>
+            <span>{english ? 'Save failed:' : '保存失败:'} {errorMsg}</span>
           </div>
         )}
 
@@ -138,9 +143,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
               <ExternalLink size={14} className="text-slate-300 group-hover:text-blue-500 transition-colors" />
             </div>
             <div className="mt-3">
-              <div className="text-xs font-bold text-slate-800 dark:text-white">翻译引擎</div>
+              <div className="text-xs font-bold text-slate-800 dark:text-white">{english ? 'Translation' : '翻译引擎'}</div>
               <div className="text-[11px] text-slate-400 mt-0.5">
-                当前: {config.llm.provider || 'google'}
+                {english ? 'Current:' : '当前:'} {config.llm.provider || 'bing'}
               </div>
             </div>
           </button>
@@ -157,9 +162,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
               <ExternalLink size={14} className="text-slate-300 group-hover:text-indigo-500 transition-colors" />
             </div>
             <div className="mt-3">
-              <div className="text-xs font-bold text-slate-800 dark:text-white">语音合成</div>
+              <div className="text-xs font-bold text-slate-800 dark:text-white">{english ? 'Text to Speech' : '语音合成'}</div>
               <div className="text-[11px] text-slate-400 mt-0.5">
-                当前: {config.tts.type || 'edge'}
+                {english ? 'Current:' : '当前:'} {config.tts.type || 'edge'}
               </div>
             </div>
           </button>
@@ -176,9 +181,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
               <ExternalLink size={14} className="text-slate-300 group-hover:text-cyan-500 transition-colors" />
             </div>
             <div className="mt-3">
-              <div className="text-xs font-bold text-slate-800 dark:text-white">语音识别</div>
+              <div className="text-xs font-bold text-slate-800 dark:text-white">{english ? 'Speech Recognition' : '语音识别'}</div>
               <div className="text-[11px] text-slate-400 mt-0.5">
-                当前: {config.pipeline.whisper_mode || 'whisper-cpp'}
+                {english ? 'Current:' : '当前:'} {config.pipeline.whisper_mode || 'whisper-cpp'}
               </div>
             </div>
           </button>
@@ -189,14 +194,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
           <div className="flex items-center space-x-2 border-b border-slate-100 dark:border-white/5 pb-3">
             <Layers className="text-blue-500" size={18} />
             <h3 className="text-sm font-semibold text-slate-800 dark:text-white">
-              流水线调度与任务并发
+              {english ? 'Pipeline Scheduling and Concurrency' : '流水线调度与任务并发'}
             </h3>
           </div>
 
           <div className="grid grid-cols-2 gap-6">
             <div>
               <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                并发任务数
+                {english ? 'Concurrent tasks' : '并发任务数'}
               </label>
               <input
                 type="number"
@@ -214,12 +219,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
                 }
                 className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
               />
-              <p className="text-[11px] text-slate-400 mt-1">推荐 2~4，根据 CPU 核心数适度调配</p>
+              <p className="text-[11px] text-slate-400 mt-1">{english ? 'Recommended: 2–4, depending on your CPU cores.' : '推荐 2~4，根据 CPU 核心数适度调配'}</p>
             </div>
 
             <div>
               <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                默认目标语言
+                {english ? 'Default target language' : '默认目标语言'}
               </label>
               <input
                 type="text"
@@ -235,7 +240,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
                 }
                 className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
               />
-              <p className="text-[11px] text-slate-400 mt-1">缺省将自动使用该目标语言（如 zh-CN, en）</p>
+              <p className="text-[11px] text-slate-400 mt-1">{english ? 'Used when no target language is specified (e.g. zh-CN, en).' : '缺省将自动使用该目标语言（如 zh-CN, en）'}</p>
             </div>
           </div>
         </div>
@@ -245,19 +250,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
           <div className="flex items-center space-x-2 border-b border-slate-100 dark:border-white/5 pb-3">
             <Film className="text-indigo-500" size={18} />
             <h3 className="text-sm font-semibold text-slate-800 dark:text-white">
-              多媒体工具与存储路径
+              {english ? 'Media Tools and Storage' : '多媒体工具与存储路径'}
             </h3>
           </div>
 
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                FFmpeg 可执行文件路径
+                {english ? 'FFmpeg executable path' : 'FFmpeg 可执行文件路径'}
               </label>
               <div className="flex gap-2">
                 <input
                   type="text"
-                  placeholder="留空即优先使用 macOS Bundle 内嵌或系统 PATH 中的 ffmpeg"
+                  placeholder={english ? 'Leave blank to use the bundled macOS version or ffmpeg on PATH.' : '留空即优先使用 macOS Bundle 内嵌或系统 PATH 中的 ffmpeg'}
                   value={config.pipeline.ffmpeg_bin}
                   onChange={(e) =>
                     setConfig({
@@ -276,19 +281,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
                   className="px-3.5 h-10 rounded-xl bg-slate-100 hover:bg-slate-200/80 dark:bg-white/10 dark:hover:bg-white/15 text-slate-700 dark:text-slate-200 text-xs font-semibold border border-slate-200 dark:border-white/10 flex items-center gap-1.5 transition-colors shrink-0"
                 >
                   <FolderOpen size={14} />
-                  <span>浏览...</span>
+                  <span>{english ? 'Browse...' : '浏览...'}</span>
                 </button>
               </div>
             </div>
 
             <div>
               <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                默认视频输出目录
+                {english ? 'Default video output folder' : '默认视频输出目录'}
               </label>
               <div className="flex gap-2">
                 <input
                   type="text"
-                  placeholder="留空则与原输入视频同目录，以 _final 后缀保存"
+                  placeholder={english ? 'Leave blank to save beside the source video with an _final suffix.' : '留空则与原输入视频同目录，以 _final 后缀保存'}
                   value={config.pipeline.default_output_dir}
                   onChange={(e) =>
                     setConfig({
@@ -307,7 +312,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
                   className="px-3.5 h-10 rounded-xl bg-slate-100 hover:bg-slate-200/80 dark:bg-white/10 dark:hover:bg-white/15 text-slate-700 dark:text-slate-200 text-xs font-semibold border border-slate-200 dark:border-white/10 flex items-center gap-1.5 transition-colors shrink-0"
                 >
                   <FolderOpen size={14} />
-                  <span>选择目录...</span>
+                  <span>{english ? 'Choose folder...' : '选择目录...'}</span>
                 </button>
               </div>
             </div>
@@ -317,10 +322,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
                 <div className="space-y-0.5">
                   <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                     <Trash2 size={14} className="text-amber-500" />
-                    <span>处理完成后自动删除中间产物</span>
+                    <span>{english ? 'Delete temporary files when processing finishes' : '处理完成后自动删除中间产物'}</span>
                   </div>
                   <div className="text-[11px] text-slate-400">
-                    开启后，流水线成功结束后将自动清理临时的 raw.mp3 音频和切片中间文件，节省磁盘空间
+                    {english
+                      ? 'When enabled, temporary raw.mp3 audio and segment files are removed after a successful run to save disk space.'
+                      : '开启后，流水线成功结束后将自动清理临时的 raw.mp3 音频和切片中间文件，节省磁盘空间'}
                   </div>
                 </div>
                 <input
@@ -348,7 +355,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
         <div className="bg-white/90 dark:bg-[#202024]/90 backdrop-blur-2xl border border-slate-200/90 dark:border-white/10 rounded-2xl px-6 py-3 flex items-center justify-between transition-all">
           <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>配置修改后即刻写入本地并热重载生效</span>
+            <span>{english ? 'Changes are saved locally and take effect immediately.' : '配置修改后即刻写入本地并热重载生效'}</span>
           </div>
           <button
             type="button"
@@ -357,7 +364,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
             className="px-5 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition-all flex items-center gap-1.5 active:scale-[0.98] disabled:opacity-50"
           >
             <Save size={14} />
-            <span>{loading ? '正在保存...' : '保存全局设置'}</span>
+            <span>{loading ? (english ? 'Saving...' : '正在保存...') : (english ? 'Save settings' : '保存全局设置')}</span>
           </button>
         </div>
       </div>

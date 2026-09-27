@@ -13,7 +13,7 @@ import (
 // runSplit 句级重分段：将 whisper 碎片合并为自然句并重分配时间轴
 // 流程：读取 whisper src.srt → 构建字符-时间映射 → LLM 分句 → 时间轴对齐 → 覆写 src.srt
 func (c *Core) runSplit(ctx context.Context, job Job) error {
-	if !RequiresSemanticSplit(job.Translator) {
+	if !c.semanticSplitReady(job.Translator) {
 		c.logEvent(job.TaskID, "info", StepSplit, "翻译沿用 Whisper 时间轴")
 		c.notifier.OnProgress(job.TaskID, StepSplit, 100)
 		return nil
@@ -50,7 +50,7 @@ func (c *Core) runSplit(ctx context.Context, job Job) error {
 		return nil
 	}
 
-	// 消除相邻条目之间的小间隙（< 1s），对齐 VideoLingo 做法
+	// 合并短间隙可让连续语句的字幕时间轴更自然。
 	for i := 0; i < len(newEntries)-1; i++ {
 		gap := newEntries[i+1].StartSec - newEntries[i].EndSec
 		if gap > 0 && gap < 1.0 {

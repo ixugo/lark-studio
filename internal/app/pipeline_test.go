@@ -52,8 +52,12 @@ func TestProgressWeightsSkipLLMSplitForBing(t *testing.T) {
 			t.Fatalf("%s 任务不应包含语义分句权重", translator)
 		}
 	}
-	if _, exists := notifier.progressWeights(pipeline.ModeDub, "burn", "openai")[pipeline.StepSplit]; !exists {
-		t.Fatal("OpenAI 任务应包含语义分句权重")
+	if _, exists := notifier.progressWeights(pipeline.ModeDub, "burn", "openai")[pipeline.StepSplit]; exists {
+		t.Fatal("未配置 OpenAI 兼容端点时不应包含语义分句权重")
+	}
+	configured := &dbNotifier{semanticSplitReady: true}
+	if _, exists := configured.progressWeights(pipeline.ModeDub, "burn", "openai")[pipeline.StepSplit]; !exists {
+		t.Fatal("OpenAI 兼容端点配置完整时应包含语义分句权重")
 	}
 }
 

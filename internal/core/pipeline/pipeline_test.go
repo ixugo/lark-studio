@@ -12,10 +12,10 @@ func TestBuildSteps(t *testing.T) {
 		want []string
 	}{
 		{Job{Mode: ModeSubtitle, SubtitleOutput: "burn"}, []string{StepWhisper, StepBurn}},
-		{Job{Mode: ModeTranslate, Translator: "openai", SubtitleOutput: "burn"}, []string{StepWhisper, StepSplit, StepTranslate, StepBurn}},
-		{Job{Mode: ModeDub, Translator: "openai", SubtitleOutput: "burn"}, []string{StepWhisper, StepSplit, StepTranslate, StepTTS, StepMerge, StepBurn}},
-		{Job{Mode: ModeTranslate, Translator: "openai", SubtitleOutput: "file"}, []string{StepWhisper, StepSplit, StepTranslate}},
-		{Job{Mode: ModeDub, Translator: "openai", SubtitleOutput: "file"}, []string{StepWhisper, StepSplit, StepTranslate, StepTTS, StepMerge, StepBurn}},
+		{Job{Mode: ModeTranslate, Translator: "openai", SubtitleOutput: "burn"}, []string{StepWhisper, StepTranslate, StepBurn}},
+		{Job{Mode: ModeDub, Translator: "openai", SubtitleOutput: "burn"}, []string{StepWhisper, StepTranslate, StepTTS, StepMerge, StepBurn}},
+		{Job{Mode: ModeTranslate, Translator: "openai", SubtitleOutput: "file"}, []string{StepWhisper, StepTranslate}},
+		{Job{Mode: ModeDub, Translator: "openai", SubtitleOutput: "file"}, []string{StepWhisper, StepTranslate, StepTTS, StepMerge, StepBurn}},
 		{Job{Mode: ModeTranslate, Translator: "bing", SubtitleOutput: "burn"}, []string{StepWhisper, StepTranslate, StepBurn}},
 		{Job{Mode: ModeDub, Translator: "bing", SubtitleOutput: "burn"}, []string{StepWhisper, StepTranslate, StepTTS, StepMerge, StepBurn}},
 		{Job{Mode: ModeTranslate, Translator: "deeplx", SubtitleOutput: "file"}, []string{StepWhisper, StepTranslate}},
@@ -34,6 +34,35 @@ func TestBuildSteps(t *testing.T) {
 				t.Errorf("buildSteps(%+v)[%d] = %q, want %q", tt.job, i, got[i], tt.want[i])
 			}
 		}
+	}
+}
+
+// TestBuildStepsWithConfiguredOpenAI 保证端点配置完整时才加入语义分句步骤。
+func TestBuildStepsWithConfiguredOpenAI(t *testing.T) {
+	c := NewCore(Config{SemanticSplitReady: true}, nil, nil, nil)
+	steps := c.buildSteps(Job{Mode: ModeTranslate, Translator: "openai", SubtitleOutput: "burn"})
+	want := []string{StepWhisper, StepSplit, StepTranslate, StepBurn}
+	if len(steps) != len(want) {
+		t.Fatalf("步骤数量 = %d，期望 %d：%v", len(steps), len(want), steps)
+	}
+	for i := range want {
+		if steps[i] != want[i] {
+			t.Fatalf("步骤[%d] = %q，期望 %q", i, steps[i], want[i])
+		}
+	}
+}
+
+// TestSetTranslationClientRefreshesSplitAvailability 保证配置保存后新任务读取最新分句开关。
+func TestSetTranslationClientRefreshesSplitAvailability(t *testing.T) {
+	c := NewCore(Config{}, nil, nil, nil)
+	job := Job{Mode: ModeTranslate, Translator: "openai", SubtitleOutput: "burn"}
+	c.SetTranslationClient(nil, true)
+	if got := c.buildSteps(job); len(got) < 2 || got[1] != StepSplit {
+		t.Fatalf("启用语义分句后步骤 = %v", got)
+	}
+	c.SetTranslationClient(nil, false)
+	if got := c.buildSteps(job); len(got) > 1 && got[1] == StepSplit {
+		t.Fatalf("关闭语义分句后仍包含分句：%v", got)
 	}
 }
 

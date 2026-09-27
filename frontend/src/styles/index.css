@@ -36,3 +36,19 @@
 .dark ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.28);
 }
+
+/* Wails 3 & macOS 原生窗口拖拽与交互隔离 */
+.wails-drag {
+  --wails-draggable: drag;
+  -webkit-app-region: drag;
+}
+
+.wails-no-drag {
+  --wails-draggable: no-drag;
+  -webkit-app-region: no-drag;
+}
+
+button, input, select, textarea, a, [role="button"] {
+  --wails-draggable: no-drag;
+  -webkit-app-region: no-drag;
+}

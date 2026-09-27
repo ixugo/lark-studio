@@ -2,6 +2,7 @@ package wails
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 
 	asradapter "github.com/ixugo/vdub/internal/adapter/asr"
 	llmadapter "github.com/ixugo/vdub/internal/adapter/llm"
+	ttsadapter "github.com/ixugo/vdub/internal/adapter/tts"
 	whisperadapter "github.com/ixugo/vdub/internal/adapter/whisper"
 	"github.com/ixugo/vdub/internal/conf"
 	"github.com/ixugo/vdub/internal/core/pipeline"
@@ -535,6 +537,7 @@ func (s *AppService) UpdateConfig(updates map[string]any) error {
 
 	c := s.bc
 	previousPipeline := c.Pipeline
+	previousLLM := c.LLM
 	if p, ok := updates["pipeline"].(map[string]any); ok {
 		if v, ok := p["whisper_mode"].(string); ok {
 			c.Pipeline.WhisperMode = v
@@ -607,14 +610,21 @@ func (s *AppService) UpdateConfig(updates map[string]any) error {
 	config := asrConfigFromPipeline(c.Pipeline)
 	if err := asradapter.ValidateConfig(config); err != nil {
 		c.Pipeline = previousPipeline
+		c.LLM = previousLLM
 		return err
 	}
 	if err := conf.WriteConfig(c, c.Runtime.ConfigPath); err != nil {
 		c.Pipeline = previousPipeline
+		c.LLM = previousLLM
 		return err
 	}
 	if s.asrRouter != nil {
 		s.asrRouter.SetConfig(config)
+	}
+	if s.scheduler != nil {
+		client := llmadapter.NewRoutingClient(c.LLM.BaseURL, c.LLM.APIKey, c.LLM.Model, c.LLM.Provider, c.LLM.DeepLXURL)
+		ready := strings.EqualFold(c.LLM.Provider, "openai") && strings.TrimSpace(c.LLM.BaseURL) != "" && strings.TrimSpace(c.LLM.Model) != ""
+		s.scheduler.SetTranslationClient(client, ready)
 	}
 	return nil
 }
@@ -859,6 +869,32 @@ func (s *AppService) TestOpenAITranslate(baseURL, apiKey, model string) (string,
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return llmadapter.TestOpenAIConnection(ctx, baseURL, apiKey, model)
+}
+
+// TestOpenAITTS 验证用户自定义的 OpenAI 兼容模型与音色，并返回可直接播放的音频。
+func (s *AppService) TestOpenAITTS(baseURL, apiKey, model, voice, text string) (string, error) {
+	if strings.TrimSpace(baseURL) == "" || strings.TrimSpace(model) == "" || strings.TrimSpace(voice) == "" || strings.TrimSpace(text) == "" {
+		return "", fmt.Errorf("TTS 地址、模型、音色和试听文本均不能为空")
+	}
+	if len(model) > 200 || len(voice) > 200 || len(text) > 500 {
+		return "", fmt.Errorf("TTS 模型、音色或试听文本超出长度限制")
+	}
+	if len(baseURL) > 2048 || len(apiKey) > 4096 {
+		return "", fmt.Errorf("TTS 地址或密钥超出长度限制")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	audio, contentType, err := ttsadapter.NewOpenAITTS(baseURL, apiKey, model, voice).SynthesizeBytes(ctx, text, voice, 1)
+	if err != nil {
+		return "", err
+	}
+	if contentType == "" {
+		contentType = "audio/mpeg"
+	}
+	if !strings.HasPrefix(strings.ToLower(contentType), "audio/") {
+		return "", fmt.Errorf("TTS 接口返回的内容不是音频")
+	}
+	return "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(audio), nil
 }
 
 // sourceFileMeta 记录原始文件名信息

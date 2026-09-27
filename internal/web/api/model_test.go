@@ -6,23 +6,31 @@ import (
 	"testing"
 )
 
-// TestWhisperModelsTop5 验证界面严格保留推荐的 5 款高品质 Whisper 模型。
-func TestWhisperModelsTop5(t *testing.T) {
-	if len(whisperModels) != 5 {
-		t.Fatalf("模型数量应严格为 5 个，实际为 %d", len(whisperModels))
+// TestWhisperModelsIncludeTiny 验证推荐清单包含适合轻量设备的模型。
+func TestWhisperModelsIncludeTiny(t *testing.T) {
+	if len(whisperModels) != 6 {
+		t.Fatalf("模型数量应严格为 6 个，实际为 %d", len(whisperModels))
 	}
 	want := map[string]bool{
 		"large-v3-turbo": true,
+		"tiny":           true,
 		"medium":         true,
 		"small":          true,
 		"medium.en":      true,
 		"small.en":       true,
 	}
+	tinyHasExpectedSize := false
 	for _, model := range whisperModels {
 		delete(want, model.Name)
+		if model.Name == "tiny" && model.Size == "75 MiB" {
+			tinyHasExpectedSize = true
+		}
 	}
 	if len(want) != 0 {
 		t.Fatalf("缺少预期的核心模型: %v", want)
+	}
+	if !tinyHasExpectedSize {
+		t.Fatal("tiny 多语言模型应标记为 75 MiB")
 	}
 }
 

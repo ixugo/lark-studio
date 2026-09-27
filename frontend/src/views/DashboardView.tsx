@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   UploadCloud,
   FileVideo,
@@ -12,15 +12,13 @@ import {
   Mic,
   ChevronRight,
   ChevronDown,
-  Info,
-  UserCheck,
   BookmarkPlus,
   Loader2,
   AlertCircle,
-  Clock,
 } from 'lucide-react';
 import { api } from '../lib/api';
-import { TaskMode } from '../types';
+import { TaskMode, WhisperModelItem } from '../types';
+import { useTranslation } from '../i18n';
 
 declare global {
   interface Window {
@@ -32,59 +30,188 @@ interface DashboardViewProps {
   onTaskCreated: () => void;
 }
 
+// 资源分类类型
+export type ResourceType = 'video' | 'audio' | 'text';
+
+const VIDEO_EXTS = ['mp4', 'mkv', 'mov', 'avi', 'webm', 'flv'];
+const AUDIO_EXTS = ['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg'];
+const TEXT_EXTS = ['txt', 'srt', 'vtt'];
+
+export function detectResourceType(filePath: string): ResourceType | null {
+  const ext = filePath.split('.').pop()?.toLowerCase();
+  if (!ext) return null;
+  if (VIDEO_EXTS.includes(ext)) return 'video';
+  if (AUDIO_EXTS.includes(ext)) return 'audio';
+  if (TEXT_EXTS.includes(ext)) return 'text';
+  return null;
+}
+
+export function getResourceTypeName(type: ResourceType | null, t?: (k: string, def?: string) => string): string {
+  switch (type) {
+    case 'video': return t ? t('dashboard.resTypeVideo', '视频') : '视频';
+    case 'audio': return t ? t('dashboard.resTypeAudio', '音频') : '音频';
+    case 'text': return t ? t('dashboard.resTypeText', '文本/字幕') : '文本/字幕';
+    default: return t ? t('dashboard.resTypeFile', '文件') : '文件';
+  }
+}
+
 // 工作流快捷预设模板
 interface WorkflowPreset {
   id: string;
   title: string;
   subtitle: string;
   badge: string;
+  isCustom?: boolean;
   goals: {
     sub: boolean;
     translate: boolean;
     dub: boolean;
     video: boolean;
   };
+  config?: {
+    targetLang?: string;
+    ttsVoice?: string;
+    speechRate?: number;
+    subtitleOutput?: string;
+  };
 }
 
-const PRESETS: WorkflowPreset[] = [
+const BUILTIN_PRESETS: WorkflowPreset[] = [
   {
     id: 'dub_full',
-    title: '视频 → 配音成片',
-    subtitle: '听写、翻译、配音、合成一条龙，全自动出成品视频',
-    badge: '全自动',
+    title: '视频 → 译文配音成片',
+    subtitle: '全自动听写、翻译、AI配音、原声伴奏保留并秒级合成出片',
+    badge: '全流程译制',
     goals: { sub: true, translate: true, dub: true, video: true },
   },
   {
+    id: 'direct_dub',
+    title: '视频 → 原文配音成片',
+    subtitle: '原文听写直接配音成片，跳过文本翻译',
+    badge: '原文重配',
+    goals: { sub: true, translate: false, dub: true, video: true },
+  },
+  {
     id: 'bilingual_sub',
-    title: '视频 → 双语字幕',
-    subtitle: '转写人声并翻译成目标语言，一步到位产出高精字幕',
-    badge: '精细校对',
+    title: '视频/音频 → 双语字幕',
+    subtitle: '听写并翻译字幕，不配音不成片',
+    badge: '双语字幕',
     goals: { sub: true, translate: true, dub: false, video: false },
   },
   {
-    id: 'subtitle_only',
-    title: '视频 → 原文字幕',
-    subtitle: '只转写视频人声，不进行翻译，快速生成高精度 SRT / VTT',
-    badge: '极速转写',
-    goals: { sub: true, translate: false, dub: false, video: false },
+    id: 'text_translate',
+    title: '纯文本 → 智能翻译',
+    subtitle: '纯文本或SRT文本直接翻译为目标语言',
+    badge: '文本翻译',
+    goals: { sub: false, translate: true, dub: false, video: false },
   },
   {
-    id: 'translate_existing',
-    title: '翻译已有字幕',
-    subtitle: '导入已有 SRT/ASS 字幕文件，结合上下文意译至指定语言',
-    badge: '字幕翻译',
-    goals: { sub: true, translate: true, dub: false, video: false },
+    id: 'text_dub',
+    title: '纯文本 → AI朗读配音',
+    subtitle: '直接将文本朗读配音为自然高质量音频',
+    badge: '语音合成',
+    goals: { sub: false, translate: false, dub: true, video: false },
   },
   {
     id: 'custom',
     title: '自定义智能流程',
-    subtitle: '自主灵活开启或关闭各个处理流水线阶段',
+    subtitle: '自由开启或关闭各个处理流水线阶段',
     badge: '自由组合',
     goals: { sub: true, translate: true, dub: true, video: true },
   },
 ];
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) => {
+  const { t, locale } = useTranslation();
+  const english = locale === 'en-US';
+  // 用户自定义配方列表（持久化于 SQLite 数据库）
+  const [customPresets, setCustomPresets] = useState<WorkflowPreset[]>([]);
+
+  // 挂载时拉取服务端 SQLite 持久化的配方
+  useEffect(() => {
+    const fetchRecipes = async () => {
+      try {
+        const list = await api.listRecipes();
+        if (list && list.length > 0) {
+          setCustomPresets(
+            list.map((r) => ({
+              id: r.id,
+              title: r.title,
+              subtitle: r.subtitle,
+              badge: r.badge || t('dashboard.badgeMyRecipe', '我的配方'),
+              isCustom: true,
+              goals: {
+                sub: r.do_sub,
+                translate: r.do_translate,
+                dub: r.do_dub,
+                video: r.do_video,
+              },
+              config: {
+                targetLang: r.target_lang,
+                ttsVoice: r.tts_voice,
+                speechRate: r.speech_rate,
+                subtitleOutput: r.subtitle_output,
+              },
+            }))
+          );
+        }
+      } catch (err) {
+        console.error('Failed to load recipes from SQLite database:', err);
+      }
+    };
+    fetchRecipes();
+  }, [t]);
+
+  // 根据当前国际化语言动态获取内置预设文案
+  const getPresetDisplay = (preset: WorkflowPreset) => {
+    if (preset.isCustom) {
+      return {
+        title: preset.title,
+        subtitle: preset.subtitle,
+        badge: preset.badge || t('dashboard.badgeMyRecipe', '我的配方'),
+      };
+    }
+    switch (preset.id) {
+      case 'dub_full':
+        return {
+          title: t('dashboard.presetDubFull', '视频 → 译文配音成片'),
+          subtitle: t('dashboard.presetDubFullDesc', '全自动听写、翻译、AI配音、原声伴奏保留并秒级合成出片'),
+          badge: t('dashboard.badgeFullDub', '全流程译制'),
+        };
+      case 'direct_dub':
+        return {
+          title: t('dashboard.presetDirectDub', '视频 → 原文配音成片'),
+          subtitle: t('dashboard.presetDirectDubDesc', '原文听写直接配音成片，跳过文本翻译'),
+          badge: t('dashboard.badgeDirectDub', '原文重配'),
+        };
+      case 'bilingual_sub':
+        return {
+          title: t('dashboard.presetBilingualSub', '视频/音频 → 双语字幕'),
+          subtitle: t('dashboard.presetBilingualSubDesc', '听写并翻译字幕，不配音不成片'),
+          badge: t('dashboard.badgeBilingualSub', '双语字幕'),
+        };
+      case 'text_translate':
+        return {
+          title: t('dashboard.presetTextTranslate', '纯文本 → 智能翻译'),
+          subtitle: t('dashboard.presetTextTranslateDesc', '纯文本或SRT文本直接翻译为目标语言'),
+          badge: t('dashboard.badgeTextTranslate', '文本翻译'),
+        };
+      case 'text_dub':
+        return {
+          title: t('dashboard.presetTextDub', '纯文本 → AI朗读配音'),
+          subtitle: t('dashboard.presetTextDubDesc', '直接将文本朗读配音为自然高质量音频'),
+          badge: t('dashboard.badgeTextDub', '语音合成'),
+        };
+      case 'custom':
+      default:
+        return {
+          title: t('dashboard.presetCustom', '自定义智能流程'),
+          subtitle: t('dashboard.presetCustomDesc', '自由开启或关闭各个处理流水线阶段'),
+          badge: t('dashboard.badgeCustom', '自由组合'),
+        };
+    }
+  };
+
   // 选中的快捷预设
   const [activePreset, setActivePreset] = useState<string>('dub_full');
 
@@ -99,25 +226,66 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
   const [doVideo, setDoVideo] = useState(true);
 
   // 子阶段 1：字幕与翻译配置
-  const [whisperModel, setWhisperModel] = useState('Whisper.cpp large-v3-turbo');
+  const cleanModelDisplayName = (name: string) => {
+    return name.replace(/^Whisper(\.cpp)?\s*/i, '').trim();
+  };
+
+  const [whisperModel, setWhisperModel] = useState('large-v3-turbo');
+  const [downloadedWhisperModels, setDownloadedWhisperModels] = useState<WhisperModelItem[]>([]);
+  const [loadingModels, setLoadingModels] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      api.getConfig().catch(() => null),
+      api.listWhisperModels().catch(() => []),
+    ]).then(([config, items]) => {
+      if (!active) return;
+      const ready = (items || []).filter((m) => m.downloaded);
+      setDownloadedWhisperModels(ready);
+      setLoadingModels(false);
+      if (!config) return;
+
+      const configuredModel = config.pipeline?.whisper_model?.trim() || '';
+      const modelFile = configuredModel.split(/[\\/]/).pop() || '';
+      const modelName = cleanModelDisplayName(modelFile.replace(/^ggml-/i, '').replace(/\.bin$/i, ''));
+      const configuredMatch = ready.find((m) =>
+        m.path === configuredModel || cleanModelDisplayName(m.name) === modelName,
+      );
+      const fallbackModel = ready.find((m) => cleanModelDisplayName(m.name).includes('large-v3-turbo')) || ready[0];
+      setWhisperModel(configuredMatch
+        ? cleanModelDisplayName(configuredMatch.name)
+        : configuredModel || (fallbackModel ? cleanModelDisplayName(fallbackModel.name) : 'large-v3-turbo'));
+
+      if (config.pipeline?.default_target_lang) setTargetLang(config.pipeline.default_target_lang);
+      if (['google', 'bing', 'openai'].includes(config.llm?.provider)) {
+        setTranslateService(config.llm.provider as 'google' | 'bing' | 'openai');
+      }
+      if (['edge', 'openai'].includes(config.tts?.type)) {
+        setTtsEngine(config.tts.type as 'edge' | 'openai');
+      }
+      if (config.tts?.voice) setTtsVoice(config.tts.voice);
+    }).finally(() => {
+      if (active) setLoadingModels(false);
+    });
+    return () => { active = false; };
+  }, []);
+
   const [videoLang, setVideoLang] = useState('auto');
   const [targetLang, setTargetLang] = useState('zh-CN');
-  const [translateService, setTranslateService] = useState<'openai' | 'local' | 'bing' | 'deeplx'>('openai');
+  const [translateService, setTranslateService] = useState<'openai' | 'local' | 'bing' | 'google'>('bing');
   const [outputContent, setOutputContent] = useState('bilingual');
 
   // 子阶段 2：AI 配音配置
   const [ttsEngine, setTtsEngine] = useState<'edge' | 'local' | 'openai' | 'elevenlabs'>('edge');
   const [ttsVoice, setTtsVoice] = useState('zh-CN-XiaoxiaoNeural');
-  const [speechRate, setSpeechRate] = useState<number>(1.1);
+  const [speechRate, setSpeechRate] = useState<number>(1.0);
 
   // 子阶段 3：成品视频压制配置
-  const [subtitleOutput, setSubtitleOutput] = useState('burn');
+  const [subtitleOutput, setSubtitleOutput] = useState('soft');
   const [subtitleStyle, setSubtitleStyle] = useState('经典白字黑边');
-  const [videoQuality, setVideoQuality] = useState('原画质');
-  const [encodeMethod, setEncodeMethod] = useState('Apple VideoToolbox');
-
-  // 子阶段 4：人工把关开关
-  const [ttsConfirm, setTtsConfirm] = useState(false);
+  const [videoQuality, setVideoQuality] = useState('原画质(推荐)');
+  const [encodeMethod, setEncodeMethod] = useState('默认(推荐)');
 
   // 配方弹窗与提交状态
   const [recipeName, setRecipeName] = useState('');
@@ -126,38 +294,72 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // 路径直接输入态
-  const [manualPath, setManualPath] = useState('');
-  const [showManualInput, setShowManualInput] = useState(false);
+  const currentResourceType = useMemo<ResourceType | null>(() => {
+    if (selectedFiles.length === 0) return null;
+    return detectResourceType(selectedFiles[0]);
+  }, [selectedFiles]);
 
-  // 统一文件添加助手
+  // 统一文件添加助手（同质资源校验，严禁视频、音频、文本混搭）
   const appendFiles = (incoming: unknown) => {
-    let paths: string[] = [];
+    let rawPaths: string[] = [];
     if (incoming instanceof FileList) {
       for (let i = 0; i < incoming.length; i++) {
         const f = incoming[i];
         const p = (f as unknown as { path?: string }).path || f.name;
-        if (p) paths.push(p);
+        if (p) rawPaths.push(p);
       }
     } else if (Array.isArray(incoming)) {
       for (const item of incoming) {
         if (typeof item === 'string') {
-          paths.push(item);
+          rawPaths.push(item);
         } else if (item && typeof item === 'object') {
           const p = (item as unknown as { path?: string }).path || (item as File).name;
-          if (p) paths.push(p);
+          if (p) rawPaths.push(p);
         }
       }
     } else if (incoming && typeof incoming === 'object') {
       const obj = incoming as Record<string, unknown>;
       if (Array.isArray(obj.filenames)) {
-        paths = obj.filenames as string[];
+        rawPaths = obj.filenames as string[];
       } else if (Array.isArray(obj.data)) {
-        paths = obj.data as string[];
+        rawPaths = obj.data as string[];
       }
     }
-    if (paths.length > 0) {
-      setSelectedFiles((prev) => Array.from(new Set([...prev, ...paths])));
+
+    if (rawPaths.length === 0) return;
+
+    // 过滤出系统支持的三大资源类型
+    const validItems = rawPaths
+      .map((p) => ({ path: p, type: detectResourceType(p) }))
+      .filter((item): item is { path: string; type: ResourceType } => item.type !== null);
+
+    if (validItems.length === 0) {
+      setErrorMessage(t('dashboard.dropZoneSubtitle', '未检测到支持的文件格式（支持 MP4/MKV等视频、MP3/WAV等音频、TXT/SRT等文本）'));
+      return;
+    }
+
+    // 确定目标资源类型
+    let targetType = currentResourceType;
+    if (!targetType) {
+      targetType = validItems[0].type;
+      const mismatchedCount = validItems.filter((it) => it.type !== targetType).length;
+      if (mismatchedCount > 0) {
+        setErrorMessage(
+          `已自动按首个文件确定为【${getResourceTypeName(targetType, t)}】资源，已忽略 ${mismatchedCount} 个异类文件（禁止视频/音频/文本混合上传）`
+        );
+      }
+    } else {
+      const mismatched = validItems.filter((it) => it.type !== targetType);
+      if (mismatched.length > 0) {
+        setErrorMessage(
+          `上传资源类型不一致！当前为【${getResourceTypeName(targetType, t)}】资源，已自动过滤 ${mismatched.length} 个非同类文件`
+        );
+      }
+    }
+
+    const matchedPaths = validItems.filter((it) => it.type === targetType).map((it) => it.path);
+    if (matchedPaths.length > 0) {
+      setSelectedFiles((prev) => Array.from(new Set([...prev, ...matchedPaths])));
     }
   };
 
@@ -199,19 +401,62 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
       window.removeEventListener('dragleave', handleWindowDragLeave);
       window.removeEventListener('drop', handleWindowDrop);
     };
-  }, []);
+  }, [currentResourceType]);
+
+  // 根据当前所选文件类型自适应调整阶段开关与参数限制
+  useEffect(() => {
+    if (currentResourceType === 'video') {
+      // 视频类资源：强制锁定 1.0x 原速，避免全局倍速破坏镜头画面与台词意境对应
+      setSpeechRate(1.0);
+    } else if (currentResourceType === 'text') {
+      // 文本类资源：纯配音模式
+      setDoSub(false);
+      setDoTranslate(false);
+      setDoDub(true);
+      setDoVideo(false);
+      setActivePreset('text_dub');
+    } else if (currentResourceType === 'audio') {
+      // 音频类资源：无视频画面，强制不能成片
+      setDoVideo(false);
+      if (activePreset === 'dub_full') {
+        setActivePreset('custom');
+      }
+    }
+  }, [currentResourceType]);
 
   // 切换预设模板
   const handleSelectPreset = (preset: WorkflowPreset) => {
+    if (currentResourceType === 'text' && preset.goals.video) {
+      setErrorMessage(t('dashboard.stepBurnDescDisabled', '纯文本资源无画面，仅支持文本翻译或朗读配音'));
+      return;
+    }
+    if (currentResourceType === 'audio' && preset.goals.video) {
+      setErrorMessage(t('dashboard.stepBurnDescDisabled', '音频资源无视频画面，无法选择包含成片的预设'));
+      return;
+    }
     setActivePreset(preset.id);
-    setDoSub(preset.goals.sub);
+    setDoSub(currentResourceType === 'text' ? false : preset.goals.sub);
     setDoTranslate(preset.goals.translate);
     setDoDub(preset.goals.dub);
-    setDoVideo(preset.goals.video);
+    setDoVideo(currentResourceType === 'text' || currentResourceType === 'audio' ? false : preset.goals.video);
+    if (preset.config) {
+      if (preset.config.targetLang) setTargetLang(preset.config.targetLang);
+      if (preset.config.ttsVoice) setTtsVoice(preset.config.ttsVoice);
+      if (preset.config.speechRate) setSpeechRate(preset.config.speechRate);
+      if (preset.config.subtitleOutput) setSubtitleOutput(preset.config.subtitleOutput);
+    }
   };
 
-  // 目标开关联动逻辑
+  // 目标开关联动逻辑（严格对齐合法资源组合）
   const handleToggleSub = () => {
+    if (currentResourceType === 'text') {
+      setErrorMessage(t('dashboard.stepWhisperDescText', '纯文本资源无需执行语音听写'));
+      return;
+    }
+    // 视频和音频资源必须依赖听写转录
+    if (currentResourceType === 'video' || currentResourceType === 'audio') {
+      return;
+    }
     setDoSub((prev) => !prev);
     setActivePreset('custom');
   };
@@ -219,9 +464,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
   const handleToggleTranslate = () => {
     setDoTranslate((prev) => {
       const next = !prev;
-      if (!next) {
-        setDoDub(false);
-        setDoVideo(false);
+      // 视频资源下：如果不翻译，且未开配音，则自动开启配音与成片，进入原文配音模式
+      if (currentResourceType === 'video' && !next && !doDub) {
+        setDoDub(true);
+        setDoVideo(true);
       }
       return next;
     });
@@ -231,11 +477,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
   const handleToggleDub = () => {
     setDoDub((prev) => {
       const next = !prev;
-      if (next && !doTranslate) {
-        setDoTranslate(true);
-      }
       if (!next) {
+        // 关闭配音时：若是视频，成片自动关闭，自动保持字幕翻译模式
         setDoVideo(false);
+        if (currentResourceType === 'video') {
+          setDoTranslate(true);
+        }
+      } else {
+        // 开启配音时：若是视频，自动联动开启压制成片
+        if (currentResourceType === 'video') {
+          setDoVideo(true);
+        }
       }
       return next;
     });
@@ -243,11 +495,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
   };
 
   const handleToggleVideo = () => {
+    if (currentResourceType === 'text') {
+      setErrorMessage(t('dashboard.stepBurnDescDisabled', '纯文本资源无画面，仅支持文本翻译或朗读配音'));
+      return;
+    }
     setDoVideo((prev) => {
       const next = !prev;
       if (next) {
+        // 开启成片，必须有配音
         if (!doDub) setDoDub(true);
-        if (!doTranslate) setDoTranslate(true);
+      } else {
+        // 关闭成片，若是视频则落入仅双语/译文字幕模式
+        if (currentResourceType === 'video') {
+          setDoDub(false);
+          setDoTranslate(true);
+        }
       }
       return next;
     });
@@ -271,8 +533,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
   };
 
   const resolvedMode = (): TaskMode => {
-    if (doVideo && doDub) return 3;
+    // 1-3-4 流程：听写转录(1) -> 跳过翻译 -> 原文配音(3) -> 压制成片(4)
+    if (doSub && !doTranslate && doDub && doVideo) return 5;
+    // 纯配音模式 (3): 纯文本朗读或音频合成
+    if (!doSub && !doTranslate && doDub) return 4;
+    // 纯文本翻译模式 (2)
+    if (!doSub && doTranslate && !doDub) return 6;
+    // 1-2-3-4 流程: 听写 -> 翻译 -> 配音 -> 压制成片
+    if (doDub && doVideo) return 3;
+    // 1-2 流程: 听写 -> 翻译字幕
     if (doTranslate) return 2;
+    // 1 流程: 仅转写字幕
     return 1;
   };
 
@@ -328,11 +599,96 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
     }
   };
 
-  const handleSaveRecipe = () => {
+  const handleSaveRecipe = async () => {
     if (!recipeName.trim()) return;
+    const subtitleParts: string[] = [];
+    if (doSub) subtitleParts.push(t('dashboard.stepWhisper', '听写转录'));
+    if (doTranslate) subtitleParts.push(t('dashboard.stepTranslate', '翻译字幕'));
+    if (doDub) subtitleParts.push(t('dashboard.stepDub', 'AI 配音'));
+    if (doVideo) subtitleParts.push(t('dashboard.stepBurn', '压制合成'));
+
+    const newRecipe: WorkflowPreset = {
+      id: `rcp_${Date.now()}`,
+      title: recipeName.trim(),
+      subtitle: subtitleParts.join(' · ') || t('dashboard.presetCustom', '自定义智能流程'),
+      badge: t('dashboard.badgeMyRecipe', '我的配方'),
+      isCustom: true,
+      goals: { sub: doSub, translate: doTranslate, dub: doDub, video: doVideo },
+      config: {
+        targetLang,
+        ttsVoice,
+        speechRate,
+        subtitleOutput,
+      },
+    };
+
+    try {
+      await api.saveRecipe({
+        id: newRecipe.id,
+        title: newRecipe.title,
+        subtitle: newRecipe.subtitle,
+        badge: newRecipe.badge,
+        is_custom: true,
+        do_sub: doSub,
+        do_translate: doTranslate,
+        do_dub: doDub,
+        do_video: doVideo,
+        target_lang: targetLang,
+        source_lang: videoLang,
+        whisper_model: whisperModel,
+        translate_service: translateService,
+        tts_engine: ttsEngine,
+        tts_voice: ttsVoice,
+        speech_rate: speechRate,
+        subtitle_output: subtitleOutput,
+        subtitle_style: subtitleStyle,
+        video_quality: videoQuality,
+      });
+
+      const serverList = await api.listRecipes();
+      if (serverList && serverList.length > 0) {
+        setCustomPresets(
+          serverList.map((r) => ({
+            id: r.id,
+            title: r.title,
+            subtitle: r.subtitle,
+            badge: r.badge || t('dashboard.badgeMyRecipe', '我的配方'),
+            isCustom: true,
+            goals: { sub: r.do_sub, translate: r.do_translate, dub: r.do_dub, video: r.do_video },
+            config: {
+              targetLang: r.target_lang,
+              ttsVoice: r.tts_voice,
+              speechRate: r.speech_rate,
+              subtitleOutput: r.subtitle_output,
+            },
+          }))
+        );
+      } else {
+        setCustomPresets((prev) => [newRecipe, ...prev]);
+      }
+    } catch (err) {
+      console.error('Failed to save recipe to SQLite database:', err);
+      setCustomPresets((prev) => [newRecipe, ...prev]);
+    }
+
+    setActivePreset(newRecipe.id);
+    setRecipeName('');
     setShowRecipeModal(false);
     setRecipeSavedToast(true);
     setTimeout(() => setRecipeSavedToast(false), 2500);
+  };
+
+  const handleDeleteCustomPreset = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    try {
+      await api.deleteRecipe(id);
+    } catch (err) {
+      console.error('Failed to delete recipe from database:', err);
+    }
+    setCustomPresets((prev) => prev.filter((p) => p.id !== id));
+    if (activePreset === id) {
+      setActivePreset('dub_full');
+    }
   };
 
   const hasFiles = selectedFiles.length > 0;
@@ -346,25 +702,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
           <div className="flex items-center justify-between mb-3">
             <div>
               <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-                <span>开始创作</span>
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/25">
-                  AI 智能流水线
-                </span>
+                <span>{t('dashboard.startCreation', '开始创作')}</span>
               </h1>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">选择推荐配方或自由组合阶段，将原声视频全自动转化为多语种成片</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                {t('dashboard.mainDesc', '选择推荐配方或自由组合阶段，将原声媒体全自动转化为多语种优质内容')}
+              </p>
             </div>
           </div>
 
-          {/* 快捷模板网格：统摄为克制清朗的 Apple 风格 */}
+          {/* 快捷模板网格：统摄为克制清朗的 Apple 风格，动态融合内置与自定义配方 */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-            {PRESETS.map((preset) => {
+            {[...BUILTIN_PRESETS, ...customPresets].map((preset) => {
               const isSelected = activePreset === preset.id;
+              const display = getPresetDisplay(preset);
               return (
-                <button
+                <div
                   key={preset.id}
-                  type="button"
                   onClick={() => handleSelectPreset(preset)}
-                  className={`text-left rounded-2xl p-4 border transition-all relative overflow-hidden group ${
+                  className={`text-left rounded-2xl p-4 border transition-all relative overflow-hidden group cursor-pointer ${
                     isSelected
                       ? 'bg-blue-50/40 dark:bg-blue-500/10 border-blue-600'
                       : 'bg-white hover:bg-slate-50 dark:bg-[#1C1C1E] dark:hover:bg-[#252528] border-slate-200 dark:border-[#2C2C2E]'
@@ -376,19 +731,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                         ? 'bg-blue-600 text-white border-blue-600'
                         : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-white/10 dark:text-slate-300 dark:border-white/10'
                     }`}>
-                      {preset.badge}
+                      {display.badge}
                     </span>
-                    {isSelected && <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />}
+                    <div className="flex items-center space-x-1">
+                      {preset.isCustom && (
+                        <button
+                          type="button"
+                          onClick={(e) => handleDeleteCustomPreset(e, preset.id)}
+                          className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-opacity"
+                          title={t('dashboard.deleteRecipeTip', '删除此自定义配方')}
+                        >
+                          <X size={12} />
+                        </button>
+                      )}
+                      {isSelected && <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />}
+                    </div>
                   </div>
                   <h3 className={`text-sm font-bold transition-colors ${
                     isSelected ? 'text-blue-900 dark:text-white' : 'text-slate-800 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400'
                   }`}>
-                    {preset.title}
+                    {display.title}
                   </h3>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 leading-relaxed">
-                    {preset.subtitle}
+                    {display.subtitle}
                   </p>
-                </button>
+                </div>
               );
             })}
           </div>
@@ -402,25 +769,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                 1
               </span>
               <div>
-                <h2 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight">第一步 · 放入待处理文件</h2>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">支持音视频及字幕文件，放入多个即可启动批量流水线</p>
+                <h2 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight">
+                  {t('dashboard.step1Title', '第一步 · 放入待处理文件')}
+                </h2>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {t('dashboard.step1Desc', '支持音视频及字幕文本，放入多个即可批量排队处理')}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShowManualInput((prev) => !prev)}
-                className="text-xs text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 px-2.5 py-1 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors"
-              >
-                {showManualInput ? '隐藏输入框' : '手动输入/粘贴路径'}
-              </button>
               {hasFiles && (
                 <button
                   type="button"
                   onClick={() => setSelectedFiles([])}
                   className="text-xs text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 px-2.5 py-1 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
                 >
-                  清空列表
+                  {t('dashboard.clearList', '清空列表')}
                 </button>
               )}
               <button
@@ -429,69 +793,41 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                 className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 dark:bg-white/10 dark:hover:bg-white/15 text-slate-700 dark:text-white border border-slate-200 dark:border-white/10 transition-all flex items-center gap-1.5"
               >
                 <UploadCloud className="w-3.5 h-3.5" />
-                <span>选择文件</span>
+                <span>{t('dashboard.browseFiles', '选择本地文件')}</span>
               </button>
             </div>
           </div>
 
-          {/* 手动路径输入折叠区 */}
-          {showManualInput && (
-            <div className="mb-4 p-3 bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/10 rounded-xl space-y-2 animate-in fade-in">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="粘贴音视频绝对路径，例如：/path/to/demo.mp4"
-                  value={manualPath}
-                  onChange={(e) => setManualPath(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && manualPath.trim()) {
-                      appendFiles([manualPath.trim()]);
-                      setManualPath('');
-                    }
-                  }}
-                  className="flex-1 h-9 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/15 rounded-lg px-3 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (manualPath.trim()) {
-                      appendFiles([manualPath.trim()]);
-                      setManualPath('');
-                    }
-                  }}
-                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition-colors"
-                >
-                  添加
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* 已放入的文件列表标签 */}
           {hasFiles && (
-            <div className="mb-4 max-h-48 overflow-y-auto space-y-2 pr-1">
+            <div className={`mb-4 max-h-48 overflow-y-auto pr-1 ${selectedFiles.length > 5 ? 'flex flex-wrap gap-2' : 'space-y-2'}`}>
               {selectedFiles.map((file, idx) => {
                 const fileName = file.split('/').pop() || file;
+                const compactFiles = selectedFiles.length > 5;
+                const nameChars = [...fileName];
+                const displayName = nameChars.length > 35 ? `${nameChars.slice(0, 35).join('')}…` : fileName;
                 const isSub = fileName.endsWith('.srt') || fileName.endsWith('.ass') || fileName.endsWith('.vtt');
                 return (
                   <div
                     key={idx}
-                    className="flex items-center justify-between bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/10 rounded-xl px-3.5 py-2.5 group hover:border-blue-400/50 transition-all"
+                    title={compactFiles ? fileName : undefined}
+                    style={compactFiles ? { width: `${Math.min(35, Math.max(12, nameChars.length)) + 7}ch` } : undefined}
+                    className={`flex items-center justify-between bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/10 rounded-xl group hover:border-blue-400/50 transition-all ${compactFiles ? 'max-w-full px-2.5 py-2' : 'px-3.5 py-2.5'}`}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0 pr-2">
-                      <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
-                        {isSub ? <FileText className="w-4 h-4" /> : <FileVideo className="w-4 h-4" />}
+                    <div className={`flex items-center min-w-0 ${compactFiles ? 'gap-2 pr-1' : 'gap-2.5 pr-2'}`}>
+                      <div className={`${compactFiles ? 'w-5 h-5 rounded-md' : 'w-7 h-7 rounded-lg'} bg-blue-50 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0`}>
+                        {isSub ? <FileText className={compactFiles ? 'w-3 h-3' : 'w-4 h-4'} /> : <FileVideo className={compactFiles ? 'w-3 h-3' : 'w-4 h-4'} />}
                       </div>
-                      <div className="truncate">
-                        <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">{fileName}</p>
-                        <p className="text-[10px] text-slate-400 truncate">{file}</p>
+                      <div className="min-w-0 truncate">
+                        <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">{compactFiles ? displayName : fileName}</p>
+                        {!compactFiles && <p className="text-[10px] text-slate-400 truncate">{file}</p>}
                       </div>
                     </div>
                     <button
                       type="button"
                       onClick={() => handleRemoveFile(idx)}
                       className="w-6 h-6 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 flex items-center justify-center transition-colors shrink-0"
-                      title="移除此文件"
+                      title={t('dashboard.removeFile', '移除此文件')}
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -531,10 +867,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
           >
             <UploadCloud className="w-8 h-8 text-blue-600 dark:text-blue-400 mx-auto mb-2 opacity-85" />
             <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-              把视频或字幕文件拖到这里，也可以点击浏览选择
+              {t('dashboard.dropZoneTitle', '点击或拖拽音视频及文本文件至此处')}
             </p>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-              支持 MP4, MKV, MOV, MP3, WAV, AAC, SRT, ASS · 同时放入视频与字幕将自动同名配对跳过听写
+              {t('dashboard.dropZoneSubtitle', '支持 MP4, MKV, MOV, MP3, WAV, TXT, SRT 等格式，自动智能识别类型')}
             </p>
           </div>
         </div>
@@ -547,28 +883,53 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                 2
               </span>
               <div>
-                <h2 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight">第二步 · 我要得到</h2>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">勾选所需产物阶段，下方将动态呈现对应的子配置参数</p>
+                <h2 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight">
+                  {t('dashboard.step2Title', '第二步 · 创作期望产物')}
+                </h2>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {t('dashboard.step2Desc', '勾选所需产物阶段，下方将动态呈现对应的子配置参数')}
+                </p>
               </div>
             </div>
+
+            {currentResourceType === 'text' && (
+              <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center gap-1 animate-in fade-in">
+                <FileText className="w-3 h-3" />
+                {t('dashboard.modeText', '纯文本资源模式 (仅翻译/配音)')}
+              </span>
+            )}
+            {currentResourceType === 'audio' && (
+              <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 flex items-center gap-1 animate-in fade-in">
+                <Volume2 className="w-3 h-3" />
+                {t('dashboard.modeAudio', '音频资源模式 (无画面不可成片)')}
+              </span>
+            )}
+            {currentResourceType === 'video' && (
+              <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 flex items-center gap-1 animate-in fade-in">
+                <Film className="w-3 h-3" />
+                {t('dashboard.modeVideo', '视频资源模式 (全流程)')}
+              </span>
+            )}
           </div>
 
-          {/* 四阶段目标卡片横排：告别杂色，统一高级 Apple 风格 */}
+          {/* 四阶段目标卡片横排：根据资源类型精准受控 */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {/* 目标 1: 字幕文件 */}
+            {/* 目标 1: 听写转录 */}
             <div
               onClick={handleToggleSub}
-              className={`p-3.5 rounded-xl border cursor-pointer transition-all relative flex flex-col justify-between h-24 ${
-                doSub
-                  ? 'bg-blue-50/40 dark:bg-blue-500/10 border-blue-600'
-                  : 'bg-slate-50/50 hover:bg-slate-100/80 dark:bg-white/[0.02] border-slate-200/80 dark:border-white/10 opacity-75 hover:opacity-100'
+              className={`p-3.5 rounded-xl border transition-all relative flex flex-col justify-between h-24 ${
+                currentResourceType === 'text'
+                  ? 'opacity-40 cursor-not-allowed bg-slate-50/50 dark:bg-white/[0.02] border-slate-200/50'
+                  : doSub
+                  ? 'bg-blue-50/40 dark:bg-blue-500/10 border-blue-600 cursor-pointer'
+                  : 'bg-slate-50/50 hover:bg-slate-100/80 dark:bg-white/[0.02] border-slate-200/80 dark:border-white/10 opacity-75 hover:opacity-100 cursor-pointer'
               }`}
             >
               <div className="flex items-start justify-between">
                 <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
                   doSub ? 'bg-blue-600 text-white' : 'bg-slate-200 dark:bg-white/10 text-slate-500 dark:text-slate-400'
                 }`}>
-                  <FileText className="w-4 h-4" />
+                  <Mic className="w-4 h-4" />
                 </div>
                 <div className={`w-4 h-4 rounded-full flex items-center justify-center transition-all ${
                   doSub ? 'bg-blue-600 text-white' : 'border border-slate-300 dark:border-slate-600 bg-transparent'
@@ -578,19 +939,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
               </div>
               <div>
                 <div className={`text-xs font-bold ${doSub ? 'text-blue-950 dark:text-white' : 'text-slate-700 dark:text-slate-300'}`}>
-                  字幕文件
+                  {t('dashboard.stepWhisper', '听写转录')}
                 </div>
-                <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">视频任务必产出字幕</div>
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                  {currentResourceType === 'text' ? t('dashboard.stepWhisperDescText') : t('dashboard.stepWhisperDescVideo')}
+                </div>
               </div>
             </div>
 
-            {/* 目标 2: 翻译字幕 */}
+            {/* 目标 2: 翻译字幕 / 文本翻译 */}
             <div
               onClick={handleToggleTranslate}
-              className={`p-3.5 rounded-xl border cursor-pointer transition-all relative flex flex-col justify-between h-24 ${
+              className={`p-3.5 rounded-xl border transition-all relative flex flex-col justify-between h-24 ${
                 doTranslate
-                  ? 'bg-blue-50/40 dark:bg-blue-500/10 border-blue-600'
-                  : 'bg-slate-50/50 hover:bg-slate-100/80 dark:bg-white/[0.02] border-slate-200/80 dark:border-white/10 opacity-75 hover:opacity-100'
+                  ? 'bg-blue-50/40 dark:bg-blue-500/10 border-blue-600 cursor-pointer'
+                  : 'bg-slate-50/50 hover:bg-slate-100/80 dark:bg-white/[0.02] border-slate-200/80 dark:border-white/10 opacity-75 hover:opacity-100 cursor-pointer'
               }`}
             >
               <div className="flex items-start justify-between">
@@ -607,26 +970,28 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
               </div>
               <div>
                 <div className={`text-xs font-bold ${doTranslate ? 'text-blue-950 dark:text-white' : 'text-slate-700 dark:text-slate-300'}`}>
-                  翻译字幕
+                  {currentResourceType === 'text' ? t('dashboard.stepTranslateText', '智能翻译') : t('dashboard.stepTranslate', '翻译字幕')}
                 </div>
-                <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">把字幕翻译成目标语言</div>
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                  {currentResourceType === 'text' ? t('dashboard.stepTranslateDescText') : t('dashboard.stepTranslateDescVideo')}
+                </div>
               </div>
             </div>
 
             {/* 目标 3: AI 配音 */}
             <div
               onClick={handleToggleDub}
-              className={`p-3.5 rounded-xl border cursor-pointer transition-all relative flex flex-col justify-between h-24 ${
+              className={`p-3.5 rounded-xl border transition-all relative flex flex-col justify-between h-24 ${
                 doDub
-                  ? 'bg-blue-50/40 dark:bg-blue-500/10 border-blue-600'
-                  : 'bg-slate-50/50 hover:bg-slate-100/80 dark:bg-white/[0.02] border-slate-200/80 dark:border-white/10 opacity-75 hover:opacity-100'
+                  ? 'bg-blue-50/40 dark:bg-blue-500/10 border-blue-600 cursor-pointer'
+                  : 'bg-slate-50/50 hover:bg-slate-100/80 dark:bg-white/[0.02] border-slate-200/80 dark:border-white/10 opacity-75 hover:opacity-100 cursor-pointer'
               }`}
             >
               <div className="flex items-start justify-between">
                 <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
                   doDub ? 'bg-blue-600 text-white' : 'bg-slate-200 dark:bg-white/10 text-slate-500 dark:text-slate-400'
                 }`}>
-                  <Mic className="w-4 h-4" />
+                  <Volume2 className="w-4 h-4" />
                 </div>
                 <div className={`w-4 h-4 rounded-full flex items-center justify-center transition-all ${
                   doDub ? 'bg-blue-600 text-white' : 'border border-slate-300 dark:border-slate-600 bg-transparent'
@@ -636,19 +1001,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
               </div>
               <div>
                 <div className={`text-xs font-bold ${doDub ? 'text-blue-950 dark:text-white' : 'text-slate-700 dark:text-slate-300'}`}>
-                  AI 配音
+                  {t('dashboard.stepDub', 'AI 配音')} {currentResourceType === 'text' && <span className="text-[10px] text-blue-600 dark:text-blue-400 font-normal ml-1">({t('dashboard.requiredBadge', '必选')})</span>}
                 </div>
-                <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">用 AI 声音朗读字幕</div>
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                  {currentResourceType === 'text' ? t('dashboard.stepDubDescText') : t('dashboard.stepDubDescVideo')}
+                </div>
               </div>
             </div>
 
-            {/* 目标 4: 成品视频 */}
+            {/* 目标 4: 压制合成 */}
             <div
               onClick={handleToggleVideo}
-              className={`p-3.5 rounded-xl border cursor-pointer transition-all relative flex flex-col justify-between h-24 ${
-                doVideo
-                  ? 'bg-blue-50/40 dark:bg-blue-500/10 border-blue-600'
-                  : 'bg-slate-50/50 hover:bg-slate-100/80 dark:bg-white/[0.02] border-slate-200/80 dark:border-white/10 opacity-75 hover:opacity-100'
+              className={`p-3.5 rounded-xl border transition-all relative flex flex-col justify-between h-24 ${
+                currentResourceType === 'text' || currentResourceType === 'audio'
+                  ? 'opacity-40 cursor-not-allowed bg-slate-50/50 dark:bg-white/[0.02] border-slate-200/50'
+                  : doVideo
+                  ? 'bg-blue-50/40 dark:bg-blue-500/10 border-blue-600 cursor-pointer'
+                  : 'bg-slate-50/50 hover:bg-slate-100/80 dark:bg-white/[0.02] border-slate-200/80 dark:border-white/10 opacity-75 hover:opacity-100 cursor-pointer'
               }`}
             >
               <div className="flex items-start justify-between">
@@ -665,23 +1034,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
               </div>
               <div>
                 <div className={`text-xs font-bold ${doVideo ? 'text-blue-950 dark:text-white' : 'text-slate-700 dark:text-slate-300'}`}>
-                  成品视频
+                  {t('dashboard.stepBurn', '压制合成')}
                 </div>
-                <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">字幕(和配音)合成进视频</div>
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                  {currentResourceType === 'text' || currentResourceType === 'audio' ? t('dashboard.stepBurnDescDisabled') : t('dashboard.stepBurnDescVideo')}
+                </div>
               </div>
             </div>
           </div>
 
           {/* 动态处理流程拓扑条：统一为克制经典的蓝灰格调 */}
           <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/80 dark:border-white/5 flex flex-wrap items-center gap-2 text-xs">
-            <span className="text-slate-500 dark:text-slate-400 font-medium">当前处理流程:</span>
+            <span className="text-slate-500 dark:text-slate-400 font-medium">
+              {t('dashboard.currentPipeline', '当前处理流程:')}
+            </span>
             <div className="flex flex-wrap items-center gap-1.5">
               <span className={`px-2.5 py-1 rounded-full text-[11px] font-mono flex items-center gap-1 border ${
                 doSub
                   ? 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/40'
                   : 'bg-slate-100 text-slate-400 border-slate-200 dark:bg-white/5 dark:text-slate-500 dark:border-white/5'
               }`}>
-                <Mic className="w-3 h-3" /> 听写转录
+                <Mic className="w-3 h-3" /> {t('dashboard.stepWhisper', '听写转录')}
               </span>
 
               <ChevronRight className={`w-3.5 h-3.5 ${doTranslate ? 'text-blue-500' : 'text-slate-300 dark:text-slate-700'}`} />
@@ -691,7 +1064,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                   ? 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/40'
                   : 'bg-slate-100 text-slate-400 border-slate-200 dark:bg-white/5 dark:text-slate-500 dark:border-white/5'
               }`}>
-                <Languages className="w-3 h-3" /> 智能翻译
+                <Languages className="w-3 h-3" /> {t('dashboard.stepTranslate', '翻译字幕')}
               </span>
 
               <ChevronRight className={`w-3.5 h-3.5 ${doDub ? 'text-blue-500' : 'text-slate-300 dark:text-slate-700'}`} />
@@ -701,7 +1074,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                   ? 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/40'
                   : 'bg-slate-100 text-slate-400 border-slate-200 dark:bg-white/5 dark:text-slate-500 dark:border-white/5'
               }`}>
-                <Volume2 className="w-3 h-3" /> 语音合成
+                <Volume2 className="w-3 h-3" /> {t('dashboard.stepDub', 'AI 配音')}
               </span>
 
               <ChevronRight className={`w-3.5 h-3.5 ${doVideo ? 'text-blue-500' : 'text-slate-300 dark:text-slate-700'}`} />
@@ -711,35 +1084,53 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                   ? 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/40'
                   : 'bg-slate-100 text-slate-400 border-slate-200 dark:bg-white/5 dark:text-slate-500 dark:border-white/5'
               }`}>
-                <Film className="w-3 h-3" /> 压制合成
+                <Film className="w-3 h-3" /> {t('dashboard.stepBurn', '压制合成')}
               </span>
             </div>
           </div>
         </div>
 
         {/* 阶段 1：字幕与翻译设置 */}
-        <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl border border-slate-200/90 dark:border-[#2C2C2E] p-5 space-y-4">
-          <div className="flex items-center gap-2">
-            <Languages className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-            <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
-              字幕与翻译设置
-            </h3>
-          </div>
+        {(doSub || doTranslate) && (
+          <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl border border-slate-200/90 dark:border-[#2C2C2E] p-5 space-y-4 animate-in fade-in duration-200">
+            <div className="flex items-center gap-2">
+              <Languages className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                {t('dashboard.sectionSubTrans', '字幕与翻译设置')}
+              </h3>
+            </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {/* 语音模型 */}
             <div>
-              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">语音模型</label>
+              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
+                {t('dashboard.whisperModel', '语音识别模型')}
+              </label>
               <div className="relative">
                 <select
                   value={whisperModel}
                   onChange={(e) => setWhisperModel(e.target.value)}
-                  className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
+                  disabled={downloadedWhisperModels.length === 0}
+                  className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <option value="Whisper.cpp large-v3-turbo">Whisper.cpp large-v3-turbo (推荐)</option>
-                  <option value="Whisper large-v3">Whisper large-v3 (标准质量)</option>
-                  <option value="Whisper medium">Whisper medium (平衡)</option>
-                  <option value="SenseVoice Small">SenseVoice Small (超快)</option>
+                  {downloadedWhisperModels.length === 0 ? (
+                    <option value={whisperModel}>
+                      {loadingModels
+                        ? t('dashboard.loadingModels', '正在加载可用模型...')
+                        : whisperModel !== 'large-v3-turbo'
+                          ? whisperModel.split(/[\\/]/).pop()
+                          : t('dashboard.noDownloadedModels', '暂无已下载模型 (请前往语音引擎下载)')}
+                    </option>
+                  ) : (
+                    downloadedWhisperModels.map((m) => {
+                      const cleanName = cleanModelDisplayName(m.name);
+                      return (
+                        <option key={m.name} value={cleanName}>
+                          {cleanName}
+                        </option>
+                      );
+                    })
+                  )}
                 </select>
                 <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
               </div>
@@ -747,20 +1138,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
 
             {/* 视频源语言 */}
             <div>
-              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">视频源语言</label>
+              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
+                {t('dashboard.sourceLang', '视频源语言')}
+              </label>
               <div className="relative">
                 <select
                   value={videoLang}
                   onChange={(e) => setVideoLang(e.target.value)}
                   className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
                 >
-                  <option value="auto">自动检测 (Auto Detect)</option>
-                  <option value="en">英语 (English)</option>
-                  <option value="zh">中文 (Chinese)</option>
-                  <option value="ja">日语 (Japanese)</option>
-                  <option value="ko">韩语 (Korean)</option>
-                  <option value="de">德语 (German)</option>
-                  <option value="fr">法语 (French)</option>
+                  <option value="auto">{english ? 'Auto Detect' : t('dashboard.autoDetect', '自动检测')}</option>
+                  <option value="en">English</option>
+                  <option value="zh">{english ? 'Chinese (Simplified)' : '简体中文'}</option>
+                  <option value="ja">{english ? 'Japanese' : '日本語'}</option>
+                  <option value="ko">{english ? 'Korean' : '한국어'}</option>
+                  <option value="de">{english ? 'German' : 'Deutsch'}</option>
+                  <option value="fr">{english ? 'French' : 'Français'}</option>
                 </select>
                 <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
               </div>
@@ -769,7 +1162,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
             {/* 翻译目标语言 */}
             <div className={doTranslate ? 'opacity-100' : 'opacity-40 pointer-events-none'}>
               <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
-                翻译目标语言 {!doTranslate && '(未启用翻译)'}
+                {t('dashboard.targetLang', '翻译目标语言')} {!doTranslate && `(${t('dashboard.targetLangDisabled', '未启用翻译')})`}
               </label>
               <div className="relative">
                 <select
@@ -778,13 +1171,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                   disabled={!doTranslate}
                   className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
                 >
-                  <option value="zh-CN">中文 (简体)</option>
-                  <option value="zh-TW">中文 (繁体)</option>
-                  <option value="en">英语 (English)</option>
-                  <option value="ja">日语 (Japanese)</option>
-                  <option value="ko">韩语 (Korean)</option>
-                  <option value="de">德语 (German)</option>
-                  <option value="fr">法语 (French)</option>
+                  <option value="zh-CN">{english ? 'Chinese (Simplified)' : '简体中文'}</option>
+                  <option value="zh-TW">{english ? 'Chinese (Traditional)' : '繁體中文'}</option>
+                  <option value="en">English</option>
+                  <option value="ja">{english ? 'Japanese' : '日本語'}</option>
+                  <option value="ko">{english ? 'Korean' : '한국어'}</option>
+                  <option value="de">German</option>
+                  <option value="fr">French</option>
                 </select>
                 <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
               </div>
@@ -793,7 +1186,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
             {/* 翻译服务商 */}
             <div className={doTranslate ? 'opacity-100' : 'opacity-40 pointer-events-none'}>
               <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
-                翻译服务商 {!doTranslate && '(未启用翻译)'}
+                {t('dashboard.translateService', '翻译服务商')}
               </label>
               <div className="relative">
                 <select
@@ -802,10 +1195,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                   disabled={!doTranslate}
                   className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
                 >
-                  <option value="google">谷歌翻译 (官方公共 · 免Key推荐)</option>
-                  <option value="bing">必应翻译 (微软免费 · 免配置)</option>
-                  <option value="openai">OpenAI 兼容接口 (支持 DeepSeek / GPT / 本地 Ollama)</option>
-                  <option value="deeplx">DeepLX 翻译引擎</option>
+                  <option value="bing">{english ? 'Bing Translator' : '必应翻译'}</option>
+                  <option value="google">{english ? 'Google Translate' : '谷歌翻译'}</option>
+                  <option value="openai">{english ? 'OpenAI Compatible' : 'OpenAI 兼容接口'}</option>
                 </select>
                 <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
               </div>
@@ -814,12 +1206,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
             {/* 输出内容模式 */}
             {doTranslate && (
               <div className="sm:col-span-2 lg:col-span-4 pt-1">
-                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">字幕输出内容模式</label>
+                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
+                  {t('dashboard.outputContentMode', '字幕输出内容模式')}
+                </label>
                 <div className="flex flex-wrap gap-2">
                   {[
-                    { id: 'bilingual', label: '双语对照 (上译下原 推荐)' },
-                    { id: 'target', label: '仅输出翻译字幕' },
-                    { id: 'source', label: '仅输出原文字幕' },
+                    { id: 'bilingual', label: t('dashboard.bilingualMode', '双语对照 (上译下原 推荐)') },
+                    { id: 'target', label: t('dashboard.targetOnlyMode', '仅输出翻译字幕') },
+                    { id: 'source', label: t('dashboard.sourceOnlyMode', '仅输出原文字幕') },
                   ].map((item) => (
                     <button
                       key={item.id}
@@ -839,6 +1233,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
             )}
           </div>
         </div>
+        )}
 
         {/* 阶段 2：AI 配音设置 */}
         {doDub && (
@@ -846,22 +1241,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
             <div className="flex items-center gap-2">
               <Volume2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
               <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
-                AI 语音合成与配音设置
+                {t('dashboard.sectionDub', 'AI 语音合成与配音设置')}
               </h3>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {/* 配音引擎 */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">配音引擎</label>
+                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
+                  {t('dashboard.ttsEngine', '配音引擎')}
+                </label>
                 <div className="relative">
                   <select
                     value={ttsEngine}
                     onChange={(e) => setTtsEngine(e.target.value as 'edge' | 'openai')}
                     className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
                   >
-                    <option value="edge">Edge TTS (微软免费高质量音色 · 推荐)</option>
-                    <option value="openai">OpenAI 兼容 TTS (云端/自建模型)</option>
+                    <option value="edge">Edge TTS</option>
+                    <option value="openai">{t('dashboard.openaiTTS', 'OpenAI 兼容 TTS')}</option>
                   </select>
                   <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
                 </div>
@@ -869,18 +1266,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
 
               {/* 音色选择 */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">声音音色</label>
+                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
+                  {t('dashboard.ttsVoice', '声音音色')}
+                </label>
                 <div className="relative">
                   <select
                     value={ttsVoice}
                     onChange={(e) => setTtsVoice(e.target.value)}
                     className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
                   >
-                    <option value="zh-CN-YunxiNeural">云希 (经典纪录片/解说男声)</option>
-                    <option value="zh-CN-XiaoxiaoNeural">晓晓 (自然温柔女声)</option>
-                    <option value="zh-CN-YunjianNeural">云健 (沉稳专业男声)</option>
-                    <option value="zh-CN-YunyangNeural">云扬 (新闻播报男声)</option>
-                    <option value="en-US-JennyNeural">Jenny (标准美语女声)</option>
+                    {ttsVoice && ![
+                      'zh-CN-YunxiNeural', 'zh-CN-XiaoxiaoNeural', 'zh-CN-YunjianNeural',
+                      'zh-CN-YunyangNeural', 'en-US-JennyNeural', 'alloy', 'echo', 'nova',
+                    ].includes(ttsVoice) && <option value={ttsVoice}>{ttsVoice}</option>}
+                    <option value="zh-CN-YunxiNeural">{english ? 'Yunxi (Male narrator)' : '云希 (经典纪录片/解说男声)'}</option>
+                    <option value="zh-CN-XiaoxiaoNeural">{english ? 'Xiaoxiao (Female voice)' : '晓晓 (自然温柔女声)'}</option>
+                    <option value="zh-CN-YunjianNeural">{english ? 'Yunjian (Calm male voice)' : '云健 (沉稳专业男声)'}</option>
+                    <option value="zh-CN-YunyangNeural">{english ? 'Yunyang (News anchor)' : '云扬 (新闻播报男声)'}</option>
+                    <option value="en-US-JennyNeural">{english ? 'Jenny (US English female)' : 'Jenny (标准美语女声)'}</option>
                     <option value="alloy">OpenAI: Alloy</option>
                     <option value="echo">OpenAI: Echo</option>
                     <option value="nova">OpenAI: Nova</option>
@@ -891,30 +1294,40 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
 
               {/* 语速倍率 */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">语速倍率</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+                    {t('dashboard.speechRate', '配音语速')}
+                  </label>
+                  {currentResourceType === 'video' && (
+                    <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">
+                      {t('dashboard.rateLockedTip', '视频原画已锁定 1.0x')}
+                    </span>
+                  )}
+                </div>
                 <div className="relative">
                   <select
                     value={`${speechRate.toFixed(1)}x`}
+                    disabled={currentResourceType === 'video'}
                     onChange={(e) => setSpeechRate(parseFloat(e.target.value))}
-                    className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
+                    className={`w-full h-10 border rounded-xl px-3 text-[13px] appearance-none transition-colors ${
+                      currentResourceType === 'video'
+                        ? 'bg-slate-100 dark:bg-white/[0.03] text-slate-400 dark:text-slate-500 border-slate-200 dark:border-white/10 cursor-not-allowed'
+                        : 'bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] text-slate-800 dark:text-white border-slate-200 dark:border-white/15 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40'
+                    }`}
                   >
-                    <option value="0.8x">0.8x (慢速稳重)</option>
-                    <option value="0.9x">0.9x (微慢)</option>
-                    <option value="1.0x">1.0x (原速)</option>
-                    <option value="1.1x">1.1x (适度微快 · 推荐)</option>
-                    <option value="1.2x">1.2x (快节奏)</option>
-                    <option value="1.3x">1.3x (极速)</option>
-                    <option value="1.5x">1.5x (超高速)</option>
+                    <option value="1.0x">{english ? '1.0x (Recommended)' : '1.0x (推荐)'}</option>
+                    <option value="0.9x">{english ? '0.9x (Slightly slower)' : '0.9x (微慢)'}</option>
+                    <option value="0.8x">{english ? '0.8x (Slow)' : '0.8x (慢速稳重)'}</option>
+                    <option value="1.1x">{english ? '1.1x (Slightly faster)' : '1.1x (适度微快)'}</option>
+                    <option value="1.2x">{english ? '1.2x (Fast)' : '1.2x (快节奏)'}</option>
+                    <option value="1.3x">{english ? '1.3x (Very fast)' : '1.3x (极速)'}</option>
+                    <option value="1.5x">{english ? '1.5x (Maximum)' : '1.5x (超高速)'}</option>
                   </select>
                   <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-white/[0.02] p-3 rounded-xl border border-slate-200/80 dark:border-white/5">
-              <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-              <span>已启用 Edge 免配置高质量引擎；如切换至云端商业配音将按字符计费，费用取决于最终字幕文本量。</span>
-            </div>
           </div>
         )}
 
@@ -924,23 +1337,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
             <div className="flex items-center gap-2">
               <Film className="w-4 h-4 text-blue-600 dark:text-blue-400" />
               <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
-                成品视频压制设置
+                {t('dashboard.sectionVideo', '成品视频压制设置')}
               </h3>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {/* 字幕方式 */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">字幕方式</label>
+                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
+                  {t('dashboard.subtitleMethod', '字幕压制方式')}
+                </label>
                 <div className="relative">
                   <select
                     value={subtitleOutput}
                     onChange={(e) => setSubtitleOutput(e.target.value)}
                     className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
                   >
-                    <option value="burn">烧录进画面 (硬字幕 · 推荐)</option>
-                    <option value="file">封装软字幕轨 (可开关)</option>
-                    <option value="none">无字幕仅替换配音</option>
+                    <option value="soft">{english ? 'Soft subtitles (Fast)' : t('dashboard.subSoft', '软字幕(极速)')}</option>
+                    <option value="burn">{english ? 'Burn subtitles (Slow)' : t('dashboard.subBurn', '合成字幕(缓慢)')}</option>
+                    <option value="none">{english ? 'No subtitles' : t('dashboard.subNone', '无字幕')}</option>
                   </select>
                   <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
                 </div>
@@ -948,17 +1363,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
 
               {/* 字幕样式 */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">字幕样式</label>
+                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
+                  {t('dashboard.subtitleStyle', '字幕样式')}
+                </label>
                 <div className="relative">
                   <select
                     value={subtitleStyle}
                     onChange={(e) => setSubtitleStyle(e.target.value)}
                     className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
                   >
-                    <option value="经典白字黑边">经典白字黑边</option>
-                    <option value="Apple 毛玻璃底条">Apple 毛玻璃底条</option>
-                    <option value="现代鲜黄高对比">现代鲜黄高对比</option>
-                    <option value="电影黑底居中">电影黑底居中</option>
+                    <option value="经典白字黑边">{english ? 'Classic white with black outline' : t('dashboard.styleClassic', '经典白字黑边')}</option>
+                    <option value="Apple 毛玻璃底条">{english ? 'Apple frosted glass' : t('dashboard.styleGlass', 'Apple 毛玻璃底条')}</option>
+                    <option value="现代鲜黄高对比">{english ? 'High-contrast yellow' : t('dashboard.styleYellow', '现代鲜黄高对比')}</option>
+                    <option value="电影黑底居中">{english ? 'Cinematic centered black' : t('dashboard.styleCinema', '电影黑底居中')}</option>
                   </select>
                   <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
                 </div>
@@ -966,17 +1383,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
 
               {/* 导出画质 */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">导出画质</label>
+                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
+                  {t('dashboard.videoQuality', '导出画质')}
+                </label>
                 <div className="relative">
                   <select
                     value={videoQuality}
                     onChange={(e) => setVideoQuality(e.target.value)}
                     className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
                   >
-                    <option value="原画质">原画质 (Bitrate Copy)</option>
-                    <option value="4K 超高清">4K 超高清 (2160P)</option>
-                    <option value="1080P 高清">1080P 高清 (推荐)</option>
-                    <option value="720P 标清">720P 标清</option>
+                    <option value="原画质(推荐)">{english ? 'Original (Recommended)' : t('dashboard.qualityOriginal', '原画质(推荐)')}</option>
+                    <option value="4K 超清">{english ? '4K Ultra HD' : t('dashboard.quality4k', '4K 超清')}</option>
+                    <option value="1080P 高清">{english ? '1080p Full HD' : t('dashboard.quality1080p', '1080P 高清')}</option>
+                    <option value="720P 标清">{english ? '720p HD' : t('dashboard.quality720p', '720P 标清')}</option>
                   </select>
                   <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
                 </div>
@@ -984,16 +1403,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
 
               {/* 编码方式 */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">编码方式</label>
+                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
+                  {t('dashboard.encodeMethod', '编码方式')}
+                </label>
                 <div className="relative">
                   <select
                     value={encodeMethod}
                     onChange={(e) => setEncodeMethod(e.target.value)}
                     className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
                   >
-                    <option value="Apple VideoToolbox">Apple VideoToolbox (硬件加速)</option>
-                    <option value="CPU">CPU libx264 (纯软解)</option>
-                    <option value="HEVC / H.265">HEVC / H.265 (高压缩比)</option>
+                    <option value="默认(推荐)">{english ? 'Default (Recommended)' : '默认(推荐)'}</option>
+                    <option value="H.264">H.264</option>
+                    <option value="H.265">H.265</option>
+                    <option value="AV1">AV1</option>
                   </select>
                   <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
                 </div>
@@ -1001,40 +1423,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
             </div>
 
             <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center justify-between">
-              <span>配音完成后将自动降低原视频原声进行智能混音。样式可在合成工作台微调并保存为「我的样式」。</span>
-            </div>
-          </div>
-        )}
-
-        {/* 阶段 4：人工把关 */}
-        {doDub && (
-          <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl border border-slate-200/90 dark:border-[#2C2C2E] p-5">
-            <div className="flex items-center gap-2 mb-4">
-              <UserCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
-                人工把关与确认 (可选)
-              </h3>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200/80 dark:border-white/[0.08] flex items-center justify-between">
-              <div>
-                <div className="text-xs font-bold text-slate-800 dark:text-white">配音试听确认</div>
-                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">配音完成后先暂停供试听确认，满意后再执行最终压制与合成</div>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={ttsConfirm}
-                  onChange={(e) => setTtsConfirm(e.target.checked)}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-slate-200 dark:bg-white/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600" />
-              </label>
-            </div>
-
-            <div className="mt-3 text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5 text-slate-400" />
-              <span>未开启时后台全自动极速产出，开启后将在配音完毕时暂停并等待放行。</span>
+              <span>{t('dashboard.mixTip', '配音完成后将自动降低原视频原声进行智能混音。')}</span>
             </div>
           </div>
         )}
@@ -1054,10 +1443,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
           <div className={`w-2.5 h-2.5 rounded-full ${hasFiles ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
           <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
             {hasFiles
-              ? `已就绪：已选择 ${selectedFiles.length} 个文件 · 目标模式: ${
-                  doVideo ? '成品视频' : doDub ? 'AI配音' : doTranslate ? '双语字幕' : '提取字幕'
-                }`
-              : '请先拖入或选择待处理音视频文件'}
+              ? t('dashboard.readyPrefix', {
+                  count: selectedFiles.length,
+                  type: getResourceTypeName(currentResourceType, t),
+                  goal:
+                    currentResourceType === 'text' || (doDub && !doTranslate && !doSub)
+                      ? t('dashboard.goalAudiobook', 'AI朗读配音(小说/纯文本)')
+                      : doVideo
+                      ? t('dashboard.goalVideoProduct', '成品视频')
+                      : doDub
+                      ? t('dashboard.goalVoiceover', 'AI配音')
+                      : doTranslate
+                      ? t('dashboard.goalBilingualSub', '双语字幕')
+                      : t('dashboard.goalTranscript', '提取字幕'),
+                })
+              : t('dashboard.noFileTip', '请拖入或选择同类型资源（视频、音频或纯文本）')}
           </span>
         </div>
 
@@ -1068,7 +1468,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
             className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200/80 dark:bg-white/10 dark:hover:bg-white/15 text-slate-700 dark:text-slate-200 text-xs font-semibold border border-slate-200 dark:border-white/10 transition-all flex items-center gap-1.5"
           >
             <BookmarkPlus className="w-3.5 h-3.5" />
-            <span>保存为配方</span>
+            <span>{t('dashboard.saveRecipe', '保存为配方')}</span>
           </button>
 
           <button
@@ -1084,12 +1484,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
             {loading ? (
               <>
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>正在提交任务...</span>
+                <span>{t('dashboard.processing', '任务创建提交中...')}</span>
               </>
             ) : (
               <>
                 <Play className="w-3.5 h-3.5 fill-current" />
-                <span>{hasFiles ? `开始处理 (${selectedFiles.length}个文件)` : '选择文件并启动'}</span>
+                <span>{hasFiles ? `${t('dashboard.startProcess', '立即开始处理')} (${selectedFiles.length})` : t('dashboard.browseAndStart', '选择文件并启动')}</span>
               </>
             )}
           </button>
@@ -1100,11 +1500,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
       {showRecipeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="w-96 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/15 rounded-2xl p-5 space-y-4">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white">保存当前配置为配方</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">配方将保存语言、模型、音色与压制参数，方便下次一键调用。</p>
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+              {t('dashboard.recipeModalTitle', '保存当前配置为配方')}
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {t('dashboard.recipeModalDesc', '配方将持久化保存至服务端数据库，方便下次一键直接调用。')}
+            </p>
             <input
               type="text"
-              placeholder="请输入配方名称，例如：科技视频译制配方"
+              placeholder={t('dashboard.recipeNamePlaceholder', '请输入配方名称，例如：科技视频精配方案')}
               value={recipeName}
               onChange={(e) => setRecipeName(e.target.value)}
               className="w-full h-10 bg-slate-50 dark:bg-white/[0.06] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
@@ -1115,7 +1519,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                 onClick={() => setShowRecipeModal(false)}
                 className="px-3 py-1.5 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/10 transition-colors"
               >
-                取消
+                {t('common.cancel', '取消')}
               </button>
               <button
                 type="button"
@@ -1123,7 +1527,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                 disabled={!recipeName.trim()}
                 className="px-4 py-1.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 transition-colors"
               >
-                保存配方
+                {t('dashboard.saveRecipeBtn', '保存配方')}
               </button>
             </div>
           </div>
@@ -1134,7 +1538,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
       {recipeSavedToast && (
         <div className="fixed top-6 right-6 z-50 bg-emerald-600 text-white text-xs px-4 py-2.5 rounded-xl border border-emerald-500/30 flex items-center gap-2 animate-in fade-in">
           <CheckCircle2 className="w-4 h-4" />
-          <span>配方已保存，可在顶部快捷模板中再次选用</span>
+          <span>{t('dashboard.recipeSavedSuccess', '配方已成功保存至数据库，可在顶部模板中随时调用！')}</span>
         </div>
       )}
     </div>

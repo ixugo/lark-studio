@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// 字幕样式常量（对齐 VideoLingo _7_sub_into_vid.py / _12_dub_to_vid.py）
+// 字幕样式常量集中在此处，保证双语字幕使用一致的视觉层级。
 const (
 	subTransFontSize = 18
 	subSrcFontSize   = 14
@@ -17,11 +17,11 @@ const (
 	subSrcColor      = "&HCCCCCC"
 	subOutlineColor  = "&H000000"
 	subOutlineWidth  = 1
-	subTransMarginV  = 36 // 翻译字幕距底部（缩小间距，VideoLingo 用 50）
-	subSrcMarginV    = 12 // 原文字幕距底部（缩小间距，VideoLingo 用 20）
+	subTransMarginV  = 36 // 翻译字幕距底部的像素距离
+	subSrcMarginV    = 12 // 原文字幕距底部的像素距离
 )
 
-// subFontName 根据平台选择字体名（对齐 VideoLingo）
+// subFontName 根据平台选择可用字体，减少字幕渲染时的字体缺失。
 var subFontName = func() string {
 	switch runtime.GOOS {
 	case "linux":

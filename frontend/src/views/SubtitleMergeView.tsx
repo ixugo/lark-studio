@@ -7,20 +7,20 @@ import {
   CheckCircle2,
   AlertCircle,
   Play,
-  ArrowRight,
 } from 'lucide-react';
 import { api } from '../lib/api';
+import { useTranslation } from '../i18n';
 
 interface SubtitleMergeViewProps {
   onTaskCreated?: () => void;
 }
 
 export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCreated }) => {
+  const { t } = useTranslation();
   const [videoPath, setVideoPath] = useState<string>('');
   const [primarySubPath, setPrimarySubPath] = useState<string>('');
   const [secondarySubPath, setSecondarySubPath] = useState<string>('');
   const [isBilingual, setIsBilingual] = useState<boolean>(false);
-  const [outputDir, setOutputDir] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successToast, setSuccessToast] = useState<string | null>(null);
@@ -29,7 +29,7 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
   const handlePickVideo = async () => {
     try {
       const files = await api.pickFiles({
-        title: '选择待合成的视频文件',
+        title: t('subtitleMerge.selectVideo', '选择待合成的视频文件'),
         multiple: false,
         extensions: ['mp4', 'mkv', 'mov', 'avi', 'webm', 'flv'],
       });
@@ -46,7 +46,7 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
   const handlePickPrimarySub = async () => {
     try {
       const files = await api.pickFiles({
-        title: '选择字幕文件 (.srt / .vtt / .ass)',
+        title: t('subtitleMerge.selectSub', '选择字幕文件 (.srt / .vtt / .ass)'),
         multiple: false,
         extensions: ['srt', 'vtt', 'ass'],
       });
@@ -63,7 +63,7 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
   const handlePickSecondarySub = async () => {
     try {
       const files = await api.pickFiles({
-        title: '选择第二字幕文件 (原文字幕 .srt / .vtt / .ass)',
+        title: t('subtitleMerge.secondarySub', '选择第二字幕文件 (原文字幕 .srt / .vtt / .ass)'),
         multiple: false,
         extensions: ['srt', 'vtt', 'ass'],
       });
@@ -79,15 +79,15 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
   // 开始合成
   const handleStartMerge = async () => {
     if (!videoPath.trim()) {
-      setErrorMessage('请先选择待压制合成的视频文件');
+      setErrorMessage(t('subtitleMerge.needSelectFiles', '请先选择待压制合成的视频文件'));
       return;
     }
     if (!primarySubPath.trim()) {
-      setErrorMessage('请先选择需要压制的字幕文件');
+      setErrorMessage(t('subtitleMerge.needSelectFiles', '请先选择需要压制的字幕文件'));
       return;
     }
     if (isBilingual && !secondarySubPath.trim()) {
-      setErrorMessage('已开启双语对照，请选择副字幕文件');
+      setErrorMessage(t('subtitleMerge.needSelectFiles', '已开启双语对照，请选择副字幕文件'));
       return;
     }
 
@@ -98,11 +98,10 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
         video_path: videoPath.trim(),
         primary_sub_path: primarySubPath.trim(),
         secondary_sub_path: isBilingual ? secondarySubPath.trim() : undefined,
-        output_dir: outputDir.trim() || undefined,
         output_content: isBilingual ? 'bilingual' : 'source',
       });
 
-      setSuccessToast('字幕合成任务已成功创建并提交流水线！');
+      setSuccessToast(t('subtitleMerge.startMerge', '字幕合成任务已成功创建并提交流水线！'));
       setTimeout(() => {
         setSuccessToast(null);
         if (onTaskCreated) {
@@ -132,11 +131,11 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
                 <Layers className="w-4 h-4" />
               </div>
               <h2 className="text-xl font-bold tracking-tight text-slate-800 dark:text-white">
-                独立字幕合成
+                {t('subtitleMerge.title', '独立字幕合成')}
               </h2>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
-              将外部现成的字幕文件（.srt / .vtt / .ass）直接烧录压制进视频，快速渲染高画质成片
+              {t('subtitleMerge.mainDesc', '将外部现成的字幕文件（.srt / .vtt / .ass）直接烧录压制进视频，快速渲染高画质成片')}
             </p>
           </div>
         </div>
@@ -164,7 +163,7 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
                 1
               </span>
               <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
-                选择底板视频
+                {t('subtitleMerge.step1Title', '选择底板视频')}
               </h3>
             </div>
             {videoPath && (
@@ -173,7 +172,7 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
                 onClick={handlePickVideo}
                 className="text-xs text-blue-600 hover:text-blue-500 font-medium"
               >
-                重新选择
+                {t('subtitleMerge.reselect', '重新选择')}
               </button>
             )}
           </div>
@@ -194,7 +193,7 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
                 </div>
               </div>
               <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold shrink-0 ml-2">
-                已就绪
+                {t('common.installed', '已就绪')}
               </span>
             </div>
           ) : (
@@ -204,10 +203,10 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
             >
               <Upload className="w-6 h-6 text-slate-400 dark:text-slate-500 mx-auto mb-2" />
               <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
-                点击选择待合成的视频文件
+                {t('subtitleMerge.step1Desc', '点击选择待合成的视频文件')}
               </p>
               <p className="text-[11px] text-slate-400 mt-1">
-                支持常见视频格式：MP4, MKV, MOV, AVI, WEBM, FLV
+                {t('subtitleMerge.step1Format', '支持常见视频格式：MP4, MKV, MOV, AVI, WEBM, FLV')}
               </p>
             </div>
           )}
@@ -236,7 +235,7 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-800'
                 }`}
               >
-                单字幕压制
+                {t('subtitleMerge.singleSubTab', '单字幕压制')}
               </button>
               <button
                 type="button"
@@ -247,7 +246,7 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-800'
                 }`}
               >
-                双语对照压制
+                {t('subtitleMerge.bilingualSubTab', '双语对照压制')}
               </button>
             </div>
           </div>
@@ -256,7 +255,7 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
             {/* 主字幕 */}
             <div className="space-y-2">
               <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 block">
-                {isBilingual ? '主要字幕 (显示在上层，如翻译译文)' : '字幕文件 (.srt / .vtt / .ass)'}
+                {isBilingual ? t('subtitleMerge.primarySubBilingualLabel', '主要字幕 (显示在上层，如翻译译文)') : t('subtitleMerge.primarySubLabel', '字幕文件 (.srt / .vtt / .ass)')}
               </label>
 
               {primarySubPath ? (
@@ -272,7 +271,7 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
                     onClick={handlePickPrimarySub}
                     className="text-[11px] text-blue-600 hover:text-blue-500 font-medium shrink-0 ml-2"
                   >
-                    重选
+                    {t('subtitleMerge.reselect', '重选')}
                   </button>
                 </div>
               ) : (
@@ -282,7 +281,7 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
                   className="w-full h-14 border border-dashed border-slate-200 hover:border-blue-500 dark:border-white/15 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold text-slate-600 hover:text-blue-600 dark:text-slate-300 transition-colors bg-slate-50/50 dark:bg-white/[0.02]"
                 >
                   <Upload className="w-4 h-4" />
-                  <span>选择主字幕文件</span>
+                  <span>{t('subtitleMerge.selectPrimaryBtn', '选择主字幕文件')}</span>
                 </button>
               )}
             </div>
@@ -291,7 +290,7 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
             {isBilingual && (
               <div className="space-y-2 animate-in fade-in duration-150">
                 <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 block">
-                  次要字幕 (显示在下层，如原文原声)
+                  {t('subtitleMerge.secondarySubLabel', '次要字幕 (显示在下层，如原文原声)')}
                 </label>
 
                 {secondarySubPath ? (
@@ -307,7 +306,7 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
                       onClick={handlePickSecondarySub}
                       className="text-[11px] text-blue-600 hover:text-blue-500 font-medium shrink-0 ml-2"
                     >
-                      重选
+                      {t('subtitleMerge.reselect', '重选')}
                     </button>
                   </div>
                 ) : (
@@ -317,7 +316,7 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
                     className="w-full h-14 border border-dashed border-slate-200 hover:border-blue-500 dark:border-white/15 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold text-slate-600 hover:text-blue-600 dark:text-slate-300 transition-colors bg-slate-50/50 dark:bg-white/[0.02]"
                   >
                     <Upload className="w-4 h-4" />
-                    <span>选择副字幕文件</span>
+                    <span>{t('subtitleMerge.selectSecondaryBtn', '选择副字幕文件')}</span>
                   </button>
                 )}
               </div>
@@ -332,30 +331,21 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
               3
             </span>
             <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
-              输出设置
+              {t('subtitleMerge.step3Title', '输出目录与压制设置')}
             </h3>
           </div>
 
           <div className="space-y-3">
-            <div>
-              <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 block mb-1.5">
-                自定义输出目录 (留空默认保存在视频同级目录下的 _vdub 文件夹)
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="留空自动保存在视频所在目录"
-                  value={outputDir}
-                  onChange={(e) => setOutputDir(e.target.value)}
-                  className="flex-1 h-10 bg-slate-50 dark:bg-white/[0.06] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                />
+            <div className="p-3.5 bg-slate-50 dark:bg-white/[0.02] border border-slate-200/80 dark:border-white/5 rounded-xl text-xs space-y-1.5">
+              <div className="flex items-center gap-2 font-semibold text-slate-700 dark:text-slate-200">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                <span>{t('subtitleMerge.step3Box1Title', '自动归档至统一任务目录')}</span>
               </div>
+              <p className="text-slate-500 dark:text-slate-400 text-[11px] leading-relaxed">
+                {t('subtitleMerge.step3Box1Desc', '成片将固定生成至任务工作区目录，避免路径混乱与文件覆盖。压制完成后可在【任务看板】中随时双击或点击直接在系统访达/资源管理器中定位查看。')}
+              </p>
             </div>
 
-            <div className="p-3.5 bg-slate-50 dark:bg-white/[0.02] border border-slate-200/80 dark:border-white/5 rounded-xl text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
-              <span>使用 FFmpeg 高保真压制引擎，字体自动采用系统最清晰无衬线字体，字距与行距严格对齐电影级标准。</span>
-            </div>
           </div>
         </div>
       </div>
@@ -364,13 +354,13 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
       <div className="sticky bottom-4 mx-auto max-w-4xl w-full z-30 px-4 mt-6">
         <div className="bg-white/90 dark:bg-[#202024]/90 backdrop-blur-2xl border border-slate-200/90 dark:border-white/10 rounded-2xl px-6 py-3 flex items-center justify-between">
           <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
-            <span>准备状态:</span>
+            <span>{t('subtitleMerge.readyStatus', '准备状态:')}</span>
             {videoPath && primarySubPath ? (
               <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-                <CheckCircle2 className="w-3.5 h-3.5" /> 素材已齐备，可立即合成
+                <CheckCircle2 className="w-3.5 h-3.5" /> {t('subtitleMerge.readyToMerge', '素材已齐备，可立即合成')}
               </span>
             ) : (
-              <span className="text-amber-500 font-medium">请先选定视频及对应字幕</span>
+              <span className="text-amber-500 font-medium">{t('subtitleMerge.needSelectFiles', '请先选定视频及对应字幕')}</span>
             )}
           </div>
 
@@ -385,12 +375,11 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
             }`}
           >
             {loading ? (
-              <span>正在提交流水线...</span>
+              <span>{t('subtitleMerge.merging', '正在压制合成...')}</span>
             ) : (
               <>
                 <Play className="w-3.5 h-3.5 fill-current" />
-                <span>开始压制合成视频</span>
-                <ArrowRight className="w-3.5 h-3.5" />
+                <span>{t('subtitleMerge.startMerge', '开始压制合成')}</span>
               </>
             )}
           </button>

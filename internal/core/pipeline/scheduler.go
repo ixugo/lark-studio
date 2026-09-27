@@ -107,6 +107,14 @@ func (s *Scheduler) Notifier() Notifier {
 	return nil
 }
 
+// SetTranslationClient 切换新任务使用的翻译客户端与语义分句状态。
+func (s *Scheduler) SetTranslationClient(client LLMClient, splitReady bool) {
+	s.core.SetTranslationClient(client, splitReady)
+	if notifier, ok := s.core.Notifier().(interface{ SetSemanticSplitReady(bool) }); ok {
+		notifier.SetSemanticSplitReady(splitReady)
+	}
+}
+
 // Pause 暂停正在运行的任务，返回 false 表示该任务不在运行中
 func (s *Scheduler) Pause(taskID string) bool {
 	s.mu.Lock()
