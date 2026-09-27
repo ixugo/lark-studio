@@ -46,7 +46,7 @@ type translationRange struct {
 }
 
 // runTranslate 翻译步骤
-// ModeDub 模式下同时启动 TTS goroutine，实现翻译与 TTS 真流水线并行
+// ModeDub 模式先检查译文和实际配音长度，再发布通过校验的文本。
 func (c *Core) runTranslate(ctx context.Context, job Job) error {
 	srcSRT := filepath.Join(job.OutputDir, "src.srt")
 	data, err := os.ReadFile(srcSRT)
@@ -77,21 +77,19 @@ func (c *Core) translateOnly(ctx context.Context, job Job, entries []srtEntry, s
 
 	c.logEvent(job.TaskID, "info", StepTranslate, "翻译开始：%d 句 → %s", len(sentences), job.TargetLang)
 
-	translated, err := c.translateAllChunks(ctx, job, sentences, nil)
+	translated, err := c.translateAllChunks(ctx, job, sentences, nil, entries)
 	if err != nil {
 		return err
 	}
 
 	if err := c.writeTranslationOutputs(entries, translated, job.OutputDir); err != nil {
-		return err
+		return &translationQualityError{err: err}
 	}
 	c.logEvent(job.TaskID, "success", StepTranslate, "翻译完成，时间轴 1:1 对齐")
 	return nil
 }
 
-// translateAndTTS 翻译与 TTS 真流水线并行（ModeDub 用）
-// 翻译每完成一个 chunk，立即将结果推入 channel；N 个 TTS worker 并发消费
-// 有序性靠文件名 {index}.wav 保证，不会朗读两遍（已存在的文件自动跳过）
+// translateAndTTS 在质量检查通过后发布最终配音，消费者通过文本指纹复用已测量音频。
 func (c *Core) translateAndTTS(ctx context.Context, job Job, entries []srtEntry, sentences []string) error {
 	ttsWorkers := normalizedTTSWorkers(c.cfg.TTSWorkers)
 	ttsCh := make(chan ttsPair, 300)
@@ -111,7 +109,7 @@ func (c *Core) translateAndTTS(ctx context.Context, job Job, entries []srtEntry,
 	c.startTTSWorkers(ttsWorkers, workerConfig)
 
 	c.llmMu.Lock()
-	translated, translateErr := c.translateAllChunks(ctx, job, sentences, ttsCh)
+	translated, translateErr := c.translateAllChunks(ctx, job, sentences, ttsCh, entries)
 	c.llmMu.Unlock()
 	close(ttsCh)
 	state.wg.Wait()
@@ -121,10 +119,10 @@ func (c *Core) translateAndTTS(ctx context.Context, job Job, entries []srtEntry,
 		return translateErr
 	}
 	if state.err != nil {
-		return state.err
+		return &translationQualityError{err: state.err}
 	}
 	if err := c.writeTranslationOutputs(entries, translated, job.OutputDir); err != nil {
-		return err
+		return &translationQualityError{err: err}
 	}
 	c.logEvent(job.TaskID, "success", StepTranslate, "翻译完成，时间轴 1:1 对齐")
 	c.logEvent(job.TaskID, "success", StepTTS, "配音完成：%d 段", state.done.Load())
@@ -231,67 +229,54 @@ func removeStaleAudio(audioPath string) error {
 	return nil
 }
 
-// translateAllChunks 分块翻译全部句子（调用方须持有 llmMu 锁）
-// 每个 chunk 额外携带前后各 contextWindow 句作为上下文
-// 若 streamTo 非 nil，每完成一个 chunk 立即将 (index, text) 推入 channel
+// translateAllChunks 先校验整批字幕再发布配音，保证跨分块重复不会提前被朗读。
 func (c *Core) translateAllChunks(
-	ctx context.Context, job Job, sentences []string, streamTo chan<- ttsPair,
+	ctx context.Context, job Job, sentences []string, streamTo chan<- ttsPair, timing ...[]srtEntry,
 ) ([]string, error) {
-	chunkSize := c.cfg.TranslateChunkSize
-	if chunkSize <= 0 {
-		chunkSize = 10
-	}
-
 	prompt := c.cfg.TranslatePrompt
 	if c.semanticSplitReady(job.Translator) {
 		prompt = c.injectTermsIntoPrompt(ctx, prompt, sentences)
 	}
-
-	var translated []string
-	total := len(sentences)
-
-	for i := 0; i < total; i += chunkSize {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-
-		end := min(i+chunkSize, total)
-		chunkRange := translationRange{start: i, end: end}
-		result, err := c.translateChunk(ctx, job, sentences, prompt, chunkRange)
-		if err != nil {
-			return nil, fmt.Errorf("翻译第 %d-%d 句失败: %w", i+1, end, err)
-		}
-		translated = append(translated, result...)
-
-		for idx, transLine := range result {
-			origIdx := i + idx
-			if origIdx < len(sentences) {
-				c.logEvent(job.TaskID, "info", StepTranslate, "[翻译 %d/%d]\n原文: %s\n译文: %s", origIdx+1, total, sentences[origIdx], transLine)
-			}
-		}
-
-		streamTranslationChunk(streamTo, i, result)
-		c.notifier.OnProgress(job.TaskID, StepTranslate, (end*100)/total)
-		c.logEvent(
-			job.TaskID,
-			"info",
-			StepTranslate,
-			"翻译进度 %d%%（%d/%d）",
-			(end*100)/total,
-			end,
-			total,
-		)
+	review := &translationReview{core: c, job: job, source: sentences, prompt: prompt}
+	if len(timing) > 0 {
+		review.entries = timing[0]
 	}
-
-	for len(translated) < total {
-		translated = append(translated, sentences[len(translated)])
+	if err := review.translateInitial(ctx); err != nil {
+		return nil, err
 	}
-	if len(translated) > total {
-		translated = translated[:total]
+	if err := review.run(ctx); err != nil {
+		return nil, &translationQualityError{err: err}
 	}
-
+	for i, line := range review.translated {
+		c.logEvent(job.TaskID, "info", StepTranslate, "[翻译 %d/%d]\n原文: %s\n译文: %s", i+1, len(sentences), sentences[i], line)
+	}
+	streamTranslationChunk(streamTo, 0, review.translated)
 	c.notifier.OnProgress(job.TaskID, StepTranslate, 100)
-	return translated, nil
+	return review.translated, nil
+}
+
+// translateInitial 按分块预算请求首版译文，条数不符时拒绝位置漂移。
+func (r *translationReview) translateInitial(ctx context.Context) error {
+	chunkSize := r.core.cfg.TranslateChunkSize
+	if chunkSize <= 0 {
+		chunkSize = 10
+	}
+	for start := 0; start < len(r.source); start += chunkSize {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		span := translationRange{start, min(start+chunkSize, len(r.source))}
+		lines, err := r.core.translateChunk(ctx, r.job, r.source, r.budgetPrompt(span), span)
+		if err != nil {
+			return fmt.Errorf("翻译第 %d-%d 条失败: %w", start+1, span.end, err)
+		}
+		if err := validateTranslations(lines, span.end-span.start); err != nil {
+			return err
+		}
+		r.translated = append(r.translated, lines...)
+		r.core.notifier.OnProgress(r.job.TaskID, StepTranslate, span.end*translationInitialProgress/len(r.source))
+	}
+	return nil
 }
 
 // translateChunk 翻译一个分块，并携带前后文供模型理解语境。
@@ -303,7 +288,7 @@ func (c *Core) translateChunk(
 	chunkRange translationRange,
 ) ([]string, error) {
 	start, end := chunkRange.start, chunkRange.end
-	if !c.semanticSplitReady(job.Translator) {
+	if job.Translator == "google" || job.Translator == "bing" || job.Translator == "deeplx" {
 		return c.translateWithJob(ctx, job, sentences[start:end], "", nil, nil)
 	}
 	contextStart := max(0, start-contextWindow)

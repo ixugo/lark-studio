@@ -292,7 +292,7 @@ func (c *Core) stepFunc(step string) func(context.Context, Job) error {
 }
 
 // runStepWithRetry 带指数退避重试的步骤执行
-// context 取消视为主动中止，不重试
+// context 取消和翻译质量阶段的失败直接返回，避免重置质量重译预算。
 func (c *Core) runStepWithRetry(ctx context.Context, job Job, step string, fn func(context.Context, Job) error) error {
 	var lastErr error
 	for attempt := range stepMaxRetries {
@@ -305,7 +305,7 @@ func (c *Core) runStepWithRetry(ctx context.Context, job Job, step string, fn fu
 			return nil
 		}
 
-		if ctx.Err() != nil {
+		if ctx.Err() != nil || isTranslationQualityFailure(lastErr) {
 			return lastErr
 		}
 
