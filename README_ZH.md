@@ -1,14 +1,14 @@
 <p align="center">
-  <img src="frontend/public/lark-logo.webp" alt="lark-studio 标志" width="128" height="128">
+  <img src="frontend/public/lark-logo.webp" alt="云雀工坊 标志" width="128" height="128">
 </p>
 
-<h1 align="center">lark-studio</h1>
+<h1 align="center">云雀工坊</h1>
 
 <p align="center">集字幕、翻译与配音于一体的桌面工作台。</p>
 
 <p align="center"><a href="README.md">English</a> | 简体中文</p>
 
-lark-studio 将语音识别、字幕翻译、语音合成和视频合成整合在同一个桌面应用中。你可以为视频或音频生成字幕、翻译已有文本、生成旁白，也可以将这些步骤组合成完整的视频配音流程。
+云雀工坊 将语音识别、字幕翻译、语音合成和视频合成整合在同一个桌面应用中。你可以为视频或音频生成字幕、翻译已有文本、生成旁白，也可以将这些步骤组合成完整的视频配音流程。
 
 ## 主要功能
 
