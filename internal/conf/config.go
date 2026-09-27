@@ -22,7 +22,7 @@ type Pipeline struct {
 	Workers            int     `comment:"并行 worker 数量"`
 	WhisperMode        string  `comment:"固定使用 whisper.cpp"`
 	WhisperBin         string  `comment:"whisper.cpp 可执行文件路径（留空优先使用应用内嵌运行时）"`
-	WhisperModel       string  `comment:"whisper ggml 模型文件路径"`
+	WhisperModel       string  `comment:"whisper ggml 模型文件路径" json:"whisper_model"`
 	FFmpegBin          string  `comment:"ffmpeg 路径（空则使用 PATH 中的）"`
 	DefaultOutputDir   string  `comment:"默认输出目录"`
 	DefaultTargetLang  string  `comment:"默认目标语言"`
