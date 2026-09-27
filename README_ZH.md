@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="frontend/public/lark-logo.svg" alt="lark-studio 标志" width="128" height="128">
+  <img src="frontend/public/lark-logo.webp" alt="lark-studio 标志" width="128" height="128">
 </p>
 
 <h1 align="center">lark-studio</h1>
