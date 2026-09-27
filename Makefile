@@ -21,7 +21,7 @@ LDFLAGS     := -X main.buildVersion=$(VERSION) \
                -X main.buildTime=$(BUILD_TIME)
 LDFLAGS_REL := $(LDFLAGS) -X main.release=true -s -w
 
-# macOS arm64: ffmpeg-static 6.1.1（与 SmartSub 同源，43MB vs evermeet 77MB）
+# macOS arm64: 使用 ffmpeg-static 发布的静态构建
 FFMPEG_MACOS_URL  := https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-darwin-arm64.gz
 # Windows: gyan.dev essentials
 FFMPEG_WIN_URL    := https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip
