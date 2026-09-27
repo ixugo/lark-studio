@@ -89,8 +89,9 @@ func (c *Core) extractAudio(ctx context.Context, job Job, audioPath string) erro
 	}
 
 	totalDuration := probeMediaDuration(ffmpeg, job.InputPath)
-	args := []string{ffmpeg,
-		"-y", "-i", job.InputPath,
+	args := []string{
+		ffmpeg,
+		"-hide_banner", "-y", "-i", job.InputPath,
 		"-vn", "-ar", "16000", "-ac", "1",
 		"-b:a", "128k", audioPath,
 	}

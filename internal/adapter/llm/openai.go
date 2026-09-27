@@ -15,6 +15,8 @@ import (
 	"time"
 )
 
+const llmRequestTimeout = 10 * time.Minute
+
 // Client OpenAI 兼容 API 客户端
 type Client struct {
 	baseURL   string
@@ -47,7 +49,7 @@ func NewClient(baseURL, apiKey, model string) *Client {
 		baseURL:  strings.TrimRight(baseURL, "/"),
 		apiKey:   apiKey,
 		model:    model,
-		client:   &http.Client{Timeout: 120 * time.Second},
+		client:   &http.Client{Timeout: llmRequestTimeout},
 		bingAuth: bingAuthURL,
 		bingAPI:  bingTranslateURL,
 	}
@@ -206,7 +208,7 @@ func (c *Client) TranslateWithProvider(
 Rules:
 - You MUST output exactly %d lines, one translation per input line
 - Each translated line should start with its number (e.g., "1. 翻译内容")%s
-- Keep translations concise: each translated line should be short enough to read naturally at normal speaking speed within the original subtitle's display duration
+- Keep translations concise and compact: the translated text must NOT be overly long or verbose. Keep its natural speaking length within the duration of the original sentence to ensure dubbed audio fits video scenes precisely
 - Maintain the meaning and tone of the original
 - Use natural, fluent, colloquial expressions suitable for subtitles
 - For technical terms, keep the English original in parentheses when first mentioned
@@ -290,4 +292,51 @@ func parseNumberedLines(text string) []string {
 		result = append(result, line)
 	}
 	return result
+}
+
+// TestOpenAIConnection 测试 OpenAI 兼容端点的网络连通性与模型响应
+func TestOpenAIConnection(ctx context.Context, baseURL, apiKey, model string) (string, error) {
+	baseURL = strings.TrimRight(baseURL, "/")
+	if baseURL == "" {
+		return "", fmt.Errorf("API Base URL 不能为空")
+	}
+	if model == "" {
+		model = "gpt-4o-mini"
+	}
+	url := baseURL + "/chat/completions"
+	reqBody := map[string]interface{}{
+		"model": model,
+		"messages": []map[string]string{
+			{"role": "user", "content": "ping"},
+		},
+		"max_tokens": 5,
+	}
+	data, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(data))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+
+	start := time.Now()
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("网络连接失败: %w", err)
+	}
+	defer resp.Body.Close()
+	elapsed := time.Since(start).Milliseconds()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("接口报错 HTTP %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	return fmt.Sprintf("连通成功！延迟: %dms", elapsed), nil
 }

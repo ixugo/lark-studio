@@ -9,6 +9,8 @@ import (
 	"github.com/ixugo/goddd/pkg/orm"
 	"github.com/ixugo/vdub/internal/conf"
 	"github.com/ixugo/vdub/internal/core/pipeline"
+	"github.com/ixugo/vdub/internal/core/recipe"
+	"github.com/ixugo/vdub/internal/core/recipe/store/recipedb"
 	"github.com/ixugo/vdub/internal/core/term"
 	"github.com/ixugo/vdub/internal/core/term/store/termdb"
 	"github.com/ixugo/vdub/pkg/web"
@@ -33,6 +35,12 @@ func NewTermCore(db *gorm.DB) term.Core {
 	core := term.NewCore(store)
 	_ = core.EnsureDefaultGlossary(context.Background())
 	return core
+}
+
+// NewRecipeCore 创建配方 Core，自动迁移配方数据表
+func NewRecipeCore(db *gorm.DB) recipe.Core {
+	store := recipedb.NewDB(db).AutoMigrate(true)
+	return recipe.NewCore(store)
 }
 
 // NewHTTPHandler 生成路由，返回 http.Handler。

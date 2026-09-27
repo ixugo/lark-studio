@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/ixugo/goddd/pkg/system"
+	whisperadapter "github.com/ixugo/vdub/internal/adapter/whisper"
 	"github.com/ixugo/vdub/internal/app"
 	"github.com/ixugo/vdub/internal/conf"
 	"github.com/ixugo/vdub/internal/core/pipeline"
@@ -63,6 +64,10 @@ func main() {
 	// 初始化数据目录 ~/dsub/
 	if err := conf.EnsureDataDirs(); err != nil {
 		fmt.Fprintf(os.Stderr, "初始化数据目录失败: %s\n", err)
+		os.Exit(1)
+	}
+	if _, err := whisperadapter.EnsureSpeechModel(filepath.Join(conf.StudioDir(), "models")); err != nil {
+		fmt.Fprintf(os.Stderr, "准备 Silero 人声检测模型失败: %s\n", err)
 		os.Exit(1)
 	}
 

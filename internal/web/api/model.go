@@ -1,14 +1,19 @@
 package api
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
+	"time"
 
 	whisperadapter "github.com/ixugo/vdub/internal/adapter/whisper"
 	"github.com/ixugo/vdub/internal/conf"
@@ -25,39 +30,11 @@ type whisperModelInfo struct {
 }
 
 var whisperModels = []whisperModelInfo{
-	{"tiny", "75 MiB", "最小最快，适合快速测试"},
-	{"tiny-q5_1", "32.2 MiB", "最小量化版，适合快速试用"},
-	{"tiny-q8_0", "43.5 MiB", "最小高精度量化版"},
-	{"tiny.en", "77.7 MiB", "英文专用，最小模型"},
-	{"tiny.en-q5_1", "32.2 MiB", "英文专用最小量化版"},
-	{"tiny.en-q8_0", "43.6 MiB", "英文专用最小高精度量化版"},
-	{"base", "148 MiB", "速度与质量均衡，轻量推荐"},
-	{"base-q5_1", "59.7 MiB", "基础量化版，内存占用低"},
-	{"base-q8_0", "81.8 MiB", "基础高精度量化版"},
-	{"base.en", "148 MiB", "英文专用基础模型"},
-	{"base.en-q5_1", "59.7 MiB", "英文专用基础量化版"},
-	{"base.en-q8_0", "81.8 MiB", "英文专用基础高精度量化版"},
-	{"small", "488 MiB", "速度与质量平衡，适合常规字幕"},
-	{"small-q5_1", "190 MiB", "小模型量化版"},
-	{"small-q8_0", "264 MiB", "小模型高精度量化版"},
-	{"small.en", "488 MiB", "英文专用小模型"},
-	{"small.en-q5_1", "190 MiB", "英文专用小模型量化版"},
-	{"small.en-q8_0", "264 MiB", "英文专用小模型高精度量化版"},
-	{"medium", "1.53 GiB", "中文效果好，适合多数正式任务"},
-	{"medium-q5_0", "539 MiB", "中型量化版，兼顾精度与内存"},
-	{"medium-q8_0", "823 MiB", "中型高精度量化版"},
-	{"medium.en", "1.53 GiB", "英文专用中型模型"},
-	{"medium.en-q5_0", "539 MiB", "英文专用中型量化版"},
-	{"medium.en-q8_0", "823 MiB", "英文专用中型高精度量化版"},
-	{"large-v3-turbo", "1.62 GiB", "精度接近旗舰，速度更佳"},
-	{"large-v3-turbo-q5_0", "574 MiB", "生产推荐，旗舰量化平衡版"},
-	{"large-v3-turbo-q8_0", "874 MiB", "旗舰 Turbo 高精度量化版"},
-	{"large-v3", "3.1 GiB", "当前旗舰，最高精度"},
-	{"large-v3-q5_0", "1.08 GiB", "当前旗舰量化版"},
-	{"large-v2", "3.09 GiB", "上一代旗舰模型"},
-	{"large-v2-q5_0", "1.08 GiB", "上一代旗舰量化版"},
-	{"large-v2-q8_0", "1.66 GiB", "上一代旗舰高精度量化版"},
-	{"large-v1", "3.09 GiB", "第一代旗舰模型"},
+	{"large-v3-turbo", "1.62 GiB", "旗舰加速推荐，多语言高精度识别"},
+	{"medium", "1.53 GiB", "多语中型模型，中文识别效果佳"},
+	{"small", "488 MiB", "多语轻量模型，速度与质量均衡"},
+	{"medium.en", "1.53 GiB", "英文专用高质量模型，英语转录首选"},
+	{"small.en", "488 MiB", "英文专用轻量模型，速度快且精度高"},
 }
 
 type modelDownloadStatus struct {
@@ -109,11 +86,18 @@ func (s *modelDownloadStatus) getProgress(name string) int {
 }
 
 func modelsDir() string {
-	return filepath.Join(conf.DataDir(), "models")
+	dir := filepath.Join(conf.StudioDir(), "models")
+	_ = os.MkdirAll(dir, 0o755)
+	return dir
+}
+
+// ModelPath 返回指定模型在 ~/.lark-studio/models 下的完整路径。
+func ModelPath(name string) string {
+	return filepath.Join(modelsDir(), fmt.Sprintf("ggml-%s.bin", name))
 }
 
 func modelPath(name string) string {
-	return filepath.Join(modelsDir(), fmt.Sprintf("ggml-%s.bin", name))
+	return ModelPath(name)
 }
 
 // RegisterModel 注册 Whisper 运行时与模型管理路由。
@@ -190,8 +174,10 @@ func startRuntimeInstall(hub ws.Huber, cfg *conf.Bootstrap) (any, error) {
 	return map[string]string{"status": "started"}, nil
 }
 
-type modelListOutput struct {
+// ModelListOutput 描述 GGML 模型或 VAD 资源的管理状态。
+type ModelListOutput struct {
 	Name        string `json:"name"`
+	Kind        string `json:"kind"`
 	Size        string `json:"size"`
 	Desc        string `json:"desc"`
 	Downloaded  bool   `json:"downloaded"`
@@ -200,14 +186,15 @@ type modelListOutput struct {
 	Progress    int    `json:"progress"`
 }
 
-func listModels(_ *http.Request, _ *struct{}) ([]modelListOutput, error) {
-	var out []modelListOutput
+func listModels(_ *http.Request, _ *struct{}) ([]ModelListOutput, error) {
+	out := make([]ModelListOutput, 0, len(whisperModels))
 	for _, m := range whisperModels {
 		p := modelPath(m.Name)
 		_, err := os.Stat(p)
 		downloaded := err == nil
-		item := modelListOutput{
+		item := ModelListOutput{
 			Name:        m.Name,
+			Kind:        "asr",
 			Size:        m.Size,
 			Desc:        m.Desc,
 			Downloaded:  downloaded,
@@ -219,7 +206,68 @@ func listModels(_ *http.Request, _ *struct{}) ([]modelListOutput, error) {
 		}
 		out = append(out, item)
 	}
-	return out, nil
+	return discoverInstalledModels(out)
+}
+
+// discoverInstalledModels 将管理目录中的所有 GGML 文件并入推荐模型清单。
+func discoverInstalledModels(models []ModelListOutput) ([]ModelListOutput, error) {
+	known := make(map[string]int, len(models))
+	for i, model := range models {
+		known[model.Name] = i
+	}
+	extraModels := make([]ModelListOutput, 0)
+	extraIndex := make(map[string]int)
+	if err := filepath.WalkDir(modelsDir(), func(path string, entry fs.DirEntry, walkErr error) error {
+		return collectInstalledModel(path, entry, walkErr, models, known, &extraModels, extraIndex)
+	}); err != nil {
+		return nil, fmt.Errorf("扫描语音模型目录失败: %w", err)
+	}
+	slices.SortFunc(extraModels, func(a, b ModelListOutput) int { return cmp.Compare(a.Name, b.Name) })
+	return append(models, extraModels...), nil
+}
+
+// collectInstalledModel 识别单个资源文件并更新推荐项或补充本地模型。
+func collectInstalledModel(path string, entry fs.DirEntry, walkErr error, models []ModelListOutput, known map[string]int, extras *[]ModelListOutput, extraIndex map[string]int) error {
+	if walkErr != nil {
+		return walkErr
+	}
+	if entry.IsDir() || !strings.HasPrefix(entry.Name(), "ggml-") || !strings.HasSuffix(entry.Name(), ".bin") {
+		return nil
+	}
+	info, err := entry.Info()
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return nil
+	}
+	name := strings.TrimSuffix(strings.TrimPrefix(entry.Name(), "ggml-"), ".bin")
+	if index, ok := known[name]; ok {
+		models[index].Downloaded = true
+		models[index].Path = path
+		models[index].Size = formatModelSize(info.Size())
+		return nil
+	}
+	if index, ok := extraIndex[name]; ok {
+		(*extras)[index].Path = path
+		return nil
+	}
+	kind, desc := "asr", "已发现的本地 GGML 语音模型"
+	if strings.HasPrefix(name, "silero-") {
+		kind, desc = "vad", "Silero 人声检测模型"
+	}
+	extraIndex[name] = len(*extras)
+	*extras = append(*extras, ModelListOutput{Name: name, Kind: kind, Size: formatModelSize(info.Size()), Desc: desc, Downloaded: true, Path: path})
+	return nil
+}
+
+// formatModelSize 以易读单位展示已安装模型的实际文件大小。
+func formatModelSize(size int64) string {
+	const mib = 1 << 20
+	if size >= mib {
+		return fmt.Sprintf("%.1f MiB", float64(size)/mib)
+	}
+	return fmt.Sprintf("%d KiB", (size+1023)/1024)
 }
 
 type modelDownloadInput struct {
@@ -264,50 +312,107 @@ func startDownload(name string, hub ws.Huber) (any, error) {
 }
 
 func downloadModel(name string, hub ws.Huber) error {
-	url := fmt.Sprintf("%s/ggml-%s.bin", hfBaseURL, name)
+	candidates := []string{
+		fmt.Sprintf("https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main/ggml-%s.bin", name),
+		fmt.Sprintf("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-%s.bin", name),
+	}
+	url := whisperadapter.ProbeFastestURL(context.Background(), candidates)
 	dest := modelPath(name)
 
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return fmt.Errorf("创建模型目录失败: %w", err)
 	}
 
-	resp, err := http.Get(url)
+	tmpFile := dest + ".tmp"
+	var existingSize int64
+	if fi, err := os.Stat(tmpFile); err == nil {
+		existingSize = fi.Size()
+	}
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("构造下载请求失败: %w", err)
+	}
+
+	isRange := false
+	if existingSize > 0 {
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", existingSize))
+		isRange = true
+	}
+
+	client := &http.Client{Timeout: 30 * time.Minute}
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("下载请求失败: %w", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
+
+	var f *os.File
+	var total int64
+	var written int64 = existingSize
+
+	if isRange && resp.StatusCode == http.StatusPartialContent {
+		// 服务器支持断点续传
+		total = existingSize + resp.ContentLength
+		f, err = os.OpenFile(tmpFile, os.O_APPEND|os.O_WRONLY, 0o644)
+		if err != nil {
+			return fmt.Errorf("打开断点文件失败: %w", err)
+		}
+	} else if resp.StatusCode == http.StatusOK {
+		total = resp.ContentLength
+		written = 0
+		f, err = os.Create(tmpFile)
+		if err != nil {
+			return fmt.Errorf("创建临时文件失败: %w", err)
+		}
+	} else {
 		return fmt.Errorf("下载失败: HTTP %d", resp.StatusCode)
 	}
 
-	tmpFile := dest + ".tmp"
-	f, err := os.Create(tmpFile)
-	if err != nil {
-		return fmt.Errorf("创建临时文件失败: %w", err)
-	}
-
-	total := resp.ContentLength
-	var written int64
-	buf := make([]byte, 64*1024)
+	buf := make([]byte, 128*1024)
 	lastPct := -1
+	startTime := time.Now()
+	lastReportTime := startTime
+	var lastReportWritten int64 = written
 
 	for {
 		n, readErr := resp.Body.Read(buf)
 		if n > 0 {
 			if _, wErr := f.Write(buf[:n]); wErr != nil {
 				f.Close()
-				os.Remove(tmpFile)
 				return fmt.Errorf("写入失败: %w", wErr)
 			}
 			written += int64(n)
-			if total > 0 {
-				pct := int(written * 100 / total)
-				if pct != lastPct {
+
+			now := time.Now()
+			if now.Sub(lastReportTime) >= 300*time.Millisecond || readErr == io.EOF {
+				pct := 0
+				if total > 0 {
+					pct = int(written * 100 / total)
+				}
+				sec := now.Sub(lastReportTime).Seconds()
+				var speedStr string
+				if sec > 0 {
+					speedBytes := float64(written-lastReportWritten) / sec
+					if speedBytes >= 1024*1024 {
+						speedStr = fmt.Sprintf("%.1f MB/s", speedBytes/(1024*1024))
+					} else {
+						speedStr = fmt.Sprintf("%.0f KB/s", speedBytes/1024)
+					}
+				}
+				lastReportTime = now
+				lastReportWritten = written
+
+				if pct != lastPct || speedStr != "" {
 					lastPct = pct
 					dlStatus.setProgress(name, pct)
 					if hub != nil {
 						hub.Broadcast(ws.NewMessage("model_download_progress", map[string]any{
-							"model": name, "progress": pct,
+							"model":      name,
+							"progress":   pct,
+							"speed":      speedStr,
+							"downloaded": written,
+							"total":      total,
 						}))
 					}
 				}
@@ -318,22 +423,64 @@ func downloadModel(name string, hub ws.Huber) error {
 				break
 			}
 			f.Close()
-			os.Remove(tmpFile)
 			return fmt.Errorf("读取失败: %w", readErr)
 		}
 	}
 	f.Close()
 
 	if err := os.Rename(tmpFile, dest); err != nil {
-		os.Remove(tmpFile)
 		return fmt.Errorf("重命名失败: %w", err)
 	}
 
 	slog.Info("model downloaded", "model", name, "path", dest, "size", written)
 	if hub != nil {
 		hub.Broadcast(ws.NewMessage("model_download_done", map[string]any{
-			"model": name, "path": dest,
+			"model": name, "path": dest, "size": written,
 		}))
 	}
 	return nil
+}
+
+// ListAllWhisperModels 供后端与 Wails 服务调用的模型列表数据。
+func ListAllWhisperModels() []ModelListOutput {
+	list, _ := listModels(nil, nil)
+	return list
+}
+
+// StartWhisperModelDownload 供 Wails 服务调用的启动下载模型。
+func StartWhisperModelDownload(name string, hub ws.Huber) (any, error) {
+	return startDownload(name, hub)
+}
+
+// DeleteWhisperModelFile 从统一模型目录删除指定 GGML 文件。
+func DeleteWhisperModelFile(name string) error {
+	p, err := findModelFile(name)
+	if err != nil {
+		return err
+	}
+	_ = os.Remove(p + ".tmp")
+	return os.Remove(p)
+}
+
+// findModelFile 仅在模型目录中按 GGML 文件名查找，避免删除任意路径。
+func findModelFile(name string) (string, error) {
+	want := fmt.Sprintf("ggml-%s.bin", name)
+	var found string
+	err := filepath.WalkDir(modelsDir(), func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !entry.IsDir() && entry.Name() == want {
+			found = path
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	if err != nil {
+		return "", fmt.Errorf("查找语音模型失败: %w", err)
+	}
+	if found == "" {
+		return "", os.ErrNotExist
+	}
+	return found, nil
 }

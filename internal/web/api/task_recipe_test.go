@@ -127,7 +127,7 @@ func TestValidateTaskParametersRejectsInvalidRecipe(t *testing.T) {
 	input := &task.CreateTaskInput{
 		SourceLang:     "auto",
 		TargetLang:     "zh-CN",
-		Translator:     "google",
+		Translator:     "invalid-engine",
 		OutputContent:  "bilingual",
 		TTSEngine:      "edge",
 		SpeechRate:     1,

@@ -1,6 +1,8 @@
 package conf
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -20,9 +22,12 @@ type Bootstrap struct {
 // Pipeline 流水线处理配置
 type Pipeline struct {
 	Workers            int     `comment:"并行 worker 数量"`
-	WhisperMode        string  `comment:"固定使用 whisper.cpp"`
+	WhisperMode        string  `comment:"ASR 引擎: whisper-cpp / openai" json:"whisper_mode"`
 	WhisperBin         string  `comment:"whisper.cpp 可执行文件路径（留空优先使用应用内嵌运行时）"`
 	WhisperModel       string  `comment:"whisper ggml 模型文件路径" json:"whisper_model"`
+	ASRBaseURL         string  `comment:"OpenAI 兼容 ASR API 基础地址" json:"asr_base_url"`
+	ASRAPIKey          string  `comment:"OpenAI 兼容 ASR API 密钥" json:"asr_api_key"`
+	ASRModel           string  `comment:"OpenAI 兼容 ASR 模型名称" json:"asr_model"`
 	FFmpegBin          string  `comment:"ffmpeg 路径（空则使用 PATH 中的）"`
 	DefaultOutputDir   string  `comment:"默认输出目录"`
 	DefaultTargetLang  string  `comment:"默认目标语言"`
@@ -31,7 +36,7 @@ type Pipeline struct {
 	TranslateChunkSize int     `comment:"每次发给 LLM 的句子数（5~20，默认 10）"`
 	TTSWorkers         int     `comment:"TTS 并发协程数（1~4，默认 2）"`
 	CleanIntermediate  bool    `comment:"处理完成后删除中间产物（raw.mp3/audio_segs 等）"`
-	SubtitleOutput     string  `comment:"字幕输出方式: burn(烧录到视频) / file(仅输出字幕文件)"`
+	SubtitleOutput     string  `comment:"字幕输出方式: soft(软字幕流复制秒级完成，推荐) / burn(烧录画面) / none(无字幕)"`
 }
 
 // LLM 大模型配置
@@ -61,9 +66,9 @@ type LipSync struct {
 
 type Runtime struct {
 	Debug        bool   `toml:"-" json:"-"`
-	BuildVersion string `toml:"-" json:"-"`
-	ConfigDir    string `toml:"-" json:"-"`
-	ConfigPath   string `toml:"-" json:"-"`
+	BuildVersion string `toml:"-" json:"build_version"`
+	ConfigDir    string `toml:"-" json:"config_dir"`
+	ConfigPath   string `toml:"-" json:"config_path"`
 }
 
 type Server struct {
@@ -140,12 +145,103 @@ func DataDir() string {
 	return filepath.Join(home, "dsub")
 }
 
+// StudioDir 返回 Lark Studio 集中资源管理根目录。
+func StudioDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "."
+	}
+	return filepath.Join(home, ".lark-studio")
+}
+
+// TasksDir 返回任务统一集中输出目录，自动创建。
+func TasksDir() string {
+	dir := filepath.Join(StudioDir(), "tasks")
+	_ = os.MkdirAll(dir, 0o755)
+	return dir
+}
+
 // EnsureDataDirs 确保数据目录结构存在
 func EnsureDataDirs() error {
 	base := DataDir()
 	for _, sub := range []string{"configs", "backup", "logs"} {
 		if err := os.MkdirAll(filepath.Join(base, sub), 0o755); err != nil {
 			return err
+		}
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "."
+	}
+	studioBase := StudioDir()
+	if err := migrateStudioDir(filepath.Join(home, ".vdub_studio"), studioBase); err != nil {
+		return err
+	}
+	for _, sub := range []string{"models", "runtime", "tasks"} {
+		if err := os.MkdirAll(filepath.Join(studioBase, sub), 0o755); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// migrateStudioDir 将旧资源目录迁入新位置，目标已有内容优先保留。
+func migrateStudioDir(oldDir, newDir string) error {
+	if _, err := os.Stat(oldDir); errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("检查旧资源目录失败: %w", err)
+	}
+	if _, err := os.Stat(newDir); errors.Is(err, os.ErrNotExist) {
+		if err := os.Rename(oldDir, newDir); err != nil {
+			return fmt.Errorf("迁移旧资源目录失败: %w", err)
+		}
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("检查新资源目录失败: %w", err)
+	}
+	if err := mergeStudioDir(oldDir, newDir); err != nil {
+		return err
+	}
+	if err := os.Remove(oldDir); err != nil {
+		return fmt.Errorf("清理旧资源目录失败: %w", err)
+	}
+	return nil
+}
+
+// mergeStudioDir 合并目录树，并将冲突的旧文件另存为可辨认的迁移备份。
+func mergeStudioDir(oldDir, newDir string) error {
+	entries, err := os.ReadDir(oldDir)
+	if err != nil {
+		return fmt.Errorf("读取旧资源目录失败: %w", err)
+	}
+	for _, entry := range entries {
+		oldPath := filepath.Join(oldDir, entry.Name())
+		newPath := filepath.Join(newDir, entry.Name())
+		if entry.IsDir() {
+			if err := os.MkdirAll(newPath, 0o755); err != nil {
+				return fmt.Errorf("创建迁移目录失败: %w", err)
+			}
+			if err := mergeStudioDir(oldPath, newPath); err != nil {
+				return err
+			}
+			if err := os.Remove(oldPath); err != nil {
+				return fmt.Errorf("清理已迁移目录失败: %w", err)
+			}
+			continue
+		}
+		if _, err := os.Lstat(newPath); err == nil {
+			newPath += ".from-vdub_studio"
+			if _, err := os.Lstat(newPath); err == nil {
+				return fmt.Errorf("迁移备份目标已存在: %s", newPath)
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("检查迁移备份目标失败: %w", err)
+			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("检查迁移目标失败: %w", err)
+		}
+		if err := os.Rename(oldPath, newPath); err != nil {
+			return fmt.Errorf("迁移资源文件失败: %w", err)
 		}
 	}
 	return nil

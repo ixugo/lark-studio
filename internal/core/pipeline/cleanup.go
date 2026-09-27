@@ -14,9 +14,10 @@ import (
 // 删除: raw.mp3, trans.txt, concat_list.txt, dub.mp3, silence_*.wav, audio_segs/
 func cleanIntermediate(outputDir string) int {
 	keep := map[string]bool{
-		"src.srt":   true,
-		"trans.srt": true,
-		"task.log":  true,
+		"src.srt":          true,
+		"trans.srt":        true,
+		"task.log":         true,
+		"source_meta.json": true,
 	}
 
 	entries, err := os.ReadDir(outputDir)
@@ -49,6 +50,90 @@ func cleanIntermediate(outputDir string) int {
 			}
 		}
 		removed++
+	}
+	return removed
+}
+
+// CleanStepAndSubsequent 重跑指定节点时，清除该节点及其后续所有节点的产物文件，保留前置节点的产物
+func CleanStepAndSubsequent(outputDir string, fromStep string) int {
+	entries, err := os.ReadDir(outputDir)
+	if err != nil {
+		return 0
+	}
+
+	// 永远保护的任务元数据与日志
+	protected := map[string]bool{
+		"source_meta.json": true,
+		"task.log":         true,
+	}
+
+	stepOrder := map[string]int{
+		StepWhisper:   1,
+		StepSplit:     2,
+		StepTranslate: 3,
+		StepTTS:       4,
+		StepMerge:     5,
+		StepBurn:      6,
+	}
+
+	fromRank := stepOrder[fromStep]
+	if fromRank <= 0 {
+		fromRank = 1
+	}
+
+	removed := 0
+	for _, e := range entries {
+		name := e.Name()
+		if protected[name] {
+			continue
+		}
+
+		shouldDelete := false
+
+		// 1. whisper 产物: raw.mp3, src.srt
+		if fromRank <= stepOrder[StepWhisper] {
+			if name == "raw.mp3" || name == "src.srt" {
+				shouldDelete = true
+			}
+		}
+
+		// 2. translate 产物: trans.txt, trans.srt
+		if fromRank <= stepOrder[StepTranslate] {
+			if name == "trans.txt" || name == "trans.srt" {
+				shouldDelete = true
+			}
+		}
+
+		// 3. tts 产物: audio_segs 目录
+		if fromRank <= stepOrder[StepTTS] {
+			if name == "audio_segs" {
+				shouldDelete = true
+			}
+		}
+
+		// 4. merge 产物: dub.mp3, concat_list.txt, silence_*.wav
+		if fromRank <= stepOrder[StepMerge] {
+			if name == "dub.mp3" || name == "concat_list.txt" || strings.HasPrefix(name, "silence_") {
+				shouldDelete = true
+			}
+		}
+
+		// 5. burn 产物: *.sub.mp4, *.trans.mp4, *.final.mp4 等输出视频
+		if fromRank <= stepOrder[StepBurn] {
+			if strings.HasSuffix(name, ".sub.mp4") || strings.HasSuffix(name, ".trans.mp4") || strings.HasSuffix(name, ".final.mp4") {
+				shouldDelete = true
+			}
+		}
+
+		if shouldDelete {
+			fullPath := filepath.Join(outputDir, name)
+			if e.IsDir() {
+				_ = os.RemoveAll(fullPath)
+			} else {
+				_ = os.Remove(fullPath)
+			}
+			removed++
+		}
 	}
 	return removed
 }

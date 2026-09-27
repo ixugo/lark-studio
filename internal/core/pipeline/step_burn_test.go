@@ -20,3 +20,20 @@ func TestSelectedSubtitleFiles(t *testing.T) {
 		}
 	}
 }
+
+// TestEscapeFFmpegSubtitlesPath 验证特殊字符、逗号、空格以及单引号的正确转义。
+func TestEscapeFFmpegSubtitlesPath(t *testing.T) {
+	input := `/path/to/Downloads/5 steps (1080p, h264, youtube).mp4.trans.srt`
+	got := escapeFFmpegSubtitlesPath(input)
+	want := `'/path/to/Downloads/5 steps (1080p\, h264\, youtube).mp4.trans.srt'`
+	if got != want {
+		t.Fatalf("escapeFFmpegSubtitlesPath(%q) = %q, want %q", input, got, want)
+	}
+
+	inputWithQuote := `/path/to/it's a [video] (h264:1).srt`
+	gotQuote := escapeFFmpegSubtitlesPath(inputWithQuote)
+	wantQuote := `'/path/to/it'\''s a \[video\] (h264\:1).srt'`
+	if gotQuote != wantQuote {
+		t.Fatalf("escapeFFmpegSubtitlesPath(%q) = %q, want %q", inputWithQuote, gotQuote, wantQuote)
+	}
+}

@@ -2,10 +2,14 @@ package wails
 
 import (
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 
+	asradapter "github.com/ixugo/vdub/internal/adapter/asr"
 	"github.com/ixugo/vdub/internal/conf"
 	"github.com/ixugo/vdub/internal/core/pipeline"
 	"github.com/ixugo/vdub/internal/core/task"
@@ -18,7 +22,13 @@ func TestWhisperModelConfigRoundTrip(t *testing.T) {
 	want := filepath.Join(t.TempDir(), "ggml-large-v3-turbo.bin")
 	bc := conf.Bootstrap{Runtime: conf.Runtime{ConfigPath: path}}
 	svc := &AppService{bc: &bc}
-	updates := map[string]any{"pipeline": map[string]any{"whisper_model": want}}
+	updates := map[string]any{"pipeline": map[string]any{
+		"whisper_model": want,
+		"whisper_mode":  "openai",
+		"asr_base_url":  "https://asr.example/v1",
+		"asr_api_key":   "test-key",
+		"asr_model":     "whisper-1",
+	}}
 	if err := svc.UpdateConfig(updates); err != nil {
 		t.Fatalf("保存配置：%v", err)
 	}
@@ -29,6 +39,9 @@ func TestWhisperModelConfigRoundTrip(t *testing.T) {
 	}
 	if loaded.Pipeline.WhisperModel != want {
 		t.Fatalf("TOML 模型路径 = %q，期望 %q", loaded.Pipeline.WhisperModel, want)
+	}
+	if loaded.Pipeline.WhisperMode != "openai" || loaded.Pipeline.ASRBaseURL != "https://asr.example/v1" || loaded.Pipeline.ASRAPIKey != "test-key" || loaded.Pipeline.ASRModel != "whisper-1" {
+		t.Fatalf("ASR 配置未完整持久化: %+v", loaded.Pipeline)
 	}
 
 	payload, err := json.Marshal(svc.GetConfig())
@@ -41,6 +54,39 @@ func TestWhisperModelConfigRoundTrip(t *testing.T) {
 	}
 	if result.Pipeline.WhisperModel != want {
 		t.Fatalf("前端模型路径 = %q，期望 %q", result.Pipeline.WhisperModel, want)
+	}
+	if result.Pipeline.WhisperMode != "openai" || result.Pipeline.ASRModel != "whisper-1" {
+		t.Fatalf("前端默认 ASR 配置 = %+v", result.Pipeline)
+	}
+}
+
+// TestUpdateConfigSwitchesSharedASRRouter 确保设置页保存的默认引擎用于后续转录。
+func TestUpdateConfigSwitchesSharedASRRouter(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/audio/transcriptions" {
+			t.Errorf("ASR 请求路径 = %q", r.URL.Path)
+		}
+		_, _ = io.WriteString(w, "1\n00:00:00,000 --> 00:00:01,000\nhello\n")
+	}))
+	defer server.Close()
+	router := asradapter.NewRouter(asradapter.Config{Engine: "whisper-cpp", WhisperBin: "must-not-run"})
+	path := filepath.Join(t.TempDir(), "config.toml")
+	bc := conf.Bootstrap{Runtime: conf.Runtime{ConfigPath: path}, Pipeline: conf.Pipeline{WhisperMode: "whisper-cpp"}}
+	svc := &AppService{bc: &bc, asrRouter: router}
+	updates := map[string]any{"pipeline": map[string]any{
+		"whisper_mode": "openai",
+		"asr_base_url": server.URL + "/v1",
+		"asr_model":    "whisper-1",
+	}}
+	if err := svc.UpdateConfig(updates); err != nil {
+		t.Fatal(err)
+	}
+	audio := filepath.Join(t.TempDir(), "audio.wav")
+	if err := os.WriteFile(audio, []byte("audio"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := router.Transcribe(t.Context(), audio, filepath.Join(t.TempDir(), "output.srt"), "auto", nil, nil); err != nil {
+		t.Fatalf("保存默认 OpenAI 引擎后转录失败: %v", err)
 	}
 }
 
@@ -82,16 +128,26 @@ func TestPrepareTaskInput(t *testing.T) {
 		}
 	})
 
-	t.Run("空引擎兜底使用全局配置", func(t *testing.T) {
+	t.Run("源文件安全拷贝与 source_meta 记录", func(t *testing.T) {
+		trickyVideo := filepath.Join(tmpDir, "TEDxTalks (1080p, h264, youtube).mp4")
+		if err := os.WriteFile(trickyVideo, []byte("fake video tricky"), 0o644); err != nil {
+			t.Fatalf("创建临时文件失败: %v", err)
+		}
 		in := task.CreateTaskInput{
-			InputPath:  testVideo,
-			Translator: "",
+			InputPath: trickyVideo,
 		}
 		if err := svc.prepareTaskInput(&in); err != nil {
 			t.Fatalf("prepareTaskInput 失败: %v", err)
 		}
-		if in.Translator != "bing" {
-			t.Errorf("期望兜底为 bing，实际为: %s", in.Translator)
+		if in.InputPath == trickyVideo {
+			t.Errorf("期望 InputPath 改为安全的暂存副本，实际仍为原路径: %s", in.InputPath)
+		}
+		metaFile := filepath.Join(in.OutputDir, "source_meta.json")
+		if _, err := os.Stat(metaFile); err != nil {
+			t.Errorf("期望生成 source_meta.json，但未找到: %v", err)
+		}
+		if _, err := os.Stat(in.InputPath); err != nil {
+			t.Errorf("期望暂存副本存在，但未找到: %v", err)
 		}
 	})
 }

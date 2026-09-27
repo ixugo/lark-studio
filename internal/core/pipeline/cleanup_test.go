@@ -9,7 +9,7 @@ import (
 func TestCleanIntermediate(t *testing.T) {
 	dir := t.TempDir()
 
-	keepers := []string{"src.srt", "trans.srt", "task.log", "clipped.trans.mp4", "video.final.mp4"}
+	keepers := []string{"src.srt", "trans.srt", "task.log", "source_meta.json", "clipped.trans.mp4", "video.final.mp4"}
 	removables := []string{"raw.mp3", "trans.txt", "concat_list.txt", "dub.mp3", "silence_0.wav", "silence_start.wav"}
 
 	for _, f := range append(keepers, removables...) {
@@ -64,6 +64,37 @@ func TestCleanIntermediate_OnlyKeepers(t *testing.T) {
 	removed := cleanIntermediate(dir)
 	if removed != 0 {
 		t.Errorf("only keepers: removed %d, want 0", removed)
+	}
+}
+
+func TestCleanStepAndSubsequent(t *testing.T) {
+	dir := t.TempDir()
+	files := []string{
+		"source_meta.json", "task.log", "raw.mp3", "src.srt",
+		"trans.txt", "trans.srt", "dub.mp3", "concat_list.txt",
+		"video.final.mp4",
+	}
+	for _, f := range files {
+		_ = os.WriteFile(filepath.Join(dir, f), []byte("content"), 0o644)
+	}
+	audioDir := filepath.Join(dir, "audio_segs")
+	_ = os.MkdirAll(audioDir, 0o755)
+
+	CleanStepAndSubsequent(dir, StepTTS)
+
+	for _, keep := range []string{"source_meta.json", "task.log", "raw.mp3", "src.srt", "trans.txt", "trans.srt"} {
+		if _, err := os.Stat(filepath.Join(dir, keep)); err != nil {
+			t.Errorf("file %q should be kept", keep)
+		}
+	}
+
+	for _, del := range []string{"dub.mp3", "concat_list.txt", "video.final.mp4"} {
+		if _, err := os.Stat(filepath.Join(dir, del)); err == nil {
+			t.Errorf("file %q should be removed", del)
+		}
+	}
+	if _, err := os.Stat(audioDir); err == nil {
+		t.Errorf("audio_segs dir should be removed")
 	}
 }
 

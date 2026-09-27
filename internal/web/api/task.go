@@ -3,11 +3,16 @@ package api
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/ixugo/goddd/pkg/reason"
 	"github.com/ixugo/vdub/internal/conf"
 	"github.com/ixugo/vdub/internal/core/pipeline"
@@ -113,17 +118,22 @@ func (a TaskAPI) appendCreationLog(ctx context.Context, item *task.Task) error {
 // prepareTaskInput 校验输入并补齐不会随全局配置变化的任务参数。
 func (a TaskAPI) prepareTaskInput(in *task.CreateTaskInput) error {
 	if _, err := os.Stat(in.InputPath); err != nil {
-		return reason.ErrBadRequest.SetMsg("视频文件不存在")
+		return reason.ErrBadRequest.SetMsg("输入文件不存在")
 	}
-	if in.Mode < pipeline.ModeSubtitle || in.Mode > pipeline.ModeDub {
+	if in.Mode < pipeline.ModeSubtitle || in.Mode > pipeline.ModeDubOnly {
 		return reason.ErrBadRequest.SetMsg("无效的处理模式")
 	}
 	if in.OutputDir == "" {
 		baseName := strings.TrimSuffix(filepath.Base(in.InputPath), filepath.Ext(in.InputPath))
-		in.OutputDir = filepath.Join(filepath.Dir(in.InputPath), baseName+"_vdub")
+		in.OutputDir = filepath.Join(conf.TasksDir(), baseName+"_vdub")
 	}
 	if err := os.MkdirAll(in.OutputDir, 0o755); err != nil {
 		return reason.ErrServer.Withf("创建输出目录失败: %s", err)
+	}
+
+	// 记录原始文件名并拷贝一份至工作目录，改用安全的 uuidv4 随机名 + 原后缀，避免特殊字符导致下游异常
+	if err := stageSourceFile(in); err != nil {
+		return reason.ErrServer.Withf("准备工作源文件失败: %s", err)
 	}
 	if in.TargetLang == "" {
 		in.TargetLang = a.conf.Pipeline.DefaultTargetLang
@@ -237,8 +247,11 @@ func taskPipelineJob(item *task.Task) pipeline.Job {
 	}
 }
 
-// deleteTask 删除指定任务。
+// deleteTask 停止任务并删除其生成文件，清理失败时保留记录供重试。
 func (a TaskAPI) deleteTask(r *http.Request, in *task.DeleteTaskInput) (*task.Task, error) {
+	if err := a.scheduler.CancelAndWait(r.Context(), in.ID); err != nil {
+		return nil, err
+	}
 	return a.taskCore.DeleteTask(r.Context(), in.ID)
 }
 
@@ -377,4 +390,61 @@ func (a TaskAPI) createStep(r *http.Request, in *task.CreateStepInput) (*task.St
 // deleteStep 删除指定步骤。
 func (a TaskAPI) deleteStep(r *http.Request, in *task.DeleteStepInput) (*task.Step, error) {
 	return a.taskCore.DeleteStep(r.Context(), in.ID)
+}
+
+// sourceFileMeta 记录原始文件名信息
+type sourceFileMeta struct {
+	OriginalName string    `json:"original_name"`
+	OriginalPath string    `json:"original_path"`
+	StagedName   string    `json:"staged_name"`
+	StagedPath   string    `json:"staged_path"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+// stageSourceFile 将输入源文件拷贝一份至任务输出目录，改用安全的 uuidv4 随机名 + 原后缀，并用 json 记录原文件名
+func stageSourceFile(in *task.CreateTaskInput) error {
+	metaPath := filepath.Join(in.OutputDir, "source_meta.json")
+	if data, err := os.ReadFile(metaPath); err == nil {
+		var meta sourceFileMeta
+		if json.Unmarshal(data, &meta) == nil && meta.StagedPath != "" {
+			if _, statErr := os.Stat(meta.StagedPath); statErr == nil {
+				in.InputPath = meta.StagedPath
+				return nil
+			}
+		}
+	}
+
+	ext := filepath.Ext(in.InputPath)
+	origName := filepath.Base(in.InputPath)
+	randomName := fmt.Sprintf("%s%s", uuid.New().String(), ext)
+	destPath := filepath.Join(in.OutputDir, randomName)
+
+	srcFile, err := os.Open(in.InputPath)
+	if err != nil {
+		return fmt.Errorf("读取原源文件失败: %w", err)
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return fmt.Errorf("创建副本文件失败: %w", err)
+	}
+	defer dstFile.Close()
+
+	if _, err := io.Copy(dstFile, srcFile); err != nil {
+		return fmt.Errorf("拷贝源文件副本失败: %w", err)
+	}
+
+	meta := sourceFileMeta{
+		OriginalName: origName,
+		OriginalPath: in.InputPath,
+		StagedName:   randomName,
+		StagedPath:   destPath,
+		CreatedAt:    time.Now(),
+	}
+	metaBytes, _ := json.MarshalIndent(meta, "", "  ")
+	_ = os.WriteFile(metaPath, metaBytes, 0o644)
+
+	in.InputPath = destPath
+	return nil
 }

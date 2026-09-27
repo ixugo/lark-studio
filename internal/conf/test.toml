@@ -45,12 +45,18 @@
 [Pipeline]
   # 并行 worker 数量
   Workers = 0
-  # 固定使用 whisper.cpp
+  # ASR 引擎: whisper-cpp / openai
   WhisperMode = ''
   # whisper.cpp 可执行文件路径（留空优先使用应用内嵌运行时）
   WhisperBin = ''
   # whisper ggml 模型文件路径
   WhisperModel = ''
+  # OpenAI 兼容 ASR API 基础地址
+  ASRBaseURL = ''
+  # OpenAI 兼容 ASR API 密钥
+  ASRAPIKey = ''
+  # OpenAI 兼容 ASR 模型名称
+  ASRModel = ''
   # ffmpeg 路径（空则使用 PATH 中的）
   FFmpegBin = ''
   # 默认输出目录
@@ -67,11 +73,11 @@
   TTSWorkers = 0
   # 处理完成后删除中间产物（raw.mp3/audio_segs 等）
   CleanIntermediate = false
-  # 字幕输出方式: burn(烧录到视频) / file(仅输出字幕文件)
+  # 字幕输出方式: soft(软字幕流复制秒级完成，推荐) / burn(烧录画面) / none(无字幕)
   SubtitleOutput = ''
 
 [LLM]
-  # 翻译服务: bing / deeplx / openai
+  # 翻译服务: google / bing / deeplx / openai
   Provider = ''
   # OpenAI 兼容 API 地址
   BaseURL = ''

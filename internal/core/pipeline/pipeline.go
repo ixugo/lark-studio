@@ -27,9 +27,12 @@ const (
 
 // Mode 处理模式
 const (
-	ModeSubtitle  = 1 // 仅生成字幕
-	ModeTranslate = 2 // 生成+翻译字幕
-	ModeDub       = 3 // 生成+翻译+配音
+	ModeSubtitle      = 1 // 仅生成字幕 (1)
+	ModeTranslate     = 2 // 生成+翻译字幕 (1-2)
+	ModeDub           = 3 // 生成+翻译+配音 (1-2-3-4)
+	ModeDubOnly       = 4 // 仅配音/文本朗读 (3 或 2-3)
+	ModeDirectDub     = 5 // 听写+原文配音+成片 (1-3-4，跳过翻译)
+	ModeTextTranslate = 6 // 纯文本翻译 (2)
 )
 
 // StepStatus 步骤状态
@@ -85,6 +88,14 @@ type Option func(*Core)
 
 func WithNotifier(n Notifier) Option {
 	return func(c *Core) { c.notifier = n }
+}
+
+// Notifier 返回当前配置的通知器
+func (c *Core) Notifier() Notifier {
+	if c == nil {
+		return nil
+	}
+	return c.notifier
 }
 
 // WithTermLister 注入术语列表查询，翻译时自动将匹配术语写入 prompt
@@ -334,6 +345,15 @@ func (c *Core) buildSteps(job Job) []string {
 		} else {
 			steps = translationSteps(job.Translator, StepWhisper, StepTranslate, StepTTS, StepMerge, StepBurn)
 		}
+	case ModeDirectDub:
+		// 1-3-4 流程：听写转录(1) -> 跳过翻译 -> 原文配音(3) -> 压制成片(4)
+		steps = []string{StepWhisper, StepTTS, StepMerge, StepBurn}
+	case ModeDubOnly:
+		// 纯配音/小说朗读模式：仅执行 TTS 合成与音频合并 (3)
+		steps = []string{StepTTS, StepMerge}
+	case ModeTextTranslate:
+		// 纯文本翻译模式 (2)
+		steps = []string{StepTranslate}
 	default:
 		steps = []string{StepWhisper, StepBurn}
 	}
@@ -380,6 +400,12 @@ func (*noopNotifier) OnLog(string, string)           {}
 
 var ffmpegTimeRe = regexp.MustCompile(`time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})`)
 
+// isFFmpegProgressLine 判断输出行是否为高频刷屏的进度行（如含有 frame= 或 size= 等状态输出）
+func isFFmpegProgressLine(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	return strings.HasPrefix(trimmed, "frame=") || strings.HasPrefix(trimmed, "size=")
+}
+
 // runFFmpegWithProgress 运行 ffmpeg 命令并通过解析 stderr 中的 time= 字段实时回报进度
 // totalDuration 为总时长（秒），用于计算百分比；progressFn 在每次解析到进度时被调用
 func runFFmpegWithProgress(
@@ -404,12 +430,23 @@ func runFFmpegWithProgress(
 	scanner := bufio.NewScanner(stderr)
 	scanner.Split(scanFFmpegOutput)
 
+	frameProgressCount := 0
 	for scanner.Scan() {
 		line := scanner.Text()
-		if line != "" && logFn != nil {
-			logFn(line)
+		if line != "" {
+			if logFn != nil {
+				// 对 frame=/size= 等高频进度输出做降采样：每 10 条仅输出 1 条，非进度类（错误、配置、元数据等）则全量保留
+				if isFFmpegProgressLine(line) {
+					frameProgressCount++
+					if frameProgressCount%10 == 1 {
+						logFn(line)
+					}
+				} else {
+					logFn(line)
+				}
+			}
+			reportFFmpegProgress(line, totalDuration, progressFn)
 		}
-		reportFFmpegProgress(line, totalDuration, progressFn)
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -468,7 +505,7 @@ func probeMediaDuration(ffmpegBin, mediaPath string) float64 {
 	if ffmpegBin != "" {
 		bin = ffmpegBin
 	}
-	cmd := exec.Command(bin, "-i", mediaPath)
+	cmd := exec.Command(bin, "-hide_banner", "-i", mediaPath)
 	output, _ := cmd.CombinedOutput()
 	// 从 stderr 中解析 "Duration: HH:MM:SS.xx"
 	s := string(output)

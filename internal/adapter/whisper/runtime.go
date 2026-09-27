@@ -2,6 +2,7 @@ package whisper
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"compress/gzip"
 	"context"
 	"fmt"
@@ -143,19 +144,24 @@ func systemBinaryPath(configured string) string {
 	return ""
 }
 
-// installedBinaryPath 返回下载到应用数据目录的运行时命令。
+// installedBinaryPath 返回安装到应用统一资源目录 ~/.lark-studio 的运行时命令。
 func installedBinaryPath(dataDir string) string {
-	candidate := filepath.Join(runtimeInstallDir(dataDir), "bin", runtimeBinaryName())
+	candidate := filepath.Join(conf.StudioDir(), "runtime", "whisper", runtime.GOOS, runtime.GOARCH, "bin", runtimeBinaryName())
 	info, err := os.Stat(candidate)
-	if err != nil || info.IsDir() {
-		return ""
+	if err == nil && !info.IsDir() {
+		return candidate
 	}
-	return candidate
+	// 兼容旧路径
+	oldCandidate := filepath.Join(runtimeInstallDir(dataDir), "bin", runtimeBinaryName())
+	if info, err := os.Stat(oldCandidate); err == nil && !info.IsDir() {
+		return oldCandidate
+	}
+	return ""
 }
 
-// runtimeInstallDir 为当前平台提供独立的运行时目录，避免不同架构混用。
+// runtimeInstallDir 为当前平台提供独立的运行时目录，默认在 ~/.lark-studio/runtime 下。
 func runtimeInstallDir(dataDir string) string {
-	return filepath.Join(dataDir, "runtime", "whisper", runtime.GOOS, runtime.GOARCH)
+	return filepath.Join(conf.StudioDir(), "runtime", "whisper", runtime.GOOS, runtime.GOARCH)
 }
 
 // runtimeBinaryName 返回当前系统使用的 whisper.cpp 命令名。
@@ -166,10 +172,25 @@ func runtimeBinaryName() string {
 	return "whisper-cli"
 }
 
-// runtimeAssetURL 构造与应用发布标签一致的运行时资产地址。
+// runtimeAssetCandidateURLs 构造国内镜像加速节点与 GitHub 原生地址的候选列表。
+func runtimeAssetCandidateURLs(releaseTag string) []string {
+	ext := "tar.gz"
+	if runtime.GOOS == "windows" {
+		ext = "zip"
+	}
+	asset := fmt.Sprintf("vdub-whisper-%s-%s.%s", runtime.GOOS, runtime.GOARCH, ext)
+	official := fmt.Sprintf("https://github.com/ixugo/vdub/releases/download/%s/%s", releaseTag, asset)
+	return []string{
+		"https://ghfast.top/" + official,
+		"https://ghproxy.net/" + official,
+		official,
+	}
+}
+
+// runtimeAssetURL 探测并选出最低延迟连通的运行时下载地址。
 func runtimeAssetURL(releaseTag string) string {
-	asset := fmt.Sprintf("vdub-whisper-%s-%s.tar.gz", runtime.GOOS, runtime.GOARCH)
-	return fmt.Sprintf("https://github.com/ixugo/vdub/releases/download/%s/%s", releaseTag, asset)
+	candidates := runtimeAssetCandidateURLs(releaseTag)
+	return ProbeFastestURL(context.Background(), candidates)
 }
 
 // downloadRuntimeArchive 下载运行时归档并把进度写入界面日志。
@@ -264,18 +285,24 @@ func installRuntimeArchive(archivePath, destination string) error {
 	return os.Rename(temporary, destination)
 }
 
-// extractRuntimeArchive 只展开归档内的相对文件，拒绝路径穿越。
+// extractRuntimeArchive 支持 .zip 与 .tar.gz 两种跨平台归档。
 func extractRuntimeArchive(archivePath, destination string) error {
+	if strings.HasSuffix(strings.ToLower(archivePath), ".zip") {
+		return extractZipArchive(archivePath, destination)
+	}
+
 	file, err := os.Open(archivePath)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
+
 	gzipReader, err := gzip.NewReader(file)
 	if err != nil {
 		return err
 	}
 	defer gzipReader.Close()
+
 	reader := tar.NewReader(gzipReader)
 	for {
 		header, readErr := reader.Next()
@@ -289,6 +316,47 @@ func extractRuntimeArchive(archivePath, destination string) error {
 			return err
 		}
 	}
+}
+
+// extractZipArchive 解压 Windows 平台 .zip 归档。
+func extractZipArchive(archivePath, destination string) error {
+	r, err := zip.OpenReader(archivePath)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+
+	for _, f := range r.File {
+		target, err := safeRuntimePath(destination, f.Name)
+		if err != nil {
+			return err
+		}
+		if f.FileInfo().IsDir() {
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return err
+		}
+		dstFile, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, f.Mode())
+		if err != nil {
+			rc.Close()
+			return err
+		}
+		_, copyErr := io.Copy(dstFile, rc)
+		rc.Close()
+		dstFile.Close()
+		if copyErr != nil {
+			return copyErr
+		}
+	}
+	return nil
 }
 
 // extractRuntimeEntry 写入单个常规文件或目录，不接受链接和越界路径。

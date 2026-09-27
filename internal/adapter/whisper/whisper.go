@@ -13,9 +13,17 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/ixugo/vdub/internal/conf"
 )
 
 var whisperProgressPattern = regexp.MustCompile(`progress\s*=\s*(\d+)%`)
+
+var whisperDiagnosticPrefixes = []string{
+	"whisper_vad:",
+	"whisper_vad_segments_from_",
+	"whisper_print_timings:",
+}
 
 // Runner whisper.cpp 命令行调用实现
 type Runner struct {
@@ -56,6 +64,10 @@ func (r *Runner) Transcribe(
 	if lang == "" {
 		lang = "auto"
 	}
+	vadModel, err := EnsureSpeechModel(filepath.Join(conf.StudioDir(), "models"))
+	if err != nil {
+		return fmt.Errorf("准备人声检测模型失败: %w", err)
+	}
 
 	outputBase := strings.TrimSuffix(outputSRT, filepath.Ext(outputSRT))
 	args := []string{
@@ -64,7 +76,8 @@ func (r *Runner) Transcribe(
 		"-l", lang,
 		"--output-srt",
 		"-of", outputBase,
-		"--no-timestamps",
+		"--vad", "--vad-model", vadModel,
+		"--vad-speech-pad-ms", strconv.Itoa(speechPaddingMillis),
 		"--print-progress",
 	}
 
@@ -170,6 +183,9 @@ func appendCommandOutput(output *bytes.Buffer, outputMu *sync.Mutex, line string
 
 // notifyWhisperOutput 推送原始日志，并从进度行解析百分比。
 func notifyWhisperOutput(line string, onProgress func(int), onLog func(string)) {
+	if isWhisperDiagnostic(line) {
+		return
+	}
 	matches := whisperProgressPattern.FindStringSubmatch(line)
 	if len(matches) != 2 {
 		if onLog != nil {
@@ -188,6 +204,16 @@ func notifyWhisperOutput(line string, onProgress func(int), onLog func(string)) 
 	if onLog != nil {
 		onLog(fmt.Sprintf("听写进度 %d%%", progress))
 	}
+}
+
+// isWhisperDiagnostic 判断只供调试的库内部统计行，避免挤占用户转录日志。
+func isWhisperDiagnostic(line string) bool {
+	for _, prefix := range whisperDiagnosticPrefixes {
+		if strings.HasPrefix(line, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // bundledLibraryDir 返回应用包内动态库目录，系统安装的命令无需修改环境。

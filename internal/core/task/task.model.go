@@ -23,7 +23,7 @@ type Task struct {
 	TTSEngine      string     `gorm:"column:tts_engine;notNull;default:'edge'" json:"tts_engine"`
 	TTSVoice       string     `gorm:"column:tts_voice;notNull;default:''" json:"tts_voice"`
 	SpeechRate     float64    `gorm:"column:speech_rate;notNull;default:1" json:"speech_rate"`
-	SubtitleOutput string     `gorm:"column:subtitle_output;notNull;default:'burn'" json:"subtitle_output"`
+	SubtitleOutput string     `gorm:"column:subtitle_output;notNull;default:'soft'" json:"subtitle_output"`
 	RecipeName     string     `gorm:"column:recipe_name;notNull;default:''" json:"recipe_name"`
 	CreatedAt      time.Time  `gorm:"column:created_at;notNull;default:CURRENT_TIMESTAMP" json:"created_at"`
 	UpdatedAt      time.Time  `gorm:"column:updated_at;notNull;default:CURRENT_TIMESTAMP" json:"updated_at"`

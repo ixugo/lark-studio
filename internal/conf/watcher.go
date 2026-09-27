@@ -70,6 +70,9 @@ func WatchConfig(ctx context.Context, bc *Bootstrap, callbacks ...ReloadCallback
 
 		failed := false
 		for _, cb := range callbacks {
+			if cb == nil {
+				continue
+			}
 			if err := cb(bc, &newBC); err != nil {
 				slog.Error("WatchConfig: 回调执行失败", "err", err)
 				failed = true

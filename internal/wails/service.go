@@ -2,7 +2,9 @@ package wails
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -10,23 +12,41 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	asradapter "github.com/ixugo/vdub/internal/adapter/asr"
+	llmadapter "github.com/ixugo/vdub/internal/adapter/llm"
+	whisperadapter "github.com/ixugo/vdub/internal/adapter/whisper"
 	"github.com/ixugo/vdub/internal/conf"
 	"github.com/ixugo/vdub/internal/core/pipeline"
+	"github.com/ixugo/vdub/internal/core/recipe"
 	"github.com/ixugo/vdub/internal/core/task"
 	"github.com/ixugo/vdub/internal/core/term"
+	"github.com/ixugo/vdub/internal/web/api"
+	"github.com/ixugo/vdub/pkg/ws"
 )
 
 // AppService 聚合所有暴露给前端界面的 Go 接口方法。
 type AppService struct {
-	mu        sync.RWMutex
-	app       *application.App
-	bc        *conf.Bootstrap
-	taskCore  task.Core
-	termCore  term.Core
-	scheduler *pipeline.Scheduler
+	mu         sync.RWMutex
+	app        *application.App
+	bc         *conf.Bootstrap
+	taskCore   task.Core
+	termCore   term.Core
+	recipeCore recipe.Core
+	scheduler  *pipeline.Scheduler
+	hub        ws.Huber
+	asrRouter  *asradapter.Router
+}
+
+// SetASRRouter 保存流水线共用的引擎路由器，使配置页保存可影响后续任务。
+func (s *AppService) SetASRRouter(router *asradapter.Router) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.asrRouter = router
 }
 
 // NewAppService 创建应用服务。
@@ -35,14 +55,18 @@ func NewAppService(
 	bc *conf.Bootstrap,
 	taskCore task.Core,
 	termCore term.Core,
+	recipeCore recipe.Core,
 	scheduler *pipeline.Scheduler,
+	hub ws.Huber,
 ) *AppService {
 	return &AppService{
-		app:       app,
-		bc:        bc,
-		taskCore:  taskCore,
-		termCore:  termCore,
-		scheduler: scheduler,
+		app:        app,
+		bc:         bc,
+		taskCore:   taskCore,
+		termCore:   termCore,
+		recipeCore: recipeCore,
+		scheduler:  scheduler,
+		hub:        hub,
 	}
 }
 
@@ -64,6 +88,16 @@ func (s *AppService) GetTask(id string) (*task.Task, error) {
 // ListTaskLogs 获取任务运行日志。
 func (s *AppService) ListTaskLogs(id string) ([]*task.TaskLog, error) {
 	return s.taskCore.ListRecentTaskLogs(context.Background(), id)
+}
+
+// ListTaskSteps 获取指定任务的所有步骤执行明细及耗时。
+func (s *AppService) ListTaskSteps(taskID string) ([]*task.Step, error) {
+	in := &task.ListStepInput{
+		TaskID: taskID,
+	}
+	in.Size = 50
+	steps, _, err := s.taskCore.ListSteps(context.Background(), in)
+	return steps, err
 }
 
 // CreateTask 创建单个转写/翻译/配音任务。
@@ -124,10 +158,9 @@ func (s *AppService) MergeSubtitle(in MergeSubtitleInput) (*task.Task, error) {
 		return nil, fmt.Errorf("字幕文件不存在: %s", in.PrimarySubPath)
 	}
 
-	if in.OutputDir == "" {
-		baseName := strings.TrimSuffix(filepath.Base(in.VideoPath), filepath.Ext(in.VideoPath))
-		in.OutputDir = filepath.Join(filepath.Dir(in.VideoPath), baseName+"_vdub")
-	}
+	// 字幕合成固定输出到统一任务目录 ~/.lark-studio/tasks。
+	baseName := strings.TrimSuffix(filepath.Base(in.VideoPath), filepath.Ext(in.VideoPath))
+	in.OutputDir = filepath.Join(conf.TasksDir(), baseName+"_vdub")
 	if err := os.MkdirAll(in.OutputDir, 0o755); err != nil {
 		return nil, fmt.Errorf("创建输出目录失败: %w", err)
 	}
@@ -176,28 +209,178 @@ func (s *AppService) PauseTask(id string) error {
 	return nil
 }
 
-// ResumeTask 恢复已暂停的任务。
+// ResumeTask 恢复已暂停或已失败的任务。
 func (s *AppService) ResumeTask(id string) error {
 	ctx := context.Background()
 	item, err := s.taskCore.GetTask(ctx, id)
 	if err != nil {
 		return err
 	}
-	if item.Status != 2 {
-		return fmt.Errorf("任务不在暂停状态")
+	if item.Status != 2 && item.Status != 4 {
+		return fmt.Errorf("只能恢复已暂停或已失败的任务")
 	}
+	resumeFrom := item.CurrentStep
 	if err := s.taskCore.SetTaskStatus(ctx, id, func(t *task.Task) {
 		t.Status = 1
 		t.Error = ""
 	}); err != nil {
 		return err
 	}
-	return s.scheduler.Submit(taskPipelineJob(item))
+	job := taskPipelineJob(item)
+	job.ResumeFrom = resumeFrom
+	return s.scheduler.Submit(job)
 }
 
-// DeleteTask 删除任务。
-func (s *AppService) DeleteTask(id string) error {
+// RerunTaskOptions 重跑任务的可选新配方与覆盖参数
+type RerunTaskOptions struct {
+	FromStep       string  `json:"from_step"`
+	Mode           int     `json:"mode,omitempty"`
+	TargetLang     string  `json:"target_lang,omitempty"`
+	SourceLang     string  `json:"source_lang,omitempty"`
+	Translator     string  `json:"translator,omitempty"`
+	OutputContent  string  `json:"output_content,omitempty"`
+	TTSEngine      string  `json:"tts_engine,omitempty"`
+	TTSVoice       string  `json:"tts_voice,omitempty"`
+	SpeechRate     float64 `json:"speech_rate,omitempty"`
+	SubtitleOutput string  `json:"subtitle_output,omitempty"`
+	RecipeName     string  `json:"recipe_name,omitempty"`
+}
+
+// RerunTaskWithRecipe 支持修改配置配方并指定节点重跑
+func (s *AppService) RerunTaskWithRecipe(id string, opts RerunTaskOptions) error {
+	ctx := context.Background()
+	item, err := s.taskCore.GetTask(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	fromStep := opts.FromStep
+	if fromStep == "" {
+		fromStep = pipeline.StepWhisper
+	}
+
+	// 先暂停或中断原有调度
 	s.scheduler.Pause(id)
+
+	// 清理目标步骤及其后续所有产物
+	pipeline.CleanStepAndSubsequent(item.OutputDir, fromStep)
+
+	targetMode := item.Mode
+	if opts.Mode > 0 {
+		targetMode = opts.Mode
+	}
+	targetSubOutput := item.SubtitleOutput
+	if opts.SubtitleOutput != "" {
+		targetSubOutput = opts.SubtitleOutput
+	}
+	targetTranslator := item.Translator
+	if opts.Translator != "" {
+		targetTranslator = opts.Translator
+	}
+
+	baseProgress := 0
+	if resetter, ok := s.scheduler.Notifier().(interface {
+		ResetTaskProgress(taskID, fromStep string, mode int, subtitleOutput, translator string) int
+	}); ok {
+		baseProgress = resetter.ResetTaskProgress(id, fromStep, targetMode, targetSubOutput, targetTranslator)
+	}
+
+	// 重置任务状态为处理中，清空错误与当前进度，若传入新配方参数则同步更新持久化
+	if err := s.taskCore.SetTaskStatus(ctx, id, func(t *task.Task) {
+		t.Status = 1
+		t.Error = ""
+		t.CurrentStep = fromStep
+		t.CurrentDetail = "重跑节点: " + fromStep
+		t.Progress = baseProgress
+		t.StepProgress = 0
+		if opts.Mode > 0 {
+			t.Mode = opts.Mode
+		}
+		if opts.TargetLang != "" {
+			t.TargetLang = opts.TargetLang
+		}
+		if opts.SourceLang != "" {
+			t.SourceLang = opts.SourceLang
+		}
+		if opts.Translator != "" {
+			t.Translator = opts.Translator
+		}
+		if opts.OutputContent != "" {
+			t.OutputContent = opts.OutputContent
+		}
+		if opts.TTSEngine != "" {
+			t.TTSEngine = opts.TTSEngine
+		}
+		if opts.TTSVoice != "" {
+			t.TTSVoice = opts.TTSVoice
+		}
+		if opts.SpeechRate > 0 {
+			t.SpeechRate = opts.SpeechRate
+		}
+		if opts.SubtitleOutput != "" {
+			t.SubtitleOutput = opts.SubtitleOutput
+		}
+		if opts.RecipeName != "" {
+			t.RecipeName = opts.RecipeName
+		}
+	}); err != nil {
+		return err
+	}
+
+	if s.hub != nil {
+		s.hub.Broadcast(ws.NewMessage("task_progress", map[string]any{
+			"task_id":        id,
+			"step":           fromStep,
+			"detail":         "重跑节点: " + fromStep,
+			"step_progress":  0,
+			"total_progress": baseProgress,
+			"progress":       baseProgress,
+		}))
+	}
+
+	// 重新获取已更新配置的任务并提交流水线
+	freshTask, err := s.taskCore.GetTask(ctx, id)
+	if err != nil {
+		freshTask = item
+	}
+
+	job := taskPipelineJob(freshTask)
+	job.ResumeFrom = fromStep
+	return s.scheduler.Submit(job)
+}
+
+// RerunTaskFromStep 用户主动要求从某一个步骤节点重新执行该任务
+// 清除该步骤及后续所有产物，并将该步骤作为起始步骤重跑
+func (s *AppService) RerunTaskFromStep(id string, fromStep string) error {
+	return s.RerunTaskWithRecipe(id, RerunTaskOptions{FromStep: fromStep})
+}
+
+// AutoResumeInterruptedTasks 扫描并在应用启动时自动恢复因停机/断电/崩溃而中断的任务
+func (s *AppService) AutoResumeInterruptedTasks(ctx context.Context) {
+	in := &task.ListTaskInput{}
+	in.Size = 200
+	tasks, _, err := s.taskCore.ListTasks(ctx, in)
+	if err != nil {
+		slog.Warn("自动检测中断任务失败", "err", err)
+		return
+	}
+	for _, t := range tasks {
+		if t.Status == 1 {
+			slog.Info("自动恢复因程序停止中断的任务", "task_id", t.ID, "step", t.CurrentStep)
+			job := taskPipelineJob(t)
+			job.ResumeFrom = t.CurrentStep
+			if err := s.scheduler.Submit(job); err != nil {
+				slog.Error("自动恢复中断任务失败", "task_id", t.ID, "err", err)
+			}
+		}
+	}
+}
+
+// DeleteTask 等待后台停止写入后，连同任务生成的文件一起删除记录。
+func (s *AppService) DeleteTask(id string) error {
+	if err := s.scheduler.CancelAndWait(context.Background(), id); err != nil {
+		return err
+	}
 	_, err := s.taskCore.DeleteTask(context.Background(), id)
 	return err
 }
@@ -233,18 +416,46 @@ func (s *AppService) OpenInFileManager(targetPath string) error {
 	if err != nil {
 		return fmt.Errorf("获取绝对路径失败: %w", err)
 	}
-	if _, err := os.Stat(absPath); err != nil {
-		return fmt.Errorf("目标文件或目录不存在: %s", absPath)
+	fileInfo, err := os.Stat(absPath)
+	if err != nil {
+		return fmt.Errorf("目录不存在: %s", absPath)
 	}
 
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
-		cmd = exec.Command("open", "-R", absPath)
+		if fileInfo.IsDir() {
+			// 如果是目录，优先寻找目录下生成的成片 mp4 文件，如果有则直接定位高亮选中视频；否则直接进入并打开该目录
+			entries, _ := os.ReadDir(absPath)
+			var targetVideo string
+			for _, e := range entries {
+				if !e.IsDir() && strings.HasSuffix(e.Name(), ".mp4") {
+					targetVideo = filepath.Join(absPath, e.Name())
+					if strings.Contains(e.Name(), ".final.") {
+						break
+					}
+				}
+			}
+			if targetVideo != "" {
+				cmd = exec.Command("open", "-R", targetVideo)
+			} else {
+				cmd = exec.Command("open", absPath)
+			}
+		} else {
+			cmd = exec.Command("open", "-R", absPath)
+		}
 	case "windows":
-		cmd = exec.Command("explorer", "/select,", absPath)
+		if fileInfo.IsDir() {
+			cmd = exec.Command("explorer", absPath)
+		} else {
+			cmd = exec.Command("explorer", "/select,", absPath)
+		}
 	default:
-		cmd = exec.Command("xdg-open", filepath.Dir(absPath))
+		if fileInfo.IsDir() {
+			cmd = exec.Command("xdg-open", absPath)
+		} else {
+			cmd = exec.Command("xdg-open", filepath.Dir(absPath))
+		}
 	}
 	if err := cmd.Start(); err != nil {
 		slog.Error("打开文件管理器失败", "path", absPath, "err", err)
@@ -253,7 +464,31 @@ func (s *AppService) OpenInFileManager(targetPath string) error {
 	return nil
 }
 
-// ─── 配置管理 ─────────────────────────────────────────────
+// ─── 配置与系统信息管理 ─────────────────────────────────────────────
+
+// AppInfo 系统运行环境与版本信息。
+type AppInfo struct {
+	AppName      string `json:"app_name"`
+	BuildVersion string `json:"build_version"`
+	Platform     string `json:"platform"`
+	Arch         string `json:"arch"`
+}
+
+// GetAppInfo 获取系统运行环境与真实构建版本信息。
+func (s *AppService) GetAppInfo() AppInfo {
+	s.mu.RLock()
+	ver := s.bc.Runtime.BuildVersion
+	s.mu.RUnlock()
+	if ver == "" {
+		ver = "0.1.0"
+	}
+	return AppInfo{
+		AppName:      "Lark Studio",
+		BuildVersion: ver,
+		Platform:     runtime.GOOS,
+		Arch:         runtime.GOARCH,
+	}
+}
 
 // ConfigDTO 配置传输对象。
 type ConfigDTO struct {
@@ -299,12 +534,25 @@ func (s *AppService) UpdateConfig(updates map[string]any) error {
 	defer s.mu.Unlock()
 
 	c := s.bc
+	previousPipeline := c.Pipeline
 	if p, ok := updates["pipeline"].(map[string]any); ok {
+		if v, ok := p["whisper_mode"].(string); ok {
+			c.Pipeline.WhisperMode = v
+		}
 		if v, ok := p["workers"].(float64); ok {
 			c.Pipeline.Workers = int(v)
 		}
 		if v, ok := p["whisper_model"].(string); ok {
 			c.Pipeline.WhisperModel = v
+		}
+		if v, ok := p["asr_base_url"].(string); ok {
+			c.Pipeline.ASRBaseURL = v
+		}
+		if v, ok := p["asr_api_key"].(string); ok {
+			c.Pipeline.ASRAPIKey = v
+		}
+		if v, ok := p["asr_model"].(string); ok {
+			c.Pipeline.ASRModel = v
 		}
 		if v, ok := p["ffmpeg_bin"].(string); ok {
 			c.Pipeline.FFmpegBin = v
@@ -356,7 +604,27 @@ func (s *AppService) UpdateConfig(updates map[string]any) error {
 		}
 	}
 
-	return conf.WriteConfig(c, c.Runtime.ConfigPath)
+	config := asrConfigFromPipeline(c.Pipeline)
+	if err := asradapter.ValidateConfig(config); err != nil {
+		c.Pipeline = previousPipeline
+		return err
+	}
+	if err := conf.WriteConfig(c, c.Runtime.ConfigPath); err != nil {
+		c.Pipeline = previousPipeline
+		return err
+	}
+	if s.asrRouter != nil {
+		s.asrRouter.SetConfig(config)
+	}
+	return nil
+}
+
+// asrConfigFromPipeline 映射已持久化字段到运行时 ASR 路由配置。
+func asrConfigFromPipeline(p conf.Pipeline) asradapter.Config {
+	return asradapter.Config{
+		Engine: p.WhisperMode, WhisperBin: p.WhisperBin, WhisperModel: p.WhisperModel,
+		BaseURL: p.ASRBaseURL, APIKey: p.ASRAPIKey, Model: p.ASRModel,
+	}
 }
 
 // ─── 术语库 ───────────────────────────────────────────────
@@ -392,16 +660,40 @@ func (s *AppService) DeleteTerm(id int64) error {
 	return s.termCore.Remove(context.Background(), id)
 }
 
+// ─── 任务配方管理 (SQLite 持久化) ──────────────────────────
+
+// ListRecipes 获取所有保存的自定义工作流配方。
+func (s *AppService) ListRecipes() ([]recipe.Recipe, error) {
+	return s.recipeCore.List(context.Background())
+}
+
+// SaveRecipe 保存或更新工作流配方。
+func (s *AppService) SaveRecipe(r recipe.Recipe) (*recipe.Recipe, error) {
+	if r.ID == "" {
+		r.ID = fmt.Sprintf("rcp_%d", time.Now().UnixMilli())
+	}
+	r.IsCustom = true
+	if err := s.recipeCore.Save(context.Background(), &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// DeleteRecipe 删除指定的工作流配方。
+func (s *AppService) DeleteRecipe(id string) error {
+	return s.recipeCore.Delete(context.Background(), id)
+}
+
 // ─── 内部校验与辅助 ───────────────────────────────────────
 
 func (s *AppService) prepareTaskInput(in *task.CreateTaskInput) error {
 	if in.InputPath == "" {
-		return fmt.Errorf("视频文件路径不能为空")
+		return fmt.Errorf("输入文件路径不能为空")
 	}
 	if _, err := os.Stat(in.InputPath); err != nil {
-		return fmt.Errorf("视频文件不存在: %s", in.InputPath)
+		return fmt.Errorf("输入文件不存在: %s", in.InputPath)
 	}
-	if in.Mode < pipeline.ModeSubtitle || in.Mode > pipeline.ModeDub {
+	if in.Mode < pipeline.ModeSubtitle || in.Mode > pipeline.ModeDubOnly {
 		in.Mode = pipeline.ModeDub
 	}
 	if in.OutputDir == "" {
@@ -410,6 +702,11 @@ func (s *AppService) prepareTaskInput(in *task.CreateTaskInput) error {
 	}
 	if err := os.MkdirAll(in.OutputDir, 0o755); err != nil {
 		return fmt.Errorf("创建输出目录失败: %w", err)
+	}
+
+	// 记录原始文件名并拷贝一份至工作目录，改用安全的 uuidv4 随机名 + 原后缀，避免特殊字符导致下游异常
+	if err := stageSourceFile(in); err != nil {
+		return fmt.Errorf("准备工作源文件失败: %w", err)
 	}
 	if in.TargetLang == "" {
 		in.TargetLang = s.bc.Pipeline.DefaultTargetLang
@@ -448,7 +745,7 @@ func (s *AppService) prepareTaskInput(in *task.CreateTaskInput) error {
 	if in.SubtitleOutput == "" {
 		in.SubtitleOutput = s.bc.Pipeline.SubtitleOutput
 		if in.SubtitleOutput == "" {
-			in.SubtitleOutput = "burn"
+			in.SubtitleOutput = "soft"
 		}
 	}
 	return nil
@@ -457,11 +754,17 @@ func (s *AppService) prepareTaskInput(in *task.CreateTaskInput) error {
 func taskModeTitle(mode int) string {
 	switch mode {
 	case pipeline.ModeSubtitle:
-		return "转写字幕"
+		return "转写字幕(1)"
 	case pipeline.ModeTranslate:
-		return "双语翻译"
+		return "双语翻译(1-2)"
 	case pipeline.ModeDub:
-		return "翻译配音"
+		return "视频配音成片(1-2-3-4)"
+	case pipeline.ModeDubOnly:
+		return "AI朗读配音(3)"
+	case pipeline.ModeDirectDub:
+		return "原文配音成片(1-3-4)"
+	case pipeline.ModeTextTranslate:
+		return "文本翻译(2)"
 	default:
 		return fmt.Sprintf("模式 %d", mode)
 	}
@@ -483,4 +786,136 @@ func taskPipelineJob(t *task.Task) pipeline.Job {
 		SubtitleOutput: t.SubtitleOutput,
 		ResumeFrom:     t.CurrentStep,
 	}
+}
+
+// ─── Whisper 模型与运行时管理 ──────────────────────────────
+
+// ListWhisperModels 获取所有可用的 GGML 模型及下载安装状态。
+func (s *AppService) ListWhisperModels() []api.ModelListOutput {
+	return api.ListAllWhisperModels()
+}
+
+// DownloadWhisperModel 启动模型异步下载任务（自动并发探测最优镜像）。
+func (s *AppService) DownloadWhisperModel(name string) error {
+	_, err := api.StartWhisperModelDownload(name, s.hub)
+	return err
+}
+
+// DeleteWhisperModel 从统一 models 目录删除指定模型。
+func (s *AppService) DeleteWhisperModel(name string) error {
+	return api.DeleteWhisperModelFile(name)
+}
+
+// InspectWhisperRuntime 探测当前系统 whisper.cpp 运行时环境。
+func (s *AppService) InspectWhisperRuntime() whisperadapter.RuntimeInfo {
+	s.mu.RLock()
+	bin := s.bc.Pipeline.WhisperBin
+	s.mu.RUnlock()
+	return whisperadapter.InspectRuntime(bin)
+}
+
+// InstallWhisperRuntime 自动下载并解包安装平台对应的 whisper.cpp 运行时。
+func (s *AppService) InstallWhisperRuntime() error {
+	ctx := context.Background()
+	tag := s.bc.Runtime.BuildVersion
+	if tag == "" {
+		tag = "v1.0.0"
+	}
+	return whisperadapter.InstallRuntime(ctx, whisperadapter.RuntimeInstallOptions{
+		ReleaseTag: tag,
+		DataDir:    conf.StudioDir(),
+	}, func(line string) {
+		if s.hub != nil {
+			s.hub.Broadcast(ws.NewMessage("whisper_runtime_log", map[string]any{
+				"message": line,
+			}))
+		}
+	})
+}
+
+// SetActiveWhisperModel 将模型设为全局默认使用的模型。
+func (s *AppService) SetActiveWhisperModel(nameOrPath string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	targetPath := nameOrPath
+	// 若传入的是简明模型名如 large-v3-turbo，转换为统一 models 目录的绝对路径。
+	if !strings.ContainsRune(nameOrPath, filepath.Separator) {
+		targetPath = api.ModelPath(nameOrPath)
+	}
+
+	s.bc.Pipeline.WhisperModel = targetPath
+	if err := conf.WriteConfig(s.bc, s.bc.Runtime.ConfigPath); err != nil {
+		return err
+	}
+	if s.asrRouter != nil {
+		s.asrRouter.SetConfig(asrConfigFromPipeline(s.bc.Pipeline))
+	}
+	return nil
+}
+
+// TestOpenAITranslate 测试 OpenAI 兼容端点的连通性与模型响应。
+func (s *AppService) TestOpenAITranslate(baseURL, apiKey, model string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return llmadapter.TestOpenAIConnection(ctx, baseURL, apiKey, model)
+}
+
+// sourceFileMeta 记录原始文件名信息
+type sourceFileMeta struct {
+	OriginalName string    `json:"original_name"`
+	OriginalPath string    `json:"original_path"`
+	StagedName   string    `json:"staged_name"`
+	StagedPath   string    `json:"staged_path"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+// stageSourceFile 将输入源文件拷贝一份至任务输出目录，改用安全的 uuidv4 随机名 + 原后缀，并用 json 记录原文件名
+func stageSourceFile(in *task.CreateTaskInput) error {
+	metaPath := filepath.Join(in.OutputDir, "source_meta.json")
+	// 若已存在 source_meta.json，说明为断点重试或二次提交，直接复用
+	if data, err := os.ReadFile(metaPath); err == nil {
+		var meta sourceFileMeta
+		if json.Unmarshal(data, &meta) == nil && meta.StagedPath != "" {
+			if _, statErr := os.Stat(meta.StagedPath); statErr == nil {
+				in.InputPath = meta.StagedPath
+				return nil
+			}
+		}
+	}
+
+	ext := filepath.Ext(in.InputPath)
+	origName := filepath.Base(in.InputPath)
+	randomName := fmt.Sprintf("%s%s", uuid.New().String(), ext)
+	destPath := filepath.Join(in.OutputDir, randomName)
+
+	srcFile, err := os.Open(in.InputPath)
+	if err != nil {
+		return fmt.Errorf("读取原源文件失败: %w", err)
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return fmt.Errorf("创建副本文件失败: %w", err)
+	}
+	defer dstFile.Close()
+
+	if _, err := io.Copy(dstFile, srcFile); err != nil {
+		return fmt.Errorf("拷贝源文件副本失败: %w", err)
+	}
+
+	meta := sourceFileMeta{
+		OriginalName: origName,
+		OriginalPath: in.InputPath,
+		StagedName:   randomName,
+		StagedPath:   destPath,
+		CreatedAt:    time.Now(),
+	}
+	metaBytes, _ := json.MarshalIndent(meta, "", "  ")
+	_ = os.WriteFile(metaPath, metaBytes, 0o644)
+
+	// 更新输入路径为安全的随机文件名副本
+	in.InputPath = destPath
+	return nil
 }

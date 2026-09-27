@@ -2,16 +2,17 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	asradapter "github.com/ixugo/vdub/internal/adapter/asr"
 	"github.com/ixugo/vdub/internal/adapter/lipsync"
 	"github.com/ixugo/vdub/internal/adapter/llm"
 	"github.com/ixugo/vdub/internal/adapter/tts"
-	"github.com/ixugo/vdub/internal/adapter/whisper"
 	"github.com/ixugo/vdub/internal/conf"
 	"github.com/ixugo/vdub/internal/core/pipeline"
 	"github.com/ixugo/vdub/internal/core/task"
@@ -21,6 +22,23 @@ import (
 
 // NewPipelineCore 根据配置创建完整的流水线核心，组装所有适配器
 func NewPipelineCore(bc *conf.Bootstrap, opts ...pipeline.Option) *pipeline.Core {
+	return NewPipelineCoreWithASR(bc, NewASRRouter(bc), opts...)
+}
+
+// NewASRRouter 以当前配置创建可即时更新的 ASR 引擎路由器。
+func NewASRRouter(bc *conf.Bootstrap) *asradapter.Router {
+	return asradapter.NewRouter(asradapter.Config{
+		Engine:       bc.Pipeline.WhisperMode,
+		WhisperBin:   bc.Pipeline.WhisperBin,
+		WhisperModel: bc.Pipeline.WhisperModel,
+		BaseURL:      bc.Pipeline.ASRBaseURL,
+		APIKey:       bc.Pipeline.ASRAPIKey,
+		Model:        bc.Pipeline.ASRModel,
+	})
+}
+
+// NewPipelineCoreWithASR 将共享路由器装入流水线，使新任务读取最新默认引擎。
+func NewPipelineCoreWithASR(bc *conf.Bootstrap, asrRouter *asradapter.Router, opts ...pipeline.Option) *pipeline.Core {
 	cfg := pipeline.Config{
 		WhisperBin:         bc.Pipeline.WhisperBin,
 		WhisperModel:       bc.Pipeline.WhisperModel,
@@ -33,8 +51,6 @@ func NewPipelineCore(bc *conf.Bootstrap, opts ...pipeline.Option) *pipeline.Core
 		SubtitleOutput:     bc.Pipeline.SubtitleOutput,
 		LipSyncEnabled:     bc.LipSync.Enabled,
 	}
-
-	wr := whisper.NewRunner(bc.Pipeline.WhisperBin, bc.Pipeline.WhisperModel)
 
 	lc := llm.NewRoutingClient(
 		bc.LLM.BaseURL,
@@ -57,7 +73,7 @@ func NewPipelineCore(bc *conf.Bootstrap, opts ...pipeline.Option) *pipeline.Core
 		opts = append(opts, pipeline.WithLipSync(ls))
 	}
 
-	return pipeline.NewCore(cfg, wr, lc, tc, opts...)
+	return pipeline.NewCore(cfg, asrRouter, lc, tc, opts...)
 }
 
 // termAdapter 将 term.Core 适配为 pipeline.TermLister
@@ -79,8 +95,15 @@ func (a *termAdapter) ListMappings(ctx context.Context) ([]pipeline.TermMapping,
 
 // NewPipelineScheduler 创建带 DB 状态回写 + WebSocket 广播的流水线调度器
 func NewPipelineScheduler(bc *conf.Bootstrap, taskCore task.Core, termCore term.Core, hub ws.Huber) (*pipeline.Scheduler, func()) {
+	scheduler, _, cleanup := NewPipelineSchedulerWithASR(bc, taskCore, termCore, hub)
+	return scheduler, cleanup
+}
+
+// NewPipelineSchedulerWithASR 返回调度器与其共享 ASR 路由器，供设置保存时同步更新。
+func NewPipelineSchedulerWithASR(bc *conf.Bootstrap, taskCore task.Core, termCore term.Core, hub ws.Huber) (*pipeline.Scheduler, *asradapter.Router, func()) {
 	notifier := newDBNotifier(taskCore, hub, bc)
-	pipeCore := NewPipelineCore(bc,
+	asrRouter := NewASRRouter(bc)
+	pipeCore := NewPipelineCoreWithASR(bc, asrRouter,
 		pipeline.WithNotifier(notifier),
 		pipeline.WithTermLister(&termAdapter{core: termCore}),
 	)
@@ -92,7 +115,7 @@ func NewPipelineScheduler(bc *conf.Bootstrap, taskCore task.Core, termCore term.
 
 	sched = pipeline.NewScheduler(pipeCore, onDone)
 	sched.Start()
-	return sched, sched.Stop
+	return sched, asrRouter, sched.Stop
 }
 
 // handlePipelineDone 根据暂停、成功或失败结果回写任务终态。
@@ -118,6 +141,7 @@ func handlePipelineDone(
 	if runErr != nil {
 		status, errorMessage = 4, runErr.Error()
 		slog.Error("task failed", "task_id", taskID, "err", runErr)
+		notifier.OnDetailedLog(taskID, "error", "", fmt.Sprintf("任务执行失败: %v", runErr))
 	}
 	if err := taskCore.SetTaskStatus(ctx, taskID, func(item *task.Task) {
 		item.Status = status
@@ -148,9 +172,9 @@ func newDBNotifier(taskCore task.Core, hub ws.Huber, bc *conf.Bootstrap) *dbNoti
 			pipeline.StepSplit:     bc.LLM.Model,
 			pipeline.StepTranslate: bc.LLM.Model,
 			pipeline.StepTTS:       ttsModelName(bc),
-			pipeline.StepMerge:     "ffmpeg",
+			pipeline.StepMerge:     "音轨混音",
 			pipeline.StepLipSync:   "MuseTalk",
-			pipeline.StepBurn:      "ffmpeg",
+			pipeline.StepBurn:      "画面压制",
 		},
 		lipSync:       bc.LipSync.Enabled,
 		stepProgress:  make(map[string]map[string]int),
@@ -189,15 +213,13 @@ func (n *dbNotifier) OnStepStart(taskID, step string) {
 	if n.stepStartTime[taskID] == nil {
 		n.stepStartTime[taskID] = make(map[string]time.Time)
 	}
-	if _, exists := n.stepStartTime[taskID][step]; !exists {
-		n.stepStartTime[taskID][step] = now
-	}
+	n.stepStartTime[taskID][step] = now
 	if err := n.taskCore.UpsertStep(context.Background(), taskID, step, func(item *task.Step) {
 		item.Status = pipeline.StepRunning
 		item.Detail = detail
-		if item.StartedAt == nil {
-			item.StartedAt = &now
-		}
+		item.StartedAt = &now
+		item.EndedAt = nil
+		item.Error = ""
 	}); err != nil {
 		slog.Error("start step failed", "task_id", taskID, "step", step, "err", err)
 	}
@@ -258,6 +280,46 @@ func (n *dbNotifier) OnProgress(taskID, step string, progress int) {
 	})
 }
 
+// ResetTaskProgress 在任务从指定步骤节点重跑时，重置目标步骤及后续步骤在内存中的进度，并返回前置已完成步骤的基准百分比。
+func (n *dbNotifier) ResetTaskProgress(taskID, fromStep string, mode int, subtitleOutput, translator string) int {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	fromRank := stepRank(fromStep)
+	if n.stepProgress[taskID] == nil {
+		n.stepProgress[taskID] = make(map[string]int)
+	}
+
+	for _, s := range []string{
+		pipeline.StepWhisper,
+		pipeline.StepSplit,
+		pipeline.StepTranslate,
+		pipeline.StepTTS,
+		pipeline.StepMerge,
+		pipeline.StepLipSync,
+		pipeline.StepBurn,
+	} {
+		if stepRank(s) >= fromRank {
+			n.stepProgress[taskID][s] = 0
+			if n.stepStartTime[taskID] != nil {
+				delete(n.stepStartTime[taskID], s)
+			}
+			// 同时清理 DB 中旧步骤的开始结束时间与耗时，防止历史时间戳污染
+			_ = n.taskCore.UpsertStep(context.Background(), taskID, s, func(item *task.Step) {
+				item.Status = pipeline.StepPending
+				item.Progress = 0
+				item.StartedAt = nil
+				item.EndedAt = nil
+				item.Error = ""
+			})
+		} else {
+			n.stepProgress[taskID][s] = 100
+		}
+	}
+
+	return n.totalProgress(mode, subtitleOutput, translator, n.stepProgress[taskID])
+}
+
 // updateTaskProgress 更新任务总进度和最靠后的当前步骤。
 func (n *dbNotifier) updateTaskProgress(
 	ctx context.Context,
@@ -269,10 +331,7 @@ func (n *dbNotifier) updateTaskProgress(
 	totalProgress := 0
 	detail := n.taskStepDetail(taskID, step)
 	err := n.taskCore.SetTaskStatus(ctx, taskID, func(item *task.Task) {
-		totalProgress = max(
-			n.totalProgress(item.Mode, item.SubtitleOutput, item.Translator, n.stepProgress[taskID]),
-			item.Progress,
-		)
+		totalProgress = n.totalProgress(item.Mode, item.SubtitleOutput, item.Translator, n.stepProgress[taskID])
 		item.Status = 1
 		if stepRank(step) >= stepRank(item.CurrentStep) {
 			item.CurrentStep = step
@@ -321,10 +380,17 @@ func (n *dbNotifier) OnStepDone(taskID, step string) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	now := time.Now()
-	elapsed := now.Sub(n.stepStartTime[taskID][step])
+	startTime := n.stepStartTime[taskID][step]
+	if startTime.IsZero() {
+		startTime = now
+	}
+	elapsed := now.Sub(startTime)
 	if err := n.taskCore.UpsertStep(context.Background(), taskID, step, func(item *task.Step) {
 		item.Status = pipeline.StepDone
 		item.Progress = 100
+		if item.StartedAt == nil || startTime.After(*item.StartedAt) {
+			item.StartedAt = &startTime
+		}
 		item.EndedAt = &now
 	}); err != nil {
 		slog.Error("finish step failed", "task_id", taskID, "step", step, "err", err)
@@ -436,6 +502,9 @@ func (n *dbNotifier) progressWeights(mode int, subtitleOutput, translator string
 		weights[pipeline.StepTranslate] = 20
 		weights[pipeline.StepTTS] = 25
 		weights[pipeline.StepMerge] = 10
+	case pipeline.ModeDubOnly:
+		weights[pipeline.StepTTS] = 80
+		weights[pipeline.StepMerge] = 20
 	}
 	if n.lipSync && mode == pipeline.ModeDub {
 		weights[pipeline.StepLipSync] = 10

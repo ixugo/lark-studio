@@ -88,11 +88,22 @@ func (c Core) UpdateTask(ctx context.Context, in *UpdateTaskInput, id string) (*
 	return &out, nil
 }
 
-// DeleteTask Delete object
+// DeleteTask 先清理任务产物再删除记录，清理失败时保留记录供重试。
 func (c Core) DeleteTask(ctx context.Context, id string) (*Task, error) {
-	var out Task
+	out := Task{ID: id}
+	if err := c.store.Task().Get(ctx, &out, orm.Where("id=?", id)); err != nil {
+		if orm.IsErrRecordNotFound(err) {
+			return &out, nil
+		}
+		return nil, reason.ErrDB.Withf("读取待删除任务失败: %s", err)
+	}
+	if err := c.removeTaskFiles(ctx, &out); err != nil {
+		slog.ErrorContext(ctx, "删除任务产物失败", "task_id", id, "err", err)
+		return nil, err
+	}
 	if err := c.store.Task().Delete(ctx, &out, orm.Where("id=?", id)); err != nil {
 		return nil, reason.ErrDB.Withf(`Del id[%v] err[%s]`, id, err.Error())
 	}
+	slog.InfoContext(ctx, "任务及产物已删除", "task_id", id)
 	return &out, nil
 }

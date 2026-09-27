@@ -30,12 +30,16 @@
 [Pipeline]
   # 并行 worker 数量
   Workers = 2
-  # 固定使用 whisper.cpp
+  # ASR 引擎: whisper-cpp / openai
   WhisperMode = "whisper-cpp"
   # whisper.cpp 可执行文件路径（留空优先使用应用内嵌运行时）
   WhisperBin = "whisper-cli"
   # whisper ggml 模型文件路径
   WhisperModel = ""
+  # OpenAI 兼容 ASR API 配置
+  ASRBaseURL = "https://api.openai.com/v1"
+  ASRAPIKey = ""
+  ASRModel = "whisper-1"
   # ffmpeg 路径（空则使用 PATH 中的）
   FFmpegBin = ""
   # 默认输出目录（空则与输入同目录加 _final 后缀）
@@ -50,6 +54,8 @@
   TranslateChunkSize = 10
   # TTS 并发协程数（1~4，默认 2）
   TTSWorkers = 2
+  # 字幕输出方式: soft (软字幕，流复制秒级完成，推荐) / burn (硬字幕烧录画面) / none (无字幕)
+  SubtitleOutput = "soft"
   # 处理完成后删除中间产物（raw.mp3/audio_segs 等）
   CleanIntermediate = false
 

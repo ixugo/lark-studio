@@ -20,23 +20,27 @@ type Scheduler struct {
 
 	onDone func(taskID string, err error)
 
-	mu          sync.Mutex
-	taskCancels map[string]context.CancelFunc
-	pausedTasks map[string]bool
+	mu            sync.Mutex
+	taskCancels   map[string]context.CancelFunc
+	pausedTasks   map[string]bool
+	deletingTasks map[string]bool
+	taskDone      map[string]chan struct{}
 }
 
 // NewScheduler 创建调度器
 func NewScheduler(core *Core, onDone func(taskID string, err error)) *Scheduler {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Scheduler{
-		core:        core,
-		workerNum:   defaultWorkerCount,
-		jobs:        make(chan Job, 100),
-		ctx:         ctx,
-		cancel:      cancel,
-		onDone:      onDone,
-		taskCancels: make(map[string]context.CancelFunc),
-		pausedTasks: make(map[string]bool),
+		core:          core,
+		workerNum:     defaultWorkerCount,
+		jobs:          make(chan Job, 100),
+		ctx:           ctx,
+		cancel:        cancel,
+		onDone:        onDone,
+		taskCancels:   make(map[string]context.CancelFunc),
+		pausedTasks:   make(map[string]bool),
+		deletingTasks: make(map[string]bool),
+		taskDone:      make(map[string]chan struct{}),
 	}
 }
 
@@ -59,6 +63,12 @@ func (s *Scheduler) Stop() {
 
 // Submit 提交任务到队列
 func (s *Scheduler) Submit(job Job) error {
+	s.mu.Lock()
+	deleting := s.deletingTasks[job.TaskID]
+	s.mu.Unlock()
+	if deleting {
+		return fmt.Errorf("任务正在删除或已删除")
+	}
 	select {
 	case <-s.ctx.Done():
 		return fmt.Errorf("调度器已停止")
@@ -66,6 +76,35 @@ func (s *Scheduler) Submit(job Job) error {
 		slog.Info("job submitted", "task_id", job.TaskID, "input", job.InputPath)
 		return nil
 	}
+}
+
+// CancelAndWait 阻止排队任务启动，并等待运行任务及完成回调退出后再允许清理文件。
+func (s *Scheduler) CancelAndWait(ctx context.Context, taskID string) error {
+	s.mu.Lock()
+	s.deletingTasks[taskID] = true
+	done := s.taskDone[taskID]
+	if cancel := s.taskCancels[taskID]; cancel != nil {
+		s.pausedTasks[taskID] = true
+		cancel()
+	}
+	s.mu.Unlock()
+	if done == nil {
+		return nil
+	}
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// Notifier 获取调度器核心绑定的通知器
+func (s *Scheduler) Notifier() Notifier {
+	if s.core != nil {
+		return s.core.Notifier()
+	}
+	return nil
 }
 
 // Pause 暂停正在运行的任务，返回 false 表示该任务不在运行中
@@ -112,30 +151,44 @@ func (s *Scheduler) worker(id int) {
 		}
 
 		taskCtx, cancel := context.WithCancel(s.ctx)
-		s.trackTask(job.TaskID, cancel)
+		if !s.trackTask(job.TaskID, cancel) {
+			cancel()
+			continue
+		}
 
 		slog.Info("worker processing", "worker", id, "task_id", job.TaskID)
 		err := s.core.Run(taskCtx, job)
 
-		s.untrackTask(job.TaskID)
 		cancel()
 
 		if s.onDone != nil {
 			s.onDone(job.TaskID, err)
 		}
+		s.untrackTask(job.TaskID)
 	}
 
 	slog.Info("worker stopped", "id", id)
 }
 
-func (s *Scheduler) trackTask(taskID string, cancel context.CancelFunc) {
+// trackTask 在同一把锁内检查删除标记与注册执行状态，消除出队和删除之间的竞态。
+func (s *Scheduler) trackTask(taskID string, cancel context.CancelFunc) bool {
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.deletingTasks[taskID] || s.taskDone[taskID] != nil {
+		return false
+	}
 	s.taskCancels[taskID] = cancel
-	s.mu.Unlock()
+	s.taskDone[taskID] = make(chan struct{})
+	return true
 }
 
+// untrackTask 在所有写文件和完成回调结束后通知删除操作继续。
 func (s *Scheduler) untrackTask(taskID string) {
 	s.mu.Lock()
 	delete(s.taskCancels, taskID)
+	if done := s.taskDone[taskID]; done != nil {
+		close(done)
+	}
+	delete(s.taskDone, taskID)
 	s.mu.Unlock()
 }

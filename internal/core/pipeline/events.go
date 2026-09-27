@@ -42,19 +42,19 @@ func (c *Core) failStep(taskID, step string, elapsed time.Duration, err error) {
 func stepTitle(step string) string {
 	switch step {
 	case StepWhisper:
-		return "听写"
+		return "听写转录"
 	case StepSplit:
 		return "语义分句"
 	case StepTranslate:
-		return "翻译"
+		return "智能翻译"
 	case StepTTS:
-		return "配音"
+		return "语音合成"
 	case StepMerge:
-		return "音频合成"
+		return "音视频混音"
 	case StepLipSync:
-		return "对口型"
+		return "唇形同步"
 	case StepBurn:
-		return "视频烧录"
+		return "压制合成"
 	default:
 		return step
 	}
@@ -69,6 +69,8 @@ func modeTitle(mode int) string {
 		return "双语字幕"
 	case ModeDub:
 		return "配音成片"
+	case ModeDubOnly:
+		return "文本朗读/配音"
 	default:
 		return "视频处理"
 	}

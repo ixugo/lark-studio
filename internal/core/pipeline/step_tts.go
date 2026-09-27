@@ -32,7 +32,36 @@ func (c *Core) runTTS(ctx context.Context, job Job) error {
 	transFile := filepath.Join(job.OutputDir, "trans.txt")
 	data, err := os.ReadFile(transFile)
 	if err != nil {
-		return fmt.Errorf("读取翻译文件失败: %w", err)
+		// 1. 若经过听写转录(1-3-4流程)，src.srt 已就绪，直接以听写原文作为配音文本源
+		srcSRTPath := filepath.Join(job.OutputDir, "src.srt")
+		if srcSRTData, srtErr := os.ReadFile(srcSRTPath); srtErr == nil {
+			entries := parseSRT(string(srcSRTData))
+			var lines []string
+			for _, e := range entries {
+				t := strings.TrimSpace(e.Text)
+				if t != "" {
+					lines = append(lines, t)
+				}
+			}
+			if len(lines) > 0 {
+				data = []byte(strings.Join(lines, "\n"))
+				_ = os.WriteFile(transFile, data, 0o644)
+				// 若 trans.srt 亦不存在，同步复制 src.srt 为 trans.srt
+				transSRTPath := filepath.Join(job.OutputDir, "trans.srt")
+				if _, statErr := os.Stat(transSRTPath); statErr != nil {
+					_ = os.WriteFile(transSRTPath, srcSRTData, 0o644)
+				}
+			}
+		}
+
+		// 2. 若仍未获取到，尝试从原始输入文件（如纯文本 .txt 小说章节或输入 .srt 字幕）中自动载入句子
+		if len(data) == 0 {
+			data, err = c.loadSentencesFromInput(job)
+			if err != nil {
+				return fmt.Errorf("读取待配音文本源文件失败: %w", err)
+			}
+			_ = os.WriteFile(transFile, data, 0o644)
+		}
 	}
 
 	sentences := strings.Split(strings.TrimSpace(string(data)), "\n")
@@ -88,4 +117,50 @@ func (c *Core) runTTS(ctx context.Context, job Job) error {
 
 	c.notifier.OnProgress(job.TaskID, StepTTS, 100)
 	return nil
+}
+
+// loadSentencesFromInput 当无翻译文件时，直接从用户提供的输入文件提取待朗读/配音句子。
+// 支持纯文本 .txt（按非空行拆分）或 .srt 字幕文件。
+func (c *Core) loadSentencesFromInput(job Job) ([]byte, error) {
+	if job.InputPath == "" {
+		return nil, fmt.Errorf("任务输入文件路径为空")
+	}
+	content, err := os.ReadFile(job.InputPath)
+	if err != nil {
+		return nil, err
+	}
+
+	ext := strings.ToLower(filepath.Ext(job.InputPath))
+	if ext == ".srt" {
+		entries := parseSRT(string(content))
+		if len(entries) == 0 {
+			return nil, fmt.Errorf("字幕文件无有效条目: %s", job.InputPath)
+		}
+		// 同步写出 src.srt 供后续合并时间轴使用
+		srcSRT := filepath.Join(job.OutputDir, "src.srt")
+		_ = os.WriteFile(srcSRT, content, 0o644)
+
+		var lines []string
+		for _, e := range entries {
+			t := strings.TrimSpace(e.Text)
+			if t != "" {
+				lines = append(lines, t)
+			}
+		}
+		return []byte(strings.Join(lines, "\n")), nil
+	}
+
+	// 纯文本（如小说 .txt 文件）：按非空行或段落分句
+	rawLines := strings.Split(string(content), "\n")
+	var validLines []string
+	for _, l := range rawLines {
+		t := strings.TrimSpace(l)
+		if t != "" {
+			validLines = append(validLines, t)
+		}
+	}
+	if len(validLines) == 0 {
+		return nil, fmt.Errorf("文本文件内容为空: %s", job.InputPath)
+	}
+	return []byte(strings.Join(validLines, "\n")), nil
 }

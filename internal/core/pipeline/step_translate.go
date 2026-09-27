@@ -263,6 +263,13 @@ func (c *Core) translateAllChunks(
 		}
 		translated = append(translated, result...)
 
+		for idx, transLine := range result {
+			origIdx := i + idx
+			if origIdx < len(sentences) {
+				c.logEvent(job.TaskID, "info", StepTranslate, "[翻译 %d/%d]\n原文: %s\n译文: %s", origIdx+1, total, sentences[origIdx], transLine)
+			}
+		}
+
 		streamTranslationChunk(streamTo, i, result)
 		c.notifier.OnProgress(job.TaskID, StepTranslate, (end*100)/total)
 		c.logEvent(

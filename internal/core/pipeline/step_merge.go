@@ -15,6 +15,7 @@ import (
 // runMerge 合并音频段到时间轴
 // 先对超时段做温和调速（上限 MaxSpeedFactor），再按字幕时间轴拼接
 func (c *Core) runMerge(ctx context.Context, job Job) error {
+	c.notifier.OnProgress(job.TaskID, StepMerge, 1)
 	audioDir := filepath.Join(job.OutputDir, "audio_segs")
 	srcSRT := filepath.Join(job.OutputDir, "src.srt")
 
@@ -34,12 +35,46 @@ func (c *Core) runMerge(ctx context.Context, job Job) error {
 	if len(audioFiles) == 0 {
 		return fmt.Errorf("无音频段文件")
 	}
+	c.logEvent(job.TaskID, "info", StepMerge, "混音开始：共 %d 段配音", len(audioFiles))
 
-	srtData, err := os.ReadFile(srcSRT)
-	if err != nil {
-		return fmt.Errorf("读取字幕时间轴失败: %w", err)
+	dubAudio := filepath.Join(job.OutputDir, "dub.mp3")
+	// 强制删除旧的 dub.mp3 和残留拼接列表，防止历史脏文件导致静音未生效
+	_ = os.Remove(dubAudio)
+	_ = os.Remove(filepath.Join(job.OutputDir, "concat_list.txt"))
+
+	// 优先采用翻译对齐后的字幕时间轴，若不存在则回退至原始听写字幕
+	transSRT := filepath.Join(job.OutputDir, "trans.srt")
+	srtPathToUse := transSRT
+	srtBytes, srtErr := os.ReadFile(srtPathToUse)
+	if srtErr != nil {
+		srtPathToUse = srcSRT
+		srtBytes, srtErr = os.ReadFile(srtPathToUse)
 	}
-	srtEntries := parseSRT(string(srtData))
+
+	if srtErr != nil {
+		// 纯文本朗读或小说朗读：无时间轴约束，直接按音频段顺次拼接为完整音频
+		c.logEvent(job.TaskID, "info", StepMerge, "无外部时间轴，以段落顺次拼接完整音频")
+		c.notifier.OnProgress(job.TaskID, StepMerge, 10)
+		if err := c.concatSequential(ctx, audioFiles, dubAudio); err != nil {
+			return fmt.Errorf("顺次合并音频失败: %w", err)
+		}
+		c.notifier.OnProgress(job.TaskID, StepMerge, 100)
+		c.logEvent(job.TaskID, "success", StepMerge, "混音完成：顺次合并 %d 段配音", len(audioFiles))
+		return nil
+	}
+	srtEntries := parseSRT(string(srtBytes))
+
+	// 听写阶段负责识别人声绝对时间；混音只使用该时间轴，不猜测或平移字幕。
+
+	if len(srtEntries) > 0 && srtEntries[0].StartSec > 0.05 {
+		c.logEvent(
+			job.TaskID,
+			"info",
+			StepMerge,
+			"按字幕时间轴在 %.2f 秒放置首句配音，片头保持配音静音",
+			srtEntries[0].StartSec,
+		)
+	}
 
 	trimmed := c.trimTrailingSilence(ctx, audioFiles, job)
 	if trimmed > 0 {
@@ -48,12 +83,20 @@ func (c *Core) runMerge(ctx context.Context, job Job) error {
 
 	c.adjustAudioSpeeds(ctx, audioFiles, srtEntries, job)
 
-	dubAudio := filepath.Join(job.OutputDir, "dub.mp3")
-	if err := c.concatWithTimeline(ctx, audioFiles, srtEntries, dubAudio); err != nil {
+	lastLoggedProgress := 0
+	err = c.concatWithTimeline(ctx, audioFiles, srtEntries, dubAudio, func(progress int) {
+		c.notifier.OnProgress(job.TaskID, StepMerge, 80+progress*19/100)
+		if progress >= lastLoggedProgress+10 {
+			c.logEvent(job.TaskID, "info", StepMerge, "混音拼接进度 %d%%", progress)
+			lastLoggedProgress = progress
+		}
+	})
+	if err != nil {
 		return fmt.Errorf("合并音频失败: %w", err)
 	}
 
 	c.notifier.OnProgress(job.TaskID, StepMerge, 100)
+	c.logEvent(job.TaskID, "success", StepMerge, "混音完成：已按字幕时间轴输出 dub.mp3")
 	return nil
 }
 
@@ -65,10 +108,16 @@ func (c *Core) trimTrailingSilence(ctx context.Context, audioFiles []string, job
 	}
 
 	trimmed := 0
-	for _, audioPath := range audioFiles {
+	for i, audioPath := range audioFiles {
 		if ctx.Err() != nil {
 			break
 		}
+		c.notifier.OnProgress(job.TaskID, StepMerge, 5+(i+1)*25/len(audioFiles))
+		segmentNumber := i + 1
+		if index, ok := audioSegmentIndex(audioPath); ok && index >= 0 {
+			segmentNumber = index + 1
+		}
+		c.logEvent(job.TaskID, "info", StepMerge, "混音准备进度 %d/%d：整理配音段 %d", i+1, len(audioFiles), segmentNumber)
 		wasTrimmed, err := normalizeAudioSegment(ctx, ffmpeg, audioPath)
 		if err != nil {
 			slog.Debug("normalize audio failed", "file", audioPath, "err", err)
@@ -81,11 +130,12 @@ func (c *Core) trimTrailingSilence(ctx context.Context, audioFiles []string, job
 	return trimmed
 }
 
-// normalizeAudioSegment 保留句中停顿，裁去尾静音并统一为单声道 PCM WAV。
+// normalizeAudioSegment 保留句中停顿，裁去首尾静音以贴合字幕起点，并统一为单声道 PCM WAV。
 func normalizeAudioSegment(ctx context.Context, ffmpeg, audioPath string) (bool, error) {
 	normalizedPath := audioPath + ".normalized.wav"
 	before := probeMediaDuration(ffmpeg, audioPath)
-	filter := "areverse,silenceremove=" +
+	filter := "silenceremove=start_periods=1:start_duration=0.02:start_threshold=-45dB," +
+		"areverse,silenceremove=" +
 		"start_periods=1:start_duration=0.05:start_threshold=-45dB,areverse"
 	cmd := exec.CommandContext(
 		ctx,
@@ -137,9 +187,6 @@ func audioSegmentIndex(path string) (int, bool) {
 // maxFactor ≤1 时跳过调速；差异 <2% 时不处理
 func (c *Core) adjustAudioSpeeds(ctx context.Context, audioFiles []string, entries []srtEntry, job Job) {
 	maxFactor := c.cfg.MaxSpeedFactor
-	if maxFactor <= 1 {
-		return
-	}
 
 	ffmpeg := c.cfg.FFmpegBin
 	if ffmpeg == "" {
@@ -148,38 +195,65 @@ func (c *Core) adjustAudioSpeeds(ctx context.Context, audioFiles []string, entri
 
 	adjusted := 0
 	for i, af := range audioFiles {
-		if i >= len(entries) || ctx.Err() != nil {
+		if ctx.Err() != nil {
 			break
 		}
 
+		c.notifier.OnProgress(job.TaskID, StepMerge, 30+(i+1)*50/len(audioFiles))
+		idx, ok := audioSegmentIndex(af)
+		if !ok || idx < 0 || idx >= len(entries) {
+			c.logEvent(job.TaskID, "warn", StepMerge, "配音段 %d/%d 无对应字幕时间轴，保持原速 1.00x", i+1, len(audioFiles))
+			continue
+		}
+		segmentLabel := fmt.Sprintf("配音段 %d/%d", idx+1, len(audioFiles))
 		audioDur := probeMediaDuration(ffmpeg, af)
-		segDur := entries[i].EndSec - entries[i].StartSec
-		if audioDur <= 0 || segDur <= 0 || audioDur <= segDur {
+		segDur := entries[idx].EndSec - entries[idx].StartSec
+		if audioDur <= 0 || segDur <= 0 {
+			c.logEvent(job.TaskID, "warn", StepMerge, "%s 无法读取有效时长，保持原速 1.00x", segmentLabel)
+			continue
+		}
+		if maxFactor <= 1 {
+			c.logEvent(job.TaskID, "info", StepMerge, "%s 保持原速 1.00x（调速上限 %.2fx）", segmentLabel, maxFactor)
+			continue
+		}
+		if audioDur <= segDur {
+			c.logEvent(job.TaskID, "info", StepMerge, "%s 保持原速 1.00x（音频 %.2fs，字幕窗 %.2fs；未做慢速）", segmentLabel, audioDur, segDur)
 			continue
 		}
 
 		factor := audioDur / segDur
 		if factor < 1.02 {
+			c.logEvent(job.TaskID, "info", StepMerge, "%s 保持原速 1.00x（差异小于 2%%；未做慢速）", segmentLabel)
 			continue
 		}
+		requiredFactor := factor
 		if factor > maxFactor {
 			factor = maxFactor
 		}
 
 		adjPath := af + ".adj.wav"
 		cmd := exec.CommandContext(ctx, ffmpeg,
-			"-y", "-i", af,
+			"-hide_banner", "-y", "-i", af,
 			"-filter:a", fmt.Sprintf("atempo=%.3f", factor),
 			adjPath,
 		)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			slog.Debug("audio speed adjust failed", "file", af, "err", err, "output", string(out))
+			c.logEvent(job.TaskID, "warn", StepMerge, "%s 加速失败，保留原速 1.00x：%v", segmentLabel, err)
 			continue
 		}
 
-		os.Remove(af)
-		os.Rename(adjPath, af)
+		if err := os.Rename(adjPath, af); err != nil {
+			c.logEvent(job.TaskID, "warn", StepMerge, "%s 加速结果替换失败，原音频保持不变：%v", segmentLabel, err)
+			continue
+		}
 		adjusted++
+		adjustedDuration := audioDur / factor
+		if requiredFactor > maxFactor {
+			c.logEvent(job.TaskID, "warn", StepMerge, "%s 已加速 %.2fx（上限），时长 %.2fs → 约 %.2fs，仍超字幕窗 %.2fs", segmentLabel, factor, audioDur, adjustedDuration, segDur)
+		} else {
+			c.logEvent(job.TaskID, "info", StepMerge, "%s 已加速 %.2fx，时长 %.2fs → 约 %.2fs（字幕窗 %.2fs）", segmentLabel, factor, audioDur, adjustedDuration, segDur)
+		}
 	}
 
 	if adjusted > 0 {
@@ -187,8 +261,8 @@ func (c *Core) adjustAudioSpeeds(ctx context.Context, audioFiles []string, entri
 	}
 }
 
-// concatWithTimeline 按字幕时间轴拼接音频段（中间插入静音）
-func (c *Core) concatWithTimeline(ctx context.Context, audioFiles []string, entries []srtEntry, outputPath string) error {
+// concatWithTimeline 按字幕时间轴插入静音并拼接配音段。
+func (c *Core) concatWithTimeline(ctx context.Context, audioFiles []string, entries []srtEntry, outputPath string, progress ...func(int)) error {
 	ffmpeg := c.cfg.FFmpegBin
 	if ffmpeg == "" {
 		ffmpeg = "ffmpeg"
@@ -206,30 +280,34 @@ func (c *Core) concatWithTimeline(ctx context.Context, audioFiles []string, entr
 		return a
 	}
 
-	for i, af := range audioFiles {
-		if i >= len(entries) {
-			break
+	currentTimeSec := 0.0
+	for _, af := range audioFiles {
+		idx, ok := audioSegmentIndex(af)
+		if !ok || idx < 0 || idx >= len(entries) {
+			continue
 		}
 
-		if i == 0 && entries[0].StartSec > 0 {
-			silPath := filepath.Join(filepath.Dir(outputPath), "silence_start.wav")
-			if err := c.genSilence(ctx, entries[0].StartSec, silPath); err != nil {
-				return err
-			}
-			sb.WriteString(fmt.Sprintf("file '%s'\n", absPath(silPath)))
-		}
-
-		sb.WriteString(fmt.Sprintf("file '%s'\n", absPath(af)))
-
-		if i < len(audioFiles)-1 && i+1 < len(entries) {
-			gap := entries[i+1].StartSec - entries[i].EndSec
-			if gap > 0.1 {
-				silPath := filepath.Join(filepath.Dir(outputPath), fmt.Sprintf("silence_%d.wav", i))
+		targetStart := entries[idx].StartSec
+		// 若当前实际音频时间线落后于原定句首时间戳，精准填充静音到目标起点
+		if targetStart > currentTimeSec {
+			gap := targetStart - currentTimeSec
+			if gap >= 0.03 {
+				silPath := filepath.Join(filepath.Dir(outputPath), fmt.Sprintf("silence_%d.wav", idx))
 				if err := c.genSilence(ctx, gap, silPath); err != nil {
 					return err
 				}
 				sb.WriteString(fmt.Sprintf("file '%s'\n", absPath(silPath)))
+				currentTimeSec += gap
 			}
+		}
+
+		// 写入该句配音音频
+		sb.WriteString(fmt.Sprintf("file '%s'\n", absPath(af)))
+		dur := probeMediaDuration(ffmpeg, af)
+		if dur > 0 {
+			currentTimeSec += dur
+		} else {
+			currentTimeSec += entries[idx].EndSec - entries[idx].StartSec
 		}
 	}
 
@@ -237,15 +315,23 @@ func (c *Core) concatWithTimeline(ctx context.Context, audioFiles []string, entr
 		return err
 	}
 
-	cmd := exec.CommandContext(ctx, ffmpeg,
-		"-y", "-f", "concat", "-safe", "0",
+	args := []string{
+		ffmpeg, "-hide_banner", "-y", "-f", "concat", "-safe", "0",
 		"-i", concatList,
 		"-c:a", "libmp3lame", "-b:a", "128k",
 		outputPath,
-	)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("ffmpeg concat 失败: %s, output: %s", err, string(output))
+	}
+	var onProgress func(int)
+	if len(progress) > 0 {
+		onProgress = progress[0]
+	}
+	var output strings.Builder
+	logOutput := func(line string) {
+		output.WriteString(line)
+		output.WriteByte('\n')
+	}
+	if err := runFFmpegWithProgress(ctx, currentTimeSec, onProgress, logOutput, args...); err != nil {
+		return fmt.Errorf("ffmpeg concat 失败: %w, output: %s", err, output.String())
 	}
 	return nil
 }
@@ -258,14 +344,47 @@ func (c *Core) genSilence(ctx context.Context, durationSec float64, outputPath s
 	}
 
 	cmd := exec.CommandContext(ctx, ffmpeg,
-		"-y", "-f", "lavfi",
-		"-i", fmt.Sprintf("anullsrc=r=16000:cl=mono:d=%.3f", durationSec),
-		"-ar", "16000", "-ac", "1",
+		"-hide_banner", "-y", "-f", "lavfi",
+		"-i", fmt.Sprintf("anullsrc=r=24000:cl=mono:d=%.3f", durationSec),
+		"-c:a", "pcm_s16le", "-ar", "24000", "-ac", "1",
 		outputPath,
 	)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("生成静音失败: %s, output: %s", err, string(output))
+	}
+	return nil
+}
+
+// concatSequential 顺次拼接所有音频切片，专用于无时间轴的小说朗读或纯文本配音。
+func (c *Core) concatSequential(ctx context.Context, audioFiles []string, outputPath string) error {
+	ffmpeg := c.cfg.FFmpegBin
+	if ffmpeg == "" {
+		ffmpeg = "ffmpeg"
+	}
+
+	concatList := filepath.Join(filepath.Dir(outputPath), "concat_list.txt")
+	var sb strings.Builder
+	for _, f := range audioFiles {
+		absPath, _ := filepath.Abs(f)
+		fmt.Fprintf(&sb, "file '%s'\n", strings.ReplaceAll(absPath, "'", "'\\''"))
+	}
+	if err := os.WriteFile(concatList, []byte(sb.String()), 0o644); err != nil {
+		return fmt.Errorf("写入拼接列表失败: %w", err)
+	}
+
+	cmd := exec.CommandContext(ctx, ffmpeg,
+		"-hide_banner", "-y",
+		"-f", "concat",
+		"-safe", "0",
+		"-i", concatList,
+		"-c:a", "libmp3lame",
+		"-q:a", "2",
+		outputPath,
+	)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("顺次拼接音频失败: %w, output: %s", err, string(output))
 	}
 	return nil
 }

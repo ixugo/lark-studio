@@ -28,21 +28,26 @@ func RunApp(bc *conf.Bootstrap, assets fs.FS) error {
 
 	taskCore := api.NewTaskCore(db)
 	termCore := api.NewTermCore(db)
+	recipeCore := api.NewRecipeCore(db)
 
 	eventHub := NewWailsEventHub(nil)
-	scheduler, cleanupScheduler := app.NewPipelineScheduler(bc, taskCore, termCore, eventHub)
+	scheduler, asrRouter, cleanupScheduler := app.NewPipelineSchedulerWithASR(bc, taskCore, termCore, eventHub)
 	defer cleanupScheduler()
 
 	// 启动配置文件热重载监听
 	watchCtx, watchCancel := context.WithCancel(context.Background())
 	defer watchCancel()
-	go conf.WatchConfig(watchCtx, bc, nil)
+	go conf.WatchConfig(watchCtx, bc)
 
-	svc := NewAppService(nil, bc, taskCore, termCore, scheduler)
+	svc := NewAppService(nil, bc, taskCore, termCore, recipeCore, scheduler, eventHub)
+	svc.SetASRRouter(asrRouter)
+
+	// 自动恢复因程序终止、关机等情况中断的任务，使其自动往后跑
+	go svc.AutoResumeInterruptedTasks(context.Background())
 
 	wailsApp := application.New(application.Options{
-		Name:        "VDub",
-		Description: "Video Translation & Dubbing Desktop Client",
+		Name:        "lark-studio",
+		Description: "Lark Studio Video Translation & Dubbing Desktop Client",
 		Icon:        appIcon,
 		Services: []application.Service{
 			application.NewService(svc),
@@ -56,7 +61,7 @@ func RunApp(bc *conf.Bootstrap, assets fs.FS) error {
 	eventHub.SetApp(wailsApp)
 
 	mainWindow := wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:           "VDub",
+		Title:           "Lark Studio",
 		Width:           1260,
 		Height:          840,
 		MinWidth:        960,

@@ -19,6 +19,7 @@ func TestBuildSteps(t *testing.T) {
 		{Job{Mode: ModeTranslate, Translator: "bing", SubtitleOutput: "burn"}, []string{StepWhisper, StepTranslate, StepBurn}},
 		{Job{Mode: ModeDub, Translator: "bing", SubtitleOutput: "burn"}, []string{StepWhisper, StepTranslate, StepTTS, StepMerge, StepBurn}},
 		{Job{Mode: ModeTranslate, Translator: "deeplx", SubtitleOutput: "file"}, []string{StepWhisper, StepTranslate}},
+		{Job{Mode: ModeDubOnly}, []string{StepTTS, StepMerge}},
 		{Job{Mode: 0, SubtitleOutput: "burn"}, []string{StepWhisper, StepBurn}},
 	}
 
@@ -53,5 +54,26 @@ func TestStepConstants(t *testing.T) {
 func TestModeConstants(t *testing.T) {
 	if ModeSubtitle == ModeTranslate || ModeTranslate == ModeDub || ModeSubtitle == ModeDub {
 		t.Error("mode constants must be distinct")
+	}
+}
+
+func TestIsFFmpegProgressLine(t *testing.T) {
+	tests := []struct {
+		line string
+		want bool
+	}{
+		{"frame=  123 fps= 24 q=28.0 size=    1024kB time=00:00:05.12 bitrate=1638.4kbits/s speed=1.02x", true},
+		{"  frame= 456 fps= 30", true},
+		{"size=     512kB time=00:00:02.50 bitrate=1677.7kbits/s", true},
+		{"[subtitles @ 0x1234567] Shaper: FriBidi 1.0.12 (SIMPLE)", false},
+		{"Error opening input file: No such file or directory", false},
+		{"Stream #0:0: Video: h264", false},
+	}
+
+	for _, tt := range tests {
+		got := isFFmpegProgressLine(tt.line)
+		if got != tt.want {
+			t.Errorf("isFFmpegProgressLine(%q) = %v, want %v", tt.line, got, tt.want)
+		}
 	}
 }
