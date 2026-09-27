@@ -21,6 +21,10 @@ LDFLAGS     := -X main.buildVersion=$(VERSION) \
                -X main.buildTime=$(BUILD_TIME)
 LDFLAGS_REL := $(LDFLAGS) -X main.release=true -s -w
 
+# macOS 构建以 macOS 13 为最低部署目标，且令外部链接器使用同一目标。
+MACOSX_DEPLOYMENT_TARGET := 13.0
+MACOS_LDFLAGS := -extldflags=-mmacosx-version-min=$(MACOSX_DEPLOYMENT_TARGET)
+
 # macOS arm64: 使用 ffmpeg-static 发布的静态构建
 FFMPEG_MACOS_URL  := https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-darwin-arm64.gz
 # Windows: gyan.dev essentials
@@ -54,7 +58,7 @@ build: build-frontend ## 编译 Go + Wails3 一体化桌面应用（debug 模式
 
 build-release: build-frontend ## 编译 Go + Wails3 一体化桌面应用（release 模式，注入版本号+裁符号表+trimpath）
 	@mkdir -p $(BUILD_DIR)
-	go build -trimpath -ldflags "$(LDFLAGS_REL)" -o $(BUILD_DIR)/$(BINARY) .
+	MACOSX_DEPLOYMENT_TARGET=$(MACOSX_DEPLOYMENT_TARGET) go build -trimpath -ldflags "$(LDFLAGS_REL) $(MACOS_LDFLAGS)" -o $(BUILD_DIR)/$(BINARY) .
 
 build-windows: build-frontend ## 交叉编译 Windows amd64
 	@mkdir -p build/windows_amd64
@@ -81,7 +85,7 @@ dev: ## 开发模式：一键启动 Vite 开发服务与 Go 桌面端联动运�
 	@if [ ! -f "$(FRONTEND_DIR)/dist/index.html" ]; then $(MAKE) build-frontend; fi
 	@echo "🚀 启动开发环境 (Vite 热重载 + Go 桌面客户端)..."
 	@mkdir -p $(BUILD_DIR)
-	@go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY) .
+	@MACOSX_DEPLOYMENT_TARGET=$(MACOSX_DEPLOYMENT_TARGET) go build -ldflags "$(LDFLAGS) $(MACOS_LDFLAGS)" -o $(BUILD_DIR)/$(BINARY) .
 	@if [ "$(GOOS)" = "darwin" ]; then \
 		bash scripts/make-dev-app.sh "$(BUILD_DIR)/$(BINARY)" "$(BUILD_DIR)/vdub-dev.app" "$(VERSION)"; \
 	fi

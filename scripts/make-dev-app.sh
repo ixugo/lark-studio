@@ -24,7 +24,7 @@ cat > "$APP_DIR/Contents/Info.plist" <<EOF
   <key>CFBundleExecutable</key><string>vdub</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>LSMinimumSystemVersion</key><string>12.0</string>
+  <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSHighResolutionCapable</key><true/>
 </dict>
 </plist>

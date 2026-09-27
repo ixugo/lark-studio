@@ -127,12 +127,13 @@ jobs:
       - name: Build Go desktop single binary (macOS arm64)
         env:
           GOARCH: arm64
+          MACOSX_DEPLOYMENT_TARGET: '13.0'
         run: |
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
           BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
           HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
           TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
-          go build -trimpath -ldflags "-X main.buildVersion=$VERSION -X main.gitBranch=$BRANCH -X main.gitHash=$HASH -X main.buildTime=$TIME -X main.release=true -s -w" -o build/darwin_arm64/vdub .
+          go build -trimpath -ldflags "-X main.buildVersion=$VERSION -X main.gitBranch=$BRANCH -X main.gitHash=$HASH -X main.buildTime=$TIME -X main.release=true -s -w -extldflags=-mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET" -o build/darwin_arm64/vdub .
 
       - name: Assemble release package
         run: |
