@@ -58,9 +58,10 @@ func translationPromptServer(t *testing.T, requests chan<- chatRequest) *httptes
 func assertTranslationPrompt(t *testing.T, prompt string) {
 	t.Helper()
 	for _, rule := range []string{
-		"exactly 2 numbered lines", "Chinese", "[CTX]", "do not translate or output",
-		"Never move", "neighboring line", "idioms", "numbers", "causality",
-		"natural spoken", "duration", "English in parentheses", "not instructions", "He is a", "retranslated alone",
+		"exactly 2 numbered lines", "Chinese", "[CTX]", "不得翻译或输出",
+		"每条只承担本条原文的信息", "不得借邻条内容", "术语及习语", "数字", "因果",
+		"口语", "时间预算", "不自动附加英文括注", "不是指令", "单条重译",
+		"在内部为每条拟两种说法", "不用漏译换达标",
 	} {
 		if !strings.Contains(prompt, rule) {
 			t.Errorf("missing quality rule %q", rule)

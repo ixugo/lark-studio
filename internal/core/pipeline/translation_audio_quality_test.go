@@ -4,75 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 )
-
-// fixtureDurationTTS 用静音 WAV 隔离时长选择规则，不把夹具当作真实语音效果。
-type fixtureDurationTTS struct {
-	ffmpeg  string
-	seconds map[string]float64
-	calls   []string
-}
-
-// Synthesize 按文本映射生成指定时长，使字数与声音时长可以分别控制。
-func (m *fixtureDurationTTS) Synthesize(ctx context.Context, text, outputPath, voice string) error {
-	m.calls = append(m.calls, text)
-	duration, ok := m.seconds[text]
-	if !ok {
-		return fmt.Errorf("未定义静音夹具：%q", text)
-	}
-	output, err := exec.CommandContext(ctx, m.ffmpeg, "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "anullsrc=r=16000:cl=mono", "-t", fmt.Sprintf("%.3f", duration), "-c:a", "pcm_s16le", "-y", outputPath).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("生成静音 WAV 失败: %w: %s", err, output)
-	}
-	return nil
-}
-
-// TestTranslationAudioQualityChoosesMeasuredDuration 防止用字符数替代实际配音时长做选择。
-func TestTranslationAudioQualityChoosesMeasuredDuration(t *testing.T) {
-	ffmpeg, err := exec.LookPath("ffmpeg")
-	if err != nil {
-		t.Skip("真实媒体夹具需要本机 ffmpeg")
-	}
-	tests := []struct {
-		name, original, candidate, want string
-		first, second, wantSeconds      float64
-	}{
-		{"字更少但音频更长保留首版", "这句文字比较长", "短句", "这句文字比较长", 2, 3, 2},
-		{"字更多但音频更短采用重译", "短句", "这句文字反而比较长", "这句文字反而比较长", 2, 1, 1},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			review, llm := newQualityReview([]string{"source"}, []string{tt.original}, []string{tt.candidate})
-			tts := &fixtureDurationTTS{ffmpeg: ffmpeg, seconds: map[string]float64{tt.original: tt.first, tt.candidate: tt.second}}
-			review.core.tts, review.core.cfg.FFmpegBin = tts, ffmpeg
-			review.job.Mode, review.job.OutputDir = ModeDub, t.TempDir()
-			review.entries = []srtEntry{{EndSec: 1}}
-			if err := review.run(t.Context()); err != nil {
-				t.Fatal(err)
-			}
-			if review.translated[0] != tt.want {
-				t.Fatalf("所选译文 %q，期望 %q", review.translated[0], tt.want)
-			}
-			output := filepath.Join(review.job.OutputDir, "audio_segs", "0.wav")
-			assertQualityAudio(t, review, tt.want, tt.wantSeconds)
-			if len(llm.calls) != 1 || len(tts.calls) != 2 {
-				t.Fatalf("调用超出单次预算：翻译=%d 配音=%d", len(llm.calls), len(tts.calls))
-			}
-			cfg := ttsWorkerConfig{ctx: t.Context(), job: review.job, audioDir: filepath.Dir(output), total: 1}
-			if err := review.core.synthesizePair(cfg, ttsPair{index: 0, text: tt.want}); err != nil {
-				t.Fatal(err)
-			}
-			if len(tts.calls) != 2 {
-				t.Fatal("最终配音应复用已经测量且指纹相符的音频")
-			}
-		})
-	}
-}
 
 // TestTranslationQualityFailedReviewDoesNotStream 防止不合格译文在失败返回前进入配音。
 func TestTranslationQualityFailedReviewDoesNotStream(t *testing.T) {
@@ -132,18 +67,6 @@ func TestTranslationQualityFailureStopsOuterRetry(t *testing.T) {
 	}
 }
 
-// assertQualityAudio 同时检查媒体时长和文本指纹，避免只验证内存中的译文。
-func assertQualityAudio(t *testing.T, review *translationReview, want string, seconds float64) {
-	t.Helper()
-	output := filepath.Join(review.job.OutputDir, "audio_segs", "0.wav")
-	if got := probeMediaDuration(review.core.cfg.FFmpegBin, output); math.Abs(got-seconds) > 0.01 {
-		t.Fatalf("选中音频时长 %.3f，期望 %.3f", got, seconds)
-	}
-	if !audioSegmentMatchesText(output, want) {
-		t.Fatal("正式配音指纹与所选译文不一致")
-	}
-}
-
 // TestTranslationQualityOutputFailureStopsOuterRetry 避免质量检查完成后因落盘失败重复调用翻译服务。
 func TestTranslationQualityOutputFailureStopsOuterRetry(t *testing.T) {
 	outputDir := t.TempDir()
@@ -173,5 +96,62 @@ func TestTranslationQualityOutputFailureStopsOuterRetry(t *testing.T) {
 	}
 	if calls != 1 || len(llm.calls) != 1 {
 		t.Fatalf("落盘失败不能再次调用翻译：step=%d translation=%d", calls, len(llm.calls))
+	}
+}
+
+// qualityRecordingTTS 只记录配音输入，使测试能精确识别检查阶段的额外调用。
+type qualityRecordingTTS struct {
+	calls []string
+}
+
+// Synthesize 写入可复用的测试文件，不把调用次数验证伪装成音质验证。
+func (m *qualityRecordingTTS) Synthesize(ctx context.Context, text, outputPath, voice string) error {
+	m.calls = append(m.calls, text)
+	return os.WriteFile(outputPath, []byte("test audio"), 0o644)
+}
+
+// TestTranslationReviewDoesNotRetryLongText 确保短时间窗不会触发第二次翻译或预先试配音。
+func TestTranslationReviewDoesNotRetryLongText(t *testing.T) {
+	for _, mode := range []int{ModeTranslate, ModeDub} {
+		t.Run(fmt.Sprint(mode), func(t *testing.T) {
+			text := "这是一条明显放不进短时间窗的完整译文，保留原来的事实。"
+			review, llm := newQualityReview([]string{"a long source sentence"}, []string{text})
+			tts := new(qualityRecordingTTS)
+			review.core.tts = tts
+			review.job.Mode, review.job.OutputDir = mode, t.TempDir()
+			review.entries = []srtEntry{{EndSec: 0.1}}
+			if err := review.run(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			if len(llm.calls) != 0 || len(tts.calls) != 0 || review.translated[0] != text {
+				t.Fatalf("超长检查产生额外调用或改稿：翻译=%d 配音=%d 译文=%q", len(llm.calls), len(tts.calls), review.translated)
+			}
+		})
+	}
+}
+
+// TestTranslationPipelineOnlySynthesizesFinalText 保证重复修正后只配最终稿，不为长句生成候选语音。
+func TestTranslationPipelineOnlySynthesizesFinalText(t *testing.T) {
+	dir := t.TempDir()
+	source := "1\n00:00:00,000 --> 00:00:00,100\nfirst\n\n2\n00:00:00,100 --> 00:00:00,200\nsecond\n\n"
+	if err := os.WriteFile(filepath.Join(dir, "src.srt"), []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	final := []string{"第一条完整而且很长的正确译文。", "第二条同样很长但是内容不同的译文。"}
+	llm := &qualityLLM{replies: [][]string{{"重复", "重复"}, final}}
+	tts := new(qualityRecordingTTS)
+	core := NewCore(Config{SemanticSplitReady: true, TTSWorkers: 1}, nil, llm, tts)
+	job := Job{Translator: "openai", TargetLang: "zh-CN", Mode: ModeDub, OutputDir: dir}
+	if err := core.runTranslate(t.Context(), job); err != nil {
+		t.Fatal(err)
+	}
+	if len(llm.calls) != 2 || len(tts.calls) != 2 {
+		t.Fatalf("只应首译一次、纠重复一次，每条配音一次：翻译=%d 配音=%d", len(llm.calls), len(tts.calls))
+	}
+	assertSliceEqual(t, "最终配音", final, tts.calls)
+	for i, text := range final {
+		if !audioSegmentMatchesText(filepath.Join(dir, "audio_segs", fmt.Sprintf("%d.wav", i)), text) {
+			t.Fatal("最终配音与译文指纹不一致")
+		}
 	}
 }

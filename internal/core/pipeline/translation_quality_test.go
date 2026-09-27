@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"strings"
 	"testing"
 )
 
@@ -105,56 +104,6 @@ func TestTranslationQualityPersistentDuplicateStops(t *testing.T) {
 	}
 }
 
-// TestTranslationQualityLengthChoice 检查超长阈值与候选选择，保证每句只有一次尝试。
-func TestTranslationQualityLengthChoice(t *testing.T) {
-	tests := []struct {
-		name, original, candidate, want string
-		seconds                         float64
-		calls                           int
-	}{
-		{"恰好百分之二十", "一二三四五六", "短", "一二三四五六", 1.25, 0},
-		{"超过百分之二十", "一二三四五六七", "短句", "短句", 1.25, 1},
-		{"更长保留首版", "一二三四五六七", "一二三四五六七八九", "一二三四五六七", 1, 1},
-		{"同长保留首版", "一二三四五六七", "七六五四三二一", "一二三四五六七", 1, 1},
-		{"仍超长不再重试", "一二三四五六七八九十", "一二三四五六七八", "一二三四五六七八", 1, 1},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			review, llm := newQualityReview([]string{"source"}, []string{tt.original}, []string{tt.candidate})
-			review.entries = []srtEntry{{EndSec: tt.seconds}}
-			if err := review.run(t.Context()); err != nil {
-				t.Fatal(err)
-			}
-			if review.translated[0] != tt.want || len(llm.calls) != tt.calls {
-				t.Fatalf("译文 %q 调用 %d 次，期望 %q / %d", review.translated[0], len(llm.calls), tt.want, tt.calls)
-			}
-		})
-	}
-}
-
-// TestTranslationQualityLengthContext 确认单句压缩也能看到两侧语境及原译文。
-func TestTranslationQualityLengthContext(t *testing.T) {
-	source := []string{"a", "b", "c", "target", "d", "e", "f"}
-	review, llm := newQualityReview(source, []string{"甲", "乙", "丙", "这是一句需要压缩的长译文", "丁", "戊", "己"}, []string{"短句"})
-	review.entries = make([]srtEntry, len(source))
-	for i := range review.entries {
-		review.entries[i].EndSec = 10
-	}
-	review.entries[3].EndSec = 1
-	if err := review.run(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	if len(llm.calls) != 1 {
-		t.Fatalf("调用次数：%d", len(llm.calls))
-	}
-	call := llm.calls[0]
-	assertSliceEqual(t, "前文", source[:3], call.before)
-	assertSliceEqual(t, "后文", source[4:], call.after)
-	if !strings.Contains(call.prompt, "这是一句需要压缩的长译文") {
-		t.Fatal("压缩提示词未包含原译文")
-	}
-}
-
 // TestTranslationQualityDuplicateConsumesBudget 防止同一条先纠重复再压缩导致重复计费。
 func TestTranslationQualityDuplicateConsumesBudget(t *testing.T) {
 	review, llm := newQualityReview([]string{"first", "second"}, []string{"同句", "同句"}, []string{"第一条仍然很长很长", "第二条仍然很长很长"})
@@ -164,18 +113,6 @@ func TestTranslationQualityDuplicateConsumesBudget(t *testing.T) {
 	}
 	if len(llm.calls) != 1 {
 		t.Fatalf("重复修正后不得再次压缩：%d", len(llm.calls))
-	}
-}
-
-// TestTranslationQualityRejectsNewDuplicate 防止为缩短文本引入邻接错误重复。
-func TestTranslationQualityRejectsNewDuplicate(t *testing.T) {
-	review, llm := newQualityReview([]string{"first", "second"}, []string{"第一句是一条很长的译文", "短句"}, []string{"短句"})
-	review.entries = []srtEntry{{EndSec: 1}, {EndSec: 10}}
-	if err := review.run(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	if review.translated[0] != "第一句是一条很长的译文" || len(llm.calls) != 1 {
-		t.Fatalf("错误候选不应采纳：%v", review.translated)
 	}
 }
 

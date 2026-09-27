@@ -183,11 +183,11 @@ func TestTranslationQualityRealDuplicateReplay(t *testing.T) {
 		review.source = append(review.source, original[i].Text)
 		review.translated = append(review.translated, before[i].Text)
 	}
-	runTranslationRealReplay(t, &review, recorder, before)
+	runTranslationRealReplay(t, &review, recorder)
 }
 
-// runTranslationRealReplay 运行检查并保存真实产物，让回放与正常样本使用同一计量路径。
-func runTranslationRealReplay(t *testing.T, review *translationReview, recorder *speechSyncRecorder, before []srtEntry) {
+// runTranslationRealReplay 只验证真实重复修复并保存字幕，避免检查回放产生试配音。
+func runTranslationRealReplay(t *testing.T, review *translationReview, recorder *speechSyncRecorder) {
 	t.Helper()
 	if !review.duplicateAt(5) {
 		t.Fatal("历史样本未包含预期重复")
@@ -205,7 +205,6 @@ func runTranslationRealReplay(t *testing.T, review *translationReview, recorder 
 		t.Fatal(err)
 	}
 	assertTranslationRealReplay(t, review.job.OutputDir)
-	collectTranslationRealMetrics(t, review.job.OutputDir, review.entries, before, review.core.tts)
 }
 
 // assertTranslationRealReplay 核查真实服务日志，保证重复组只触发一次质量重译。
