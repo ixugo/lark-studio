@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 	"runtime"
-	"runtime/debug"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -88,7 +87,6 @@ type getHealthOutput struct {
 }
 
 func (uc *Usecase) getHealth(_ *http.Request, _ *struct{}) (getHealthOutput, error) {
-	_ = debug.ReadBuildInfo
 	return getHealthOutput{
 		Version:   uc.Conf.Runtime.BuildVersion,
 		GitBranch: strings.Trim(expvar.Get("git_branch").String(), `"`),

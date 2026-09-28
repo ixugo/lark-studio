@@ -11,7 +11,17 @@ WHISPER_PREFIX ?= $(shell brew --prefix whisper-cpp 2>/dev/null)
 GGML_PREFIX    ?= $(shell brew --prefix ggml 2>/dev/null)
 LIBOMP_PREFIX  ?= $(shell brew --prefix libomp 2>/dev/null)
 
-VERSION     := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+RECENT_TAG  := $(shell git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+ifeq ($(RECENT_TAG),v0.0.0)
+COMMITS     := $(shell git rev-list --count HEAD 2>/dev/null || echo 0)
+else
+COMMITS     := $(shell git rev-list --count $(RECENT_TAG)..HEAD 2>/dev/null || echo 0)
+endif
+VERSION_MAJOR := $(shell echo $(RECENT_TAG) | cut -d. -f1 | sed 's/^v//')
+VERSION_MINOR := $(shell echo $(RECENT_TAG) | cut -d. -f2)
+VERSION_PATCH := $(shell echo $(RECENT_TAG) | cut -d. -f3)
+FINAL_PATCH := $(shell echo '$(VERSION_PATCH) $(COMMITS)' | awk '{print $$1 + $$2}')
+VERSION     := v$(VERSION_MAJOR).$(VERSION_MINOR).$(FINAL_PATCH)
 GIT_BRANCH  := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 GIT_HASH    := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_TIME  := $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')

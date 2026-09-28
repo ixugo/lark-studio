@@ -28,7 +28,7 @@ import (
 var assetsFS embed.FS
 
 var (
-	buildVersion = "0.0.1" // 构建版本号
+	buildVersion = "dev"   // 构建版本号，由编译参数注入
 	gitBranch    = "dev"   // git 分支
 	gitHash      = "debug" // git 提交点哈希值
 	release      string    // 发布模式 true/false
