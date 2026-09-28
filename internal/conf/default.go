@@ -57,7 +57,7 @@ func DefaultConfig() Bootstrap {
 		},
 		TTS: TTS{
 			Type:  "edge",
-			Voice: "zh-CN-YunjianNeural",
+			Voice: "zh-CN-XiaoxiaoNeural",
 			Model: "tts-1",
 		},
 	}

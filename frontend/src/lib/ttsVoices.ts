@@ -6,13 +6,13 @@ export interface TtsVoiceOption {
   enLabel: string;
 }
 
-export const DEFAULT_EDGE_TTS_VOICE = 'zh-CN-YunjianNeural';
+export const DEFAULT_EDGE_TTS_VOICE = 'zh-CN-XiaoxiaoNeural';
 export const DEFAULT_OPENAI_TTS_VOICE = 'alloy';
 
 // 工作台与语音合成页共用此清单，避免两处音色漂移。
 export const EDGE_TTS_VOICES: TtsVoiceOption[] = [
-  { value: 'zh-CN-YunjianNeural', zhLabel: '云健 · 普通话男声 · 热情有力', enLabel: 'Yunjian · Mandarin male · Passionate' },
   { value: 'zh-CN-XiaoxiaoNeural', zhLabel: '晓晓 · 普通话女声 · 温暖自然', enLabel: 'Xiaoxiao · Mandarin female · Warm' },
+  { value: 'zh-CN-YunjianNeural', zhLabel: '云健 · 普通话男声 · 热情有力', enLabel: 'Yunjian · Mandarin male · Passionate' },
   { value: 'zh-CN-YunxiNeural', zhLabel: '云希 · 普通话男声 · 阳光活泼', enLabel: 'Yunxi · Mandarin male · Bright' },
   { value: 'zh-CN-YunxiaNeural', zhLabel: '云夏 · 普通话男声 · 少年感', enLabel: 'Yunxia · Mandarin male · Youthful' },
   { value: 'zh-CN-XiaoyiNeural', zhLabel: '晓伊 · 普通话女声 · 活泼灵动', enLabel: 'Xiaoyi · Mandarin female · Lively' },

@@ -24,7 +24,7 @@ type EdgeTTS struct {
 // NewEdgeTTS 创建 edge-tts 适配器
 func NewEdgeTTS(voice string) *EdgeTTS {
 	if voice == "" {
-		voice = "zh-CN-YunjianNeural"
+		voice = "zh-CN-XiaoxiaoNeural"
 	}
 	return &EdgeTTS{voice: voice}
 }
