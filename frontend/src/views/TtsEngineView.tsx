@@ -15,6 +15,11 @@ import {
 import { api } from '../lib/api';
 import { ConfigDTO } from '../types';
 import { useTranslation } from '../i18n';
+import {
+  EDGE_TTS_VOICES,
+  normalizeTtsVoice,
+  TtsEngine,
+} from '../lib/ttsVoices';
 
 interface TtsEngineItem {
   id: 'edge' | 'openai';
@@ -43,16 +48,6 @@ const TTS_ENGINES: TtsEngineItem[] = [
   },
 ];
 
-const POPULAR_EDGE_VOICES = [
-  { value: 'zh-CN-YunjianNeural', label: '云健 · 男声沉稳推荐' },
-  { value: 'zh-CN-XiaoxiaoNeural', label: '晓晓 · 女声亲切推荐' },
-  { value: 'zh-CN-YunxiNeural', label: '云希 · 男声阳光解说' },
-  { value: 'zh-CN-YunxiaNeural', label: '云夏 · 男声少年感' },
-  { value: 'zh-CN-XiaoyiNeural', label: '晓伊 · 女声抒情阅读' },
-  { value: 'en-US-ChristopherNeural', label: 'Christopher · 美式英语男声' },
-  { value: 'en-US-JennyNeural', label: 'Jenny · 美式英语女声' },
-];
-
 export const TtsEngineView: React.FC = () => {
   const { locale } = useTranslation();
   const english = locale === 'en-US';
@@ -74,6 +69,8 @@ export const TtsEngineView: React.FC = () => {
 
   useEffect(() => {
     api.getConfig().then((cfg) => {
+      const configuredType = cfg.tts?.type?.toLowerCase();
+      const current: TtsEngine = configuredType === 'openai' ? 'openai' : 'edge';
       const patched: ConfigDTO = {
         ...cfg,
         pipeline: {
@@ -83,15 +80,12 @@ export const TtsEngineView: React.FC = () => {
         },
         tts: {
           ...cfg.tts,
-          voice: cfg.tts?.voice || 'zh-CN-YunjianNeural',
+          voice: normalizeTtsVoice(current, cfg.tts?.voice),
           model: cfg.tts?.model || 'tts-1',
         },
       };
       setConfig(patched);
-      const current = (patched.tts?.type?.toLowerCase() || 'edge') as any;
-      if (['edge', 'openai'].includes(current)) {
-        setActiveEngine(current);
-      }
+      setActiveEngine(current);
     }).catch(console.error);
   }, []);
 
@@ -100,11 +94,13 @@ export const TtsEngineView: React.FC = () => {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const targetType = engineToSet || config.tts.type || activeEngine;
+      const requestedType = engineToSet || config.tts.type || activeEngine;
+      const targetType: TtsEngine = requestedType === 'openai' ? 'openai' : 'edge';
       const updatedConfig = {
         ...config,
         tts: {
           ...config.tts,
+          voice: normalizeTtsVoice(targetType, config.tts.voice),
           type: targetType,
         },
       };
@@ -135,6 +131,17 @@ export const TtsEngineView: React.FC = () => {
       },
     });
     handleSave(engineId);
+  };
+
+  const handleSelectEngine = (engine: TtsEngine) => {
+    setActiveEngine(engine);
+    setConfig((current) => current ? {
+      ...current,
+      tts: {
+        ...current.tts,
+        voice: normalizeTtsVoice(engine, current.tts.voice),
+      },
+    } : current);
   };
 
   // 用目标语言试听当前兼容接口，尽早发现模型名、音色名或服务地址错误。
@@ -223,7 +230,7 @@ export const TtsEngineView: React.FC = () => {
                   <button
                     key={item.id}
                     type="button"
-                    onClick={() => setActiveEngine(item.id)}
+                    onClick={() => handleSelectEngine(item.id)}
                     className={`w-full text-left px-3.5 py-3 rounded-xl border transition-all relative flex items-center justify-between active:scale-[0.98] ${
                       isSelected
                         ? 'bg-blue-50/70 dark:bg-blue-500/15 border-blue-500/40 text-blue-900 dark:text-blue-100 font-medium'
@@ -319,17 +326,9 @@ export const TtsEngineView: React.FC = () => {
                       }
                       className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                     >
-                      {POPULAR_EDGE_VOICES.map((v) => (
-                        <option key={v.value} value={v.value}>
-                          {english ? ({
-                            'zh-CN-YunjianNeural': 'Yunjian · Calm male voice',
-                            'zh-CN-XiaoxiaoNeural': 'Xiaoxiao · Friendly female voice',
-                            'zh-CN-YunxiNeural': 'Yunxi · Bright male narration',
-                            'zh-CN-YunxiaNeural': 'Yunxia · Youthful male voice',
-                            'zh-CN-XiaoyiNeural': 'Xiaoyi · Expressive female voice',
-                            'en-US-ChristopherNeural': 'Christopher · US English male',
-                            'en-US-JennyNeural': 'Jenny · US English female',
-                          } as Record<string, string>)[v.value] : v.label}
+                      {EDGE_TTS_VOICES.map((voice) => (
+                        <option key={voice.value} value={voice.value}>
+                          {english ? voice.enLabel : voice.zhLabel}
                         </option>
                       ))}
                     </select>

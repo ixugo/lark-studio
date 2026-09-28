@@ -19,6 +19,7 @@ import {
 import { api } from '../lib/api';
 import { TaskMode, WhisperModelItem } from '../types';
 import { useTranslation } from '../i18n';
+import { EDGE_TTS_VOICES, normalizeTtsVoice, TtsEngine } from '../lib/ttsVoices';
 
 declare global {
   interface Window {
@@ -261,10 +262,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
       if (['google', 'bing', 'openai'].includes(config.llm?.provider)) {
         setTranslateService(config.llm.provider as 'google' | 'bing' | 'openai');
       }
-      if (['edge', 'openai'].includes(config.tts?.type)) {
-        setTtsEngine(config.tts.type as 'edge' | 'openai');
-      }
-      if (config.tts?.voice) setTtsVoice(config.tts.voice);
+      const configuredTtsEngine = ['edge', 'openai'].includes(config.tts?.type)
+        ? config.tts.type as TtsEngine
+        : 'edge';
+      setTtsEngine(configuredTtsEngine);
+      setTtsVoice(normalizeTtsVoice(configuredTtsEngine, config.tts?.voice));
     }).finally(() => {
       if (active) setLoadingModels(false);
     });
@@ -277,9 +279,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
   const [outputContent, setOutputContent] = useState('bilingual');
 
   // 子阶段 2：AI 配音配置
-  const [ttsEngine, setTtsEngine] = useState<'edge' | 'local' | 'openai' | 'elevenlabs'>('edge');
+  const [ttsEngine, setTtsEngine] = useState<TtsEngine>('edge');
   const [ttsVoice, setTtsVoice] = useState('zh-CN-XiaoxiaoNeural');
   const [speechRate, setSpeechRate] = useState<number>(1.0);
+
+  const handleTtsEngineChange = (engine: TtsEngine) => {
+    setTtsEngine(engine);
+    setTtsVoice((voice) => normalizeTtsVoice(engine, voice));
+  };
 
   // 子阶段 3：成品视频压制配置
   const [subtitleOutput, setSubtitleOutput] = useState('soft');
@@ -441,7 +448,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
     setDoVideo(currentResourceType === 'text' || currentResourceType === 'audio' ? false : preset.goals.video);
     if (preset.config) {
       if (preset.config.targetLang) setTargetLang(preset.config.targetLang);
-      if (preset.config.ttsVoice) setTtsVoice(preset.config.ttsVoice);
+      if (preset.config.ttsVoice) {
+        setTtsVoice(normalizeTtsVoice(ttsEngine, preset.config.ttsVoice));
+      }
       if (preset.config.speechRate) setSpeechRate(preset.config.speechRate);
       if (preset.config.subtitleOutput) setSubtitleOutput(preset.config.subtitleOutput);
     }
@@ -1254,7 +1263,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                 <div className="relative">
                   <select
                     value={ttsEngine}
-                    onChange={(e) => setTtsEngine(e.target.value as 'edge' | 'openai')}
+                    onChange={(e) => handleTtsEngineChange(e.target.value as TtsEngine)}
                     className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
                   >
                     <option value="edge">Edge TTS</option>
@@ -1270,25 +1279,30 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
                   {t('dashboard.ttsVoice', '声音音色')}
                 </label>
                 <div className="relative">
-                  <select
-                    value={ttsVoice}
-                    onChange={(e) => setTtsVoice(e.target.value)}
-                    className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
-                  >
-                    {ttsVoice && ![
-                      'zh-CN-YunxiNeural', 'zh-CN-XiaoxiaoNeural', 'zh-CN-YunjianNeural',
-                      'zh-CN-YunyangNeural', 'en-US-JennyNeural', 'alloy', 'echo', 'nova',
-                    ].includes(ttsVoice) && <option value={ttsVoice}>{ttsVoice}</option>}
-                    <option value="zh-CN-YunxiNeural">{english ? 'Yunxi (Male narrator)' : '云希 (经典纪录片/解说男声)'}</option>
-                    <option value="zh-CN-XiaoxiaoNeural">{english ? 'Xiaoxiao (Female voice)' : '晓晓 (自然温柔女声)'}</option>
-                    <option value="zh-CN-YunjianNeural">{english ? 'Yunjian (Calm male voice)' : '云健 (沉稳专业男声)'}</option>
-                    <option value="zh-CN-YunyangNeural">{english ? 'Yunyang (News anchor)' : '云扬 (新闻播报男声)'}</option>
-                    <option value="en-US-JennyNeural">{english ? 'Jenny (US English female)' : 'Jenny (标准美语女声)'}</option>
-                    <option value="alloy">OpenAI: Alloy</option>
-                    <option value="echo">OpenAI: Echo</option>
-                    <option value="nova">OpenAI: Nova</option>
-                  </select>
-                  <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
+                  {ttsEngine === 'edge' ? (
+                    <>
+                      <select
+                        value={ttsVoice}
+                        onChange={(e) => setTtsVoice(e.target.value)}
+                        className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
+                      >
+                        {EDGE_TTS_VOICES.map((voice) => (
+                          <option key={voice.value} value={voice.value}>
+                            {english ? voice.enLabel : voice.zhLabel}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
+                    </>
+                  ) : (
+                    <input
+                      type="text"
+                      value={ttsVoice}
+                      onChange={(e) => setTtsVoice(e.target.value)}
+                      placeholder={english ? 'For example: alloy or a custom voice' : '如 alloy 或服务端支持的音色名'}
+                      className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
+                    />
+                  )}
                 </div>
               </div>
 
