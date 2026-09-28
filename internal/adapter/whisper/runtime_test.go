@@ -39,6 +39,35 @@ func TestRuntimeAssetURL(t *testing.T) {
 	}
 }
 
+// TestBinaryAtPrefixesFindsWhisperCLI 验证 PATH 缺失时仍能从已知目录发现运行时。
+func TestBinaryAtPrefixesFindsWhisperCLI(t *testing.T) {
+	prefix := t.TempDir()
+	binary := filepath.Join(prefix, "whisper-cli")
+	if err := os.WriteFile(binary, []byte("runtime"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := binaryAtPrefixes([]string{"whisper-cpp", "whisper-cli"}, []string{prefix}); got != binary {
+		t.Fatalf("binaryAtPrefixes() = %q，期望 %q", got, binary)
+	}
+}
+
+// TestInspectHomebrewRuntimeWithoutPATH 复现 Finder 启动应用时缺少 Homebrew PATH 的环境。
+func TestInspectHomebrewRuntimeWithoutPATH(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("Homebrew 路径探测仅适用于 macOS")
+	}
+	if _, err := os.Stat("/opt/homebrew/bin/whisper-cli"); err != nil {
+		t.Skip("当前设备未安装 Apple Silicon Homebrew whisper-cli")
+	}
+	t.Setenv("PATH", "/usr/bin:/bin")
+
+	info := InspectRuntime("whisper-cpp")
+	if !info.Installed || info.Binary != "/opt/homebrew/bin/whisper-cli" {
+		t.Fatalf("Homebrew 运行时未通过无 PATH 探测：%+v", info)
+	}
+}
+
 // TestBundledWhisperCLIIsProbeable 验证构建入 vendor 的运行时能通过真实命令探测。
 func TestBundledWhisperCLIIsProbeable(t *testing.T) {
 	if runtime.GOOS != "darwin" || runtime.GOARCH != "arm64" {

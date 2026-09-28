@@ -133,12 +133,28 @@ func bundledBinaryPath() string {
 
 // systemBinaryPath 查找系统环境已有的兼容命令，macOS 26 未提供时会自然回退到应用运行时。
 func systemBinaryPath(configured string) string {
-	for _, candidate := range []string{configured, "whisper-cli", "whisper-cpp"} {
+	candidates := []string{configured, "whisper-cli", "whisper-cpp"}
+	for _, candidate := range candidates {
 		if candidate == "" {
 			continue
 		}
 		if path, err := exec.LookPath(candidate); err == nil {
 			return path
+		}
+	}
+	if runtime.GOOS == "darwin" {
+		return binaryAtPrefixes(candidates, []string{"/opt/homebrew/bin", "/usr/local/bin"})
+	}
+	return ""
+}
+
+func binaryAtPrefixes(candidates, prefixes []string) string {
+	for _, prefix := range prefixes {
+		for _, candidate := range candidates {
+			path := filepath.Join(prefix, candidate)
+			if info, err := os.Stat(path); err == nil && !info.IsDir() {
+				return path
+			}
 		}
 	}
 	return ""
