@@ -49,6 +49,9 @@ func RunApp(bc *conf.Bootstrap, assets fs.FS) error {
 		Name:        "lark-studio",
 		Description: "Lark Studio Video Translation & Dubbing Desktop Client",
 		Icon:        appIcon,
+		Mac: application.MacOptions{
+			ApplicationShouldTerminateAfterLastWindowClosed: true,
+		},
 		Services: []application.Service{
 			application.NewService(svc),
 		},
