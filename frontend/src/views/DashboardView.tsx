@@ -20,6 +20,7 @@ import { api } from '../lib/api';
 import { TaskMode, WhisperModelItem } from '../types';
 import { useTranslation } from '../i18n';
 import { EDGE_TTS_VOICES, normalizeTtsVoice, TtsEngine } from '../lib/ttsVoices';
+import { loadWorkbenchDraft, saveWorkbenchDraft } from '../lib/workbenchDraft';
 
 declare global {
   interface Window {
@@ -126,6 +127,7 @@ const BUILTIN_PRESETS: WorkflowPreset[] = [
 export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, active = true }) => {
   const { t, locale } = useTranslation();
   const english = locale === 'en-US';
+  const initialDraft = useMemo(loadWorkbenchDraft, []);
   // 用户自定义配方列表（持久化于 SQLite 数据库）
   const [customPresets, setCustomPresets] = useState<WorkflowPreset[]>([]);
 
@@ -215,24 +217,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, act
   };
 
   // 选中的快捷预设
-  const [activePreset, setActivePreset] = useState<string>('dub_full');
+  const [activePreset, setActivePreset] = useState<string>(initialDraft.activePreset || 'dub_full');
 
   // 第一步：放入的文件列表
-  const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<string[]>(initialDraft.selectedFiles || []);
   const [isDragging, setIsDragging] = useState(false);
 
   // 第二步：我要得到 (四阶段目标核心开关)
-  const [doSub, setDoSub] = useState(true);
-  const [doTranslate, setDoTranslate] = useState(true);
-  const [doDub, setDoDub] = useState(true);
-  const [doVideo, setDoVideo] = useState(true);
+  const [doSub, setDoSub] = useState(initialDraft.doSub ?? true);
+  const [doTranslate, setDoTranslate] = useState(initialDraft.doTranslate ?? true);
+  const [doDub, setDoDub] = useState(initialDraft.doDub ?? true);
+  const [doVideo, setDoVideo] = useState(initialDraft.doVideo ?? true);
 
   // 子阶段 1：字幕与翻译配置
   const cleanModelDisplayName = (name: string) => {
     return name.replace(/^Whisper(\.cpp)?\s*/i, '').trim();
   };
 
-  const [whisperModel, setWhisperModel] = useState('large-v3-turbo');
+  const [whisperModel, setWhisperModel] = useState(initialDraft.whisperModel || 'large-v3-turbo');
   const [downloadedWhisperModels, setDownloadedWhisperModels] = useState<WhisperModelItem[]>([]);
   const [loadingModels, setLoadingModels] = useState(true);
 
@@ -255,34 +257,41 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, act
         m.path === configuredModel || cleanModelDisplayName(m.name) === modelName,
       );
       const fallbackModel = ready.find((m) => cleanModelDisplayName(m.name).includes('large-v3-turbo')) || ready[0];
-      setWhisperModel(configuredMatch
-        ? cleanModelDisplayName(configuredMatch.name)
-        : configuredModel || (fallbackModel ? cleanModelDisplayName(fallbackModel.name) : 'large-v3-turbo'));
+      if (!initialDraft.whisperModel) {
+        setWhisperModel(configuredMatch
+          ? cleanModelDisplayName(configuredMatch.name)
+          : configuredModel || (fallbackModel ? cleanModelDisplayName(fallbackModel.name) : 'large-v3-turbo'));
+      }
 
-      if (config.pipeline?.default_target_lang) setTargetLang(config.pipeline.default_target_lang);
-      if (['google', 'bing', 'openai'].includes(config.llm?.provider)) {
+      if (!initialDraft.targetLang && config.pipeline?.default_target_lang) {
+        setTargetLang(config.pipeline.default_target_lang);
+      }
+      if (!initialDraft.translateService && ['google', 'bing', 'openai'].includes(config.llm?.provider)) {
         setTranslateService(config.llm.provider as 'google' | 'bing' | 'openai');
       }
       const configuredTtsEngine = ['edge', 'openai'].includes(config.tts?.type)
         ? config.tts.type as TtsEngine
         : 'edge';
-      setTtsEngine(configuredTtsEngine);
-      setTtsVoice(normalizeTtsVoice(configuredTtsEngine, config.tts?.voice));
+      const preferredTtsEngine = initialDraft.ttsEngine || configuredTtsEngine;
+      if (!initialDraft.ttsEngine) setTtsEngine(configuredTtsEngine);
+      if (!initialDraft.ttsVoice) {
+        setTtsVoice(normalizeTtsVoice(preferredTtsEngine, config.tts?.voice));
+      }
     }).finally(() => {
       if (active) setLoadingModels(false);
     });
     return () => { active = false; };
   }, []);
 
-  const [videoLang, setVideoLang] = useState('auto');
-  const [targetLang, setTargetLang] = useState('zh-CN');
-  const [translateService, setTranslateService] = useState<'openai' | 'local' | 'bing' | 'google'>('bing');
-  const [outputContent, setOutputContent] = useState('bilingual');
+  const [videoLang, setVideoLang] = useState(initialDraft.videoLang || 'auto');
+  const [targetLang, setTargetLang] = useState(initialDraft.targetLang || 'zh-CN');
+  const [translateService, setTranslateService] = useState<'openai' | 'local' | 'bing' | 'google'>(initialDraft.translateService || 'bing');
+  const [outputContent, setOutputContent] = useState(initialDraft.outputContent || 'bilingual');
 
   // 子阶段 2：AI 配音配置
-  const [ttsEngine, setTtsEngine] = useState<TtsEngine>('edge');
-  const [ttsVoice, setTtsVoice] = useState('zh-CN-XiaoxiaoNeural');
-  const [speechRate, setSpeechRate] = useState<number>(1.0);
+  const [ttsEngine, setTtsEngine] = useState<TtsEngine>(initialDraft.ttsEngine || 'edge');
+  const [ttsVoice, setTtsVoice] = useState(initialDraft.ttsVoice || 'zh-CN-XiaoxiaoNeural');
+  const [speechRate, setSpeechRate] = useState<number>(initialDraft.speechRate ?? 1.0);
 
   const handleTtsEngineChange = (engine: TtsEngine) => {
     setTtsEngine(engine);
@@ -290,10 +299,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, act
   };
 
   // 子阶段 3：成品视频压制配置
-  const [subtitleOutput, setSubtitleOutput] = useState('soft');
-  const [subtitleStyle, setSubtitleStyle] = useState('经典白字黑边');
-  const [videoQuality, setVideoQuality] = useState('原画质(推荐)');
-  const [encodeMethod, setEncodeMethod] = useState('默认(推荐)');
+  const [subtitleOutput, setSubtitleOutput] = useState(initialDraft.subtitleOutput || 'soft');
+  const [subtitleStyle, setSubtitleStyle] = useState(initialDraft.subtitleStyle || '经典白字黑边');
+  const [videoQuality, setVideoQuality] = useState(initialDraft.videoQuality || '原画质(推荐)');
+  const [encodeMethod, setEncodeMethod] = useState(initialDraft.encodeMethod || '默认(推荐)');
 
   // 配方弹窗与提交状态
   const [recipeName, setRecipeName] = useState('');
@@ -301,6 +310,34 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, act
   const [recipeSavedToast, setRecipeSavedToast] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    saveWorkbenchDraft({
+      selectedFiles,
+      activePreset,
+      doSub,
+      doTranslate,
+      doDub,
+      doVideo,
+      whisperModel,
+      videoLang,
+      targetLang,
+      translateService,
+      outputContent,
+      ttsEngine,
+      ttsVoice,
+      speechRate,
+      subtitleOutput,
+      subtitleStyle,
+      videoQuality,
+      encodeMethod,
+    });
+  }, [
+    selectedFiles, activePreset, doSub, doTranslate, doDub, doVideo,
+    whisperModel, videoLang, targetLang, translateService, outputContent,
+    ttsEngine, ttsVoice, speechRate, subtitleOutput, subtitleStyle,
+    videoQuality, encodeMethod,
+  ]);
 
   const currentResourceType = useMemo<ResourceType | null>(() => {
     if (selectedFiles.length === 0) return null;
