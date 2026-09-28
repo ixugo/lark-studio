@@ -60,7 +60,7 @@ export const AppContent: React.FC = () => {
   const renderContent = () => {
     switch (currentTab) {
       case 'dashboard':
-        return <DashboardView onTaskCreated={() => setCurrentTab('board')} />;
+        return null;
       case 'board':
         return <TaskBoardView />;
       case 'list':
@@ -80,7 +80,7 @@ export const AppContent: React.FC = () => {
       case 'about':
         return <AboutView />;
       default:
-        return <DashboardView onTaskCreated={() => setCurrentTab('board')} />;
+        return null;
     }
   };
 
@@ -94,7 +94,13 @@ export const AppContent: React.FC = () => {
         runningTasksCount={runningCount}
       />
       <main className="flex-1 h-screen overflow-hidden bg-[#F5F5F7] dark:bg-[#121215]">
-        {renderContent()}
+        <div className={currentTab === 'dashboard' ? 'h-full' : 'hidden'}>
+          <DashboardView
+            active={currentTab === 'dashboard'}
+            onTaskCreated={() => setCurrentTab('board')}
+          />
+        </div>
+        {currentTab !== 'dashboard' && renderContent()}
       </main>
     </div>
   );

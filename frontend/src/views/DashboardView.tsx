@@ -29,6 +29,7 @@ declare global {
 
 interface DashboardViewProps {
   onTaskCreated: () => void;
+  active?: boolean;
 }
 
 // 资源分类类型
@@ -122,7 +123,7 @@ const BUILTIN_PRESETS: WorkflowPreset[] = [
   },
 ];
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) => {
+export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, active = true }) => {
   const { t, locale } = useTranslation();
   const english = locale === 'en-US';
   // 用户自定义配方列表（持久化于 SQLite 数据库）
@@ -372,6 +373,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
 
   // 全局与原生窗口拖拽双轨监听
   useEffect(() => {
+    if (!active) {
+      setIsDragging(false);
+      return;
+    }
     const handleWailsDrop = (data: unknown) => appendFiles(data);
     window.__onWailsFilesDropped = (files: string[]) => appendFiles(files);
     const unbind1 = api.onEvent('files-dropped', handleWailsDrop);
@@ -408,7 +413,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
       window.removeEventListener('dragleave', handleWindowDragLeave);
       window.removeEventListener('drop', handleWindowDrop);
     };
-  }, [currentResourceType]);
+  }, [active, currentResourceType]);
 
   // 根据当前所选文件类型自适应调整阶段开关与参数限制
   useEffect(() => {
@@ -599,6 +604,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated }) =
         });
       }
 
+      setSelectedFiles([]);
       onTaskCreated();
     } catch (err: unknown) {
       console.error('Failed to create task:', err);
