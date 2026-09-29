@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -16,18 +17,21 @@ import (
 const (
 	bingAuthURL      = "https://edge.microsoft.com/translate/auth"
 	bingTranslateURL = "https://api-edge.cognitive.microsofttranslator.com/translate"
-	bingTokenTTL     = 9 * time.Minute
-	freeUserAgent    = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Edg/131.0.0.0"
+	// freeErrorBodyLimit 限制第三方错误详情，避免整页 HTML 淹没日志。
+	freeErrorBodyLimit = 4 << 10
+	bingTokenTTL       = 9 * time.Minute
+	freeUserAgent      = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Edg/131.0.0.0"
 )
 
 // bingHTTPError 保留微软接口状态码，以便只在令牌失效时重新授权。
 type bingHTTPError struct {
 	statusCode int
+	detail     string
 }
 
 // Error 将服务端状态转换为可展示的翻译错误。
 func (e bingHTTPError) Error() string {
-	return fmt.Sprintf("必应翻译返回状态 %d", e.statusCode)
+	return fmt.Sprintf("必应翻译返回状态 %d: %s", e.statusCode, e.detail)
 }
 
 // translateBing 使用 Edge 浏览器的匿名令牌批量翻译，结果与输入逐项对应。
@@ -46,13 +50,17 @@ func (c *Client) translateBing(ctx context.Context, texts []string, targetLang s
 		}
 	}
 
-	if isBingRateLimit(err) {
+	if isBingRateLimit(err) || ctx.Err() != nil {
 		return nil, err
 	}
 
 	// 微软端点失效或 404 时自动容灾降级至 Google 免费公共翻译
 	slog.WarnContext(ctx, "必应翻译端点异常，自动容灾降级至公共免费翻译", "err", err)
-	return c.translateGoogle(ctx, texts, targetLang)
+	result, fallbackErr := c.translateGoogle(ctx, texts, targetLang)
+	if fallbackErr != nil {
+		return nil, errors.Join(err, fmt.Errorf("必应降级至 Google 后失败: %w", fallbackErr))
+	}
+	return result, nil
 }
 
 // isBingRateLimit 判断是否为 429 请求过于频繁。
@@ -89,7 +97,7 @@ func (c *Client) requestBing(ctx context.Context, texts []string, targetLang str
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, bingHTTPError{statusCode: resp.StatusCode}
+		return nil, bingHTTPError{statusCode: resp.StatusCode, detail: freeHTTPErrorDetail(resp.Body)}
 	}
 	var payload []struct {
 		Translations []struct {
@@ -133,9 +141,12 @@ func (c *Client) bingToken(ctx context.Context, force bool) (string, error) {
 		return "", fmt.Errorf("获取必应翻译令牌失败: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("获取必应翻译令牌失败: 状态 %d: %s", resp.StatusCode, freeHTTPErrorDetail(resp.Body))
+	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
-	if err != nil || resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("获取必应翻译令牌失败: 状态 %d", resp.StatusCode)
+	if err != nil {
+		return "", fmt.Errorf("读取必应翻译令牌失败: %w", err)
 	}
 	c.token = strings.TrimSpace(string(data))
 	if c.token == "" {
@@ -227,8 +238,8 @@ func (c *Client) translateGoogle(ctx context.Context, texts []string, targetLang
 
 // requestGoogleOne 单句请求 Google 免费翻译接口。
 func (c *Client) requestGoogleOne(ctx context.Context, text, targetLang string) (string, error) {
-	reqURL := "https://translate.googleapis.com/translate_a/single?client=dict-chrome-ex&sl=auto&tl=" +
-		targetLang + "&dt=t&q=" + strings.ReplaceAll(text, "\n", " ")
+	params := url.Values{"client": {"dict-chrome-ex"}, "sl": {"auto"}, "tl": {targetLang}, "dt": {"t"}, "q": {text}}
+	reqURL := "https://translate.googleapis.com/translate_a/single?" + params.Encode()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
@@ -242,7 +253,7 @@ func (c *Client) requestGoogleOne(ctx context.Context, text, targetLang string) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("HTTP 状态 %d", resp.StatusCode)
+		return "", fmt.Errorf("HTTP 状态 %d: %s", resp.StatusCode, freeHTTPErrorDetail(resp.Body))
 	}
 
 	var raw []any
@@ -286,3 +297,17 @@ func googleLanguage(lang string) string {
 	}
 }
 
+func freeHTTPErrorDetail(body io.Reader) string {
+	data, err := io.ReadAll(io.LimitReader(body, freeErrorBodyLimit+1))
+	if err != nil {
+		return fmt.Sprintf("读取错误响应失败: %v", err)
+	}
+	detail := strings.TrimSpace(string(data[:min(len(data), freeErrorBodyLimit)]))
+	if detail == "" {
+		return "空响应"
+	}
+	if len(data) > freeErrorBodyLimit {
+		detail += "（已截断）"
+	}
+	return detail
+}

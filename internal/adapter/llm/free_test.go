@@ -139,3 +139,47 @@ func testResponse(body string) *http.Response {
 		Header:     make(http.Header),
 	}
 }
+
+func TestGoogleEncodesSubtitleText(t *testing.T) {
+	texts := []string{"Hello world", "A & B + C? #中文\nNext"}
+	for _, text := range texts {
+		t.Run(text, func(t *testing.T) {
+			client := NewRoutingClient("", "", "", "google", "")
+			client.client = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				if got := r.URL.Query().Get("q"); got != text {
+					t.Errorf("q = %q, want %q", got, text)
+				}
+				if strings.ContainsAny(r.URL.RawQuery, " \n") || r.URL.Fragment != "" {
+					t.Errorf("请求包含未编码文本: %s", r.URL)
+				}
+				return testResponse(`[[["你好"]]]`), nil
+			})}
+			got, err := client.Translate(t.Context(), []string{text}, "zh-CN", "", nil, nil)
+			if err != nil || len(got) != 1 || got[0] != "你好" {
+				t.Fatalf("结果=%v 错误=%v", got, err)
+			}
+		})
+	}
+}
+
+func TestBingFallbackPreservesBothHTTPErrors(t *testing.T) {
+	client := NewRoutingClient("", "", "", "bing", "")
+	client.client = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		response := testResponse(`{"error":{"message":"invalid target language"}}`)
+		response.StatusCode = http.StatusBadRequest
+		if r.URL.Host == "edge.microsoft.com" {
+			response.StatusCode = http.StatusNotFound
+			response.Body = io.NopCloser(strings.NewReader("auth endpoint unavailable"))
+		}
+		return response, nil
+	})}
+	_, err := client.Translate(t.Context(), []string{"Hello world"}, "zh-CN", "", nil, nil)
+	if err == nil {
+		t.Fatal("应返回翻译错误")
+	}
+	for _, detail := range []string{"404", "auth endpoint unavailable", "400", "invalid target language"} {
+		if !strings.Contains(err.Error(), detail) {
+			t.Errorf("错误缺少 %q: %v", detail, err)
+		}
+	}
+}
