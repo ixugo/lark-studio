@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -17,6 +18,7 @@ type qualityCall struct {
 type qualityLLM struct {
 	replies [][]string
 	calls   []qualityCall
+	onCall  func(int)
 }
 
 // SplitSentences 禁止质量检查意外改动原始字幕分句。
@@ -26,11 +28,45 @@ func (m *qualityLLM) SplitSentences(context.Context, string, string) ([]string, 
 
 // Translate 记录请求并按顺序回复，使额外重试直接暴露为错误。
 func (m *qualityLLM) Translate(ctx context.Context, sentences []string, lang, prompt string, before, after []string) ([]string, error) {
+	if m.onCall != nil {
+		m.onCall(len(m.calls) + 1)
+	}
 	m.calls = append(m.calls, qualityCall{slices.Clone(sentences), slices.Clone(before), slices.Clone(after), prompt})
 	if len(m.calls) > len(m.replies) {
 		return nil, fmt.Errorf("意外的额外翻译调用")
 	}
 	return slices.Clone(m.replies[len(m.calls)-1]), nil
+}
+
+type translationLogRecorder struct {
+	noopNotifier
+	messages []string
+}
+
+func (n *translationLogRecorder) OnLog(_ string, message string) {
+	n.messages = append(n.messages, message)
+}
+
+func TestTranslationLogsEachChunkBeforeNextRequest(t *testing.T) {
+	notifier := &translationLogRecorder{}
+	llm := &qualityLLM{replies: [][]string{{"重复"}, {"重复"}, {"第一", "第二"}}}
+	llm.onCall = func(call int) {
+		if call == 2 && (len(notifier.messages) != 1 || !strings.Contains(notifier.messages[0], "原文: first\n译文: 重复")) {
+			t.Fatalf("第二批开始前应已输出第一批译文，实际日志：%v", notifier.messages)
+		}
+		if call == 3 && len(notifier.messages) != 3 {
+			t.Fatalf("质量重译开始前应已输出两条初译及重译提示，实际日志：%v", notifier.messages)
+		}
+	}
+	core := NewCore(Config{SemanticSplitReady: true, TranslateChunkSize: 1}, nil, llm, nil, WithNotifier(notifier))
+	result, err := core.translateAllChunks(t.Context(), Job{TaskID: "task", Translator: "openai", TargetLang: "zh-CN"}, []string{"first", "second"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSliceEqual(t, "最终译文", []string{"第一", "第二"}, result)
+	if len(notifier.messages) != 5 || !strings.Contains(notifier.messages[3], "译文: 第一") || !strings.Contains(notifier.messages[4], "译文: 第二") {
+		t.Fatalf("质量重译后应输出两条最终译文，实际日志：%v", notifier.messages)
+	}
 }
 
 // newQualityReview 为每个用例隔离字幕和重试状态。

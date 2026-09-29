@@ -114,6 +114,10 @@ func (r *translationReview) repairDuplicates(ctx context.Context) error {
 			return err
 		}
 		copy(r.translated[start:end], lines)
+		for index, line := range lines {
+			entry := start + index
+			r.core.logEvent(r.job.TaskID, "info", StepTranslate, "[重译 %d/%d]\n原文: %s\n译文: %s", entry+1, len(r.source), r.source[entry], line)
+		}
 		i = end - 1
 	}
 	return r.checkDuplicates()

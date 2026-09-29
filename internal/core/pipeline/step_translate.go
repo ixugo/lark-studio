@@ -252,9 +252,6 @@ func (c *Core) translateAllChunks(
 	if err := review.run(ctx); err != nil {
 		return nil, &translationQualityError{err: err}
 	}
-	for i, line := range review.translated {
-		c.logEvent(job.TaskID, "info", StepTranslate, "[翻译 %d/%d]\n原文: %s\n译文: %s", i+1, len(sentences), sentences[i], line)
-	}
 	streamTranslationChunk(streamTo, 0, review.translated)
 	c.notifier.OnProgress(job.TaskID, StepTranslate, 100)
 	return review.translated, nil
@@ -279,6 +276,10 @@ func (r *translationReview) translateInitial(ctx context.Context) error {
 			return err
 		}
 		r.translated = append(r.translated, lines...)
+		for index, line := range lines {
+			i := start + index
+			r.core.logEvent(r.job.TaskID, "info", StepTranslate, "[翻译 %d/%d]\n原文: %s\n译文: %s", i+1, len(r.source), r.source[i], line)
+		}
 		r.core.notifier.OnProgress(r.job.TaskID, StepTranslate, span.end*translationInitialProgress/len(r.source))
 	}
 	return nil
