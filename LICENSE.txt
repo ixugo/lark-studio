@@ -5,8 +5,8 @@ Lark Studio Noncommercial Source-Available License 1.0
 Copyright (c) 2026 ixugo (https://github.com/ixugo)
 商业授权联系入口：https://github.com/ixugo
 
-本许可是定制的软件源码可用许可，不是 MIT、GPL、AGPL 或经 OSI 批准的
-开源许可。中文正文为本许可的有效条款。英文标题仅用于识别。
+本许可是定制的软件源码可用许可，不是经 OSI 批准的开源许可。
+中文正文为本许可的有效条款。英文标题仅用于识别。
 
 一、适用范围与接受
 
@@ -101,7 +101,7 @@ GitHub 平台自身故障造成的短暂不可访问不单独构成违约。因�
 六、相同许可与下游约束
 
 你必须将衍生项目中你有权授权的代码，按照本许可相同条款提供给下游。
-你不得自行将受本许可约束的代码变更为 MIT、Apache、GPL 或其他许可，
+你不得自行将受本许可约束的代码变更为其他许可，
 也不得移除非商业限制、GitHub 源码公开义务或商业授权要求。
 
 下游使用者依据本许可直接获得相应许可方有权授予的非商业权利，并承担
@@ -140,37 +140,9 @@ GitHub 平台自身故障造成的短暂不可访问不单独构成违约。因�
 
 十、版本与第三方许可边界
 
-本许可适用于明确附带本许可的 Lark Studio 版本。项目自身不通过下列
-第三方声明向你另行提供 MIT 授权。
+本许可适用于明确附带本许可的 Lark Studio 版本。项目权利人有权重新
+许可并纳入本项目的自有代码，统一适用本许可，不另行提供其他许可选项。
 
 第三方代码、依赖及历史上已单独授予的权利，仍按各自适用的许可处理。
-本许可不撤回第三方已经授予的 MIT 权利，也不改变你从其他合法来源
+本许可不撤回第三方已经授予的权利，也不改变你从其他合法来源
 独立获得的许可。后续许可版本不会自动替换你收到的本版本条款。
-
-附录：GoDDD 上游 MIT 声明
-
-以下声明仅适用于本软件中来自 GoDDD、受其 MIT 许可覆盖的代码，不是
-Lark Studio 自有代码或整个项目的可选许可。
-
-MIT License
-
-Copyright (c) 2024 ixugo (https://github.com/ixugo)
-Project: https://github.com/ixugo/goddd
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
