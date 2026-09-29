@@ -17,6 +17,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { api } from '../lib/api';
+import { ModelDownloadProgress, initialModelDownloadProgress, listenModelDownload } from '../lib/modelDownload';
 import { ConfigDTO, WhisperModelItem, WhisperRuntimeInfo } from '../types';
 import { useTranslation } from '../i18n';
 
@@ -60,12 +61,7 @@ export const AsrEngineView: React.FC = () => {
   const [runtimeRefreshing, setRuntimeRefreshing] = useState(false);
   const [models, setModels] = useState<WhisperModelItem[]>([]);
   const [downloadingModel, setDownloadingModel] = useState<string | null>(null);
-  const [downloadProgress, setDownloadProgress] = useState<{
-    percent: number;
-    speed: string;
-    downloaded: string;
-    total: string;
-  } | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<ModelDownloadProgress | null>(null);
   const [deletingModelName, setDeletingModelName] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -110,25 +106,21 @@ export const AsrEngineView: React.FC = () => {
 
   // 监听后端下载与安装进度广播事件
   useEffect(() => {
-    const unsubProgress = api.onEvent('whisper:download_progress', (data: any) => {
-      if (!data) return;
-      if (data.status === 'downloading') {
-        setDownloadingModel(data.model);
-        setDownloadProgress({
-          percent: Math.round(data.percent || 0),
-          speed: data.speed || '0 MB/s',
-          downloaded: data.downloaded || '',
-          total: data.total || '',
-        });
-      } else if (data.status === 'done') {
+    const unsubProgress = listenModelDownload({
+      progress: (model, progress) => {
+        setDownloadingModel(model);
+        setDownloadProgress(progress);
+      },
+      done: () => {
         setDownloadingModel(null);
         setDownloadProgress(null);
         loadModels();
-      } else if (data.status === 'error') {
+      },
+      error: (message) => {
         setDownloadingModel(null);
         setDownloadProgress(null);
-        setErrorMsg(`模型下载异常: ${data.error || '未知错误'}`);
-      }
+        setErrorMsg(message);
+      },
     });
 
     const unsubRuntime = api.onEvent('whisper:runtime_progress', (data: any) => {
@@ -148,7 +140,7 @@ export const AsrEngineView: React.FC = () => {
     };
   }, [loadModels, loadRuntime]);
 
-  // 安装 Whisper.cpp 运行时（自动并发测速并拉取最新 Release）
+  // 安装 Whisper.cpp 运行时
   const handleInstallRuntime = async () => {
     setRuntimeInstalling(true);
     setErrorMsg(null);
@@ -173,11 +165,11 @@ export const AsrEngineView: React.FC = () => {
     }
   };
 
-  // 下载模型（自动并发测速并断点续传）
+  // 立即开始下载模型，进度由后端实际传输事件更新。
   const handleDownloadModel = async (name: string) => {
     setErrorMsg(null);
     setDownloadingModel(name);
-    setDownloadProgress({ percent: 1, speed: '测速中...', downloaded: '0 MB', total: '...' });
+    setDownloadProgress(initialModelDownloadProgress);
     try {
       await api.downloadWhisperModel(name);
     } catch (err) {
@@ -511,7 +503,7 @@ export const AsrEngineView: React.FC = () => {
                             ) : (
                               <>
                                 <Download size={13} />
-                                <span>{t('asr.autoDetectAndInstall')}</span>
+                                <span>{locale === 'en-US' ? 'Install automatically' : '自动安装'}</span>
                               </>
                             )}
                           </button>
@@ -597,19 +589,19 @@ export const AsrEngineView: React.FC = () => {
                                 {getModelDesc(item.name, item.desc)}
                               </p>
 
-                              {/* 下载中进度条与网速 */}
+                              {/* 显示实际下载量；未知总大小时不捏造百分比。 */}
                               {isDownloading && downloadProgress && (
                                 <div className="pt-2 space-y-1">
                                   <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
                                     <span className="text-blue-600 dark:text-blue-400 font-semibold">
-                                      {t('asr.speed')}: {downloadProgress.speed}
+                                      {downloadProgress.speed ? `${locale === 'en-US' ? 'Download speed' : '下载速度'}: ${downloadProgress.speed}` : (locale === 'en-US' ? 'Downloading…' : '正在下载…')}
                                     </span>
-                                    <span>{downloadProgress.percent}%</span>
+                                    <span>{downloadProgress.downloaded}{downloadProgress.total && ` / ${downloadProgress.total}`}{downloadProgress.percent !== null && ` · ${downloadProgress.percent}%`}</span>
                                   </div>
                                   <div className="w-full bg-slate-100 dark:bg-white/10 rounded-full h-1.5 overflow-hidden">
                                     <div
-                                      className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
-                                      style={{ width: `${Math.max(5, downloadProgress.percent)}%` }}
+                                      className={`bg-blue-600 h-1.5 rounded-full transition-all duration-300 ${downloadProgress.percent === null ? 'animate-pulse opacity-40' : ''}`}
+                                      style={{ width: downloadProgress.percent === null ? '100%' : `${downloadProgress.percent}%` }}
                                     />
                                   </div>
                                 </div>

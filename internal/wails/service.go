@@ -821,7 +821,7 @@ func (s *AppService) ListWhisperModels() []api.ModelListOutput {
 	return api.ListAllWhisperModels()
 }
 
-// DownloadWhisperModel 启动模型异步下载任务（自动并发探测最优镜像）。
+// DownloadWhisperModel 立即启动模型异步下载任务，失败时自动切换下载源。
 func (s *AppService) DownloadWhisperModel(name string) error {
 	_, err := api.StartWhisperModelDownload(name, s.hub)
 	return err

@@ -3,6 +3,7 @@ package api
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -289,6 +290,9 @@ func startDownload(name string, hub ws.Huber) (any, error) {
 
 	p := modelPath(name)
 	if _, err := os.Stat(p); err == nil {
+		if hub != nil {
+			hub.Broadcast(ws.NewMessage("model_download_done", map[string]any{"model": name, "path": p}))
+		}
 		return map[string]string{"path": p, "status": "already_exists"}, nil
 	}
 
@@ -317,7 +321,6 @@ func downloadModel(name string, hub ws.Huber) error {
 		fmt.Sprintf("https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main/ggml-%s.bin", name),
 		fmt.Sprintf("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-%s.bin", name),
 	}
-	url := whisperadapter.ProbeFastestURL(context.Background(), candidates)
 	dest := modelPath(name)
 
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
@@ -330,23 +333,21 @@ func downloadModel(name string, hub ws.Huber) error {
 		existingSize = fi.Size()
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
-	if err != nil {
-		return fmt.Errorf("构造下载请求失败: %w", err)
+	// 直接请求首选源的文件，失败后再换源，不发测速请求。
+	transport := http.DefaultTransport
+	if base, ok := transport.(*http.Transport); ok {
+		copy := base.Clone()
+		copy.ResponseHeaderTimeout = 10 * time.Second
+		transport = copy
 	}
-
-	isRange := false
-	if existingSize > 0 {
-		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", existingSize))
-		isRange = true
-	}
-
-	client := &http.Client{Timeout: 30 * time.Minute}
-	resp, err := client.Do(req)
+	client := &http.Client{Transport: transport, Timeout: 30 * time.Minute}
+	defer client.CloseIdleConnections()
+	resp, err := requestModelDownload(client, candidates, existingSize)
 	if err != nil {
-		return fmt.Errorf("下载请求失败: %w", err)
+		return err
 	}
 	defer resp.Body.Close()
+	isRange := existingSize > 0
 
 	var f *os.File
 	var total int64
@@ -354,7 +355,10 @@ func downloadModel(name string, hub ws.Huber) error {
 
 	if isRange && resp.StatusCode == http.StatusPartialContent {
 		// 服务器支持断点续传
-		total = existingSize + resp.ContentLength
+		total = resp.ContentLength
+		if total > 0 {
+			total += existingSize
+		}
 		f, err = os.OpenFile(tmpFile, os.O_APPEND|os.O_WRONLY, 0o644)
 		if err != nil {
 			return fmt.Errorf("打开断点文件失败: %w", err)
@@ -371,10 +375,22 @@ func downloadModel(name string, hub ws.Huber) error {
 	}
 
 	buf := make([]byte, 128*1024)
-	lastPct := -1
-	startTime := time.Now()
-	lastReportTime := startTime
-	var lastReportWritten int64 = written
+	lastReportTime := time.Now()
+	lastReportWritten := written
+	reportProgress := func(speed string) {
+		pct := 0
+		if total > 0 {
+			pct = min(100, int(written*100/total))
+		}
+		dlStatus.setProgress(name, pct)
+		if hub != nil {
+			hub.Broadcast(ws.NewMessage("model_download_progress", map[string]any{
+				"model": name, "progress": pct, "speed": speed,
+				"downloaded": written, "total": total,
+			}))
+		}
+	}
+	reportProgress("")
 
 	for {
 		n, readErr := resp.Body.Read(buf)
@@ -387,10 +403,6 @@ func downloadModel(name string, hub ws.Huber) error {
 
 			now := time.Now()
 			if now.Sub(lastReportTime) >= 300*time.Millisecond || readErr == io.EOF {
-				pct := 0
-				if total > 0 {
-					pct = int(written * 100 / total)
-				}
 				sec := now.Sub(lastReportTime).Seconds()
 				var speedStr string
 				if sec > 0 {
@@ -404,19 +416,7 @@ func downloadModel(name string, hub ws.Huber) error {
 				lastReportTime = now
 				lastReportWritten = written
 
-				if pct != lastPct || speedStr != "" {
-					lastPct = pct
-					dlStatus.setProgress(name, pct)
-					if hub != nil {
-						hub.Broadcast(ws.NewMessage("model_download_progress", map[string]any{
-							"model":      name,
-							"progress":   pct,
-							"speed":      speedStr,
-							"downloaded": written,
-							"total":      total,
-						}))
-					}
-				}
+				reportProgress(speedStr)
 			}
 		}
 		if readErr != nil {
@@ -427,12 +427,15 @@ func downloadModel(name string, hub ws.Huber) error {
 			return fmt.Errorf("读取失败: %w", readErr)
 		}
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("保存下载文件失败: %w", err)
+	}
 
 	if err := os.Rename(tmpFile, dest); err != nil {
 		return fmt.Errorf("重命名失败: %w", err)
 	}
 
+	reportProgress("")
 	slog.Info("model downloaded", "model", name, "path", dest, "size", written)
 	if hub != nil {
 		hub.Broadcast(ws.NewMessage("model_download_done", map[string]any{
@@ -440,6 +443,32 @@ func downloadModel(name string, hub ws.Huber) error {
 		}))
 	}
 	return nil
+}
+
+// requestModelDownload 按顺序直接下载，连接或状态失败时使用下一源，保留断点请求。
+func requestModelDownload(client *http.Client, candidates []string, existingSize int64) (*http.Response, error) {
+	var failures []error
+	for _, target := range candidates {
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, target, nil)
+		if err != nil {
+			failures = append(failures, err)
+			continue
+		}
+		if existingSize > 0 {
+			req.Header.Set("Range", fmt.Sprintf("bytes=%d-", existingSize))
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			failures = append(failures, fmt.Errorf("下载请求失败: %w", err))
+			continue
+		}
+		if resp.StatusCode == http.StatusOK || (existingSize > 0 && resp.StatusCode == http.StatusPartialContent) {
+			return resp, nil
+		}
+		_ = resp.Body.Close()
+		failures = append(failures, fmt.Errorf("下载失败: HTTP %d", resp.StatusCode))
+	}
+	return nil, fmt.Errorf("所有模型下载源均失败: %w", errors.Join(failures...))
 }
 
 // ListAllWhisperModels 供后端与 Wails 服务调用的模型列表数据。
