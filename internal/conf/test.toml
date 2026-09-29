@@ -89,6 +89,10 @@
   DeepLXURL = ''
 
 [TTS]
+  # Edge TTS 音色
+  EdgeVoice = ''
+  # OpenAI 兼容 TTS 音色
+  OpenAIVoice = ''
   # TTS 类型: edge / openai
   Type = ''
   # 默认语音
