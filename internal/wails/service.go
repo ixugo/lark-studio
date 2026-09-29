@@ -969,6 +969,53 @@ func (s *AppService) TestOpenAITTS(baseURL, apiKey, model, voice, text string) (
 	return "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(audio), nil
 }
 
+// TestEdgeTTS 验证 Edge TTS 语音合成，并返回可在前端播放的 Base64 音频地址。
+func (s *AppService) TestEdgeTTS(voice, text string) (string, error) {
+	if strings.TrimSpace(voice) == "" {
+		voice = "zh-CN-XiaoxiaoNeural"
+	}
+	voiceLower := strings.ToLower(voice)
+	// 若所选为英文音色，而试音文本为默认中文，自动适配为地道英文试音样本文本
+	if strings.HasPrefix(voiceLower, "en-") || strings.HasPrefix(voiceLower, "en_") {
+		if strings.TrimSpace(text) == "" || strings.Contains(text, "云雀工坊") {
+			text = "Hello, I am using Lark Studio."
+		}
+	} else if strings.TrimSpace(text) == "" {
+		text = "你好，我正在使用云雀工坊"
+	}
+	tmpFile, err := os.CreateTemp(os.TempDir(), "lark-studio-tts-preview-*.mp3")
+	if err != nil {
+		return "", fmt.Errorf("创建临时音频文件失败: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer func() {
+		if err := os.Remove(tmpPath); err != nil && !os.IsNotExist(err) {
+			slog.Warn("清理试听临时音频失败", "path", tmpPath, "err", err)
+		}
+	}()
+	if err := tmpFile.Close(); err != nil {
+		return "", fmt.Errorf("关闭试听临时文件失败: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	edge := ttsadapter.NewEdgeTTS(voice)
+	if err := edge.Synthesize(ctx, text, tmpPath, voice); err != nil {
+		return "", fmt.Errorf("Edge TTS 合成失败: %w", err)
+	}
+
+	data, err := os.ReadFile(tmpPath)
+	if err != nil {
+		return "", fmt.Errorf("读取合成音频失败: %w", err)
+	}
+	if len(data) == 0 {
+		return "", fmt.Errorf("合成音频为空")
+	}
+
+	return "data:audio/mpeg;base64," + base64.StdEncoding.EncodeToString(data), nil
+}
+
 // stageSourceFile 与 HTTP、命令行入口共用相同的源文件暂存规则。
 func stageSourceFile(in *task.CreateTaskInput) error {
 	return api.StageSourceFile(in)
