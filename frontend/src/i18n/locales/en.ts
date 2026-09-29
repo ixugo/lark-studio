@@ -6,7 +6,6 @@ export const en: TranslationKeys = {
     appSubtitle: 'AI Dubbing & Translation',
     save: 'Save Config',
     saving: 'Saving...',
-    saveSettings: 'Save ASR Config',
     saveSuccess: 'Configuration updated and hot-reloaded successfully!',
     saveFailed: 'Save failed',
     currentDefault: 'Current Default',

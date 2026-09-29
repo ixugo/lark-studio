@@ -23,7 +23,7 @@ interface SettingsViewProps {
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
-  const { locale } = useTranslation();
+  const { locale, t } = useTranslation();
   const english = locale === 'en-US';
   const [config, setConfig] = useState<ConfigDTO | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -372,10 +372,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
             type="button"
             onClick={handleSave}
             disabled={loading}
-            className={`px-5 py-2 rounded-xl text-xs font-bold text-white transition-all duration-200 flex items-center gap-1.5 active:scale-[0.98] disabled:opacity-50 ${saved ? 'bg-emerald-600 hover:bg-emerald-600' : 'bg-blue-600 hover:bg-blue-500'}`}
+            className={`w-36 px-5 py-2 rounded-xl text-xs font-bold text-white whitespace-nowrap transition-[background-color,transform] duration-200 flex items-center justify-center gap-1.5 active:scale-[0.98] disabled:opacity-50 ${saved ? 'bg-emerald-600 hover:bg-emerald-600' : 'bg-blue-600 hover:bg-blue-500'}`}
           >
             {saved ? <Check size={14} /> : <Save size={14} />}
-            <span role="status">{loading ? (english ? 'Saving...' : '正在保存...') : saved ? (english ? 'Saved' : '保存成功') : (english ? 'Save settings' : '保存全局设置')}</span>
+            <span role="status">{loading ? (english ? 'Saving...' : '正在保存...') : saved ? (english ? 'Saved' : '保存成功') : t('common.save')}</span>
           </button>
         </div>
       </div>

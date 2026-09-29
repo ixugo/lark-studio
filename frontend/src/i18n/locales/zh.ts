@@ -4,7 +4,6 @@ export const zh = {
     appSubtitle: '智能翻译与配音',
     save: '保存配置',
     saving: '正在保存...',
-    saveSettings: '保存识别配置',
     saveSuccess: '配置已更新并即时热重载生效！',
     saveFailed: '保存失败',
     currentDefault: '当前默认',

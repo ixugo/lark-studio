@@ -54,7 +54,7 @@ const ENGINES: EngineItem[] = [
 ];
 
 export const TranslationEngineView: React.FC = () => {
-  const { locale } = useTranslation();
+  const { locale, t } = useTranslation();
   const english = locale === 'en-US';
   // 保留页面现有双语文案，并随全局语言切换，避免供应商配置项只显示中文。
   const tr = (zh: string, en: string) => english ? en : zh;
@@ -547,10 +547,10 @@ export const TranslationEngineView: React.FC = () => {
                 type="button"
                 onClick={() => handleSave()}
                 disabled={loading}
-                className={`px-5 py-2 rounded-xl text-xs font-bold text-white transition-all duration-200 flex items-center gap-1.5 active:scale-[0.98] disabled:opacity-50 ${saved ? 'bg-emerald-600 hover:bg-emerald-600' : 'bg-blue-600 hover:bg-blue-500'}`}
+                className={`w-36 px-5 py-2 rounded-xl text-xs font-bold text-white whitespace-nowrap transition-[background-color,transform] duration-200 flex items-center justify-center gap-1.5 active:scale-[0.98] disabled:opacity-50 ${saved ? 'bg-emerald-600 hover:bg-emerald-600' : 'bg-blue-600 hover:bg-blue-500'}`}
               >
                 {saved ? <Check size={14} /> : <Save size={14} />}
-                <span role="status">{loading ? tr('正在保存...', 'Saving...') : saved ? tr('保存成功', 'Saved') : tr('保存翻译配置', 'Save Translation Settings')}</span>
+                <span role="status">{loading ? tr('正在保存...', 'Saving...') : saved ? tr('保存成功', 'Saved') : t('common.save')}</span>
               </button>
             </div>
           </div>

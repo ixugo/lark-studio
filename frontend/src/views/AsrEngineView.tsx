@@ -787,10 +787,10 @@ export const AsrEngineView: React.FC = () => {
                 type="button"
                 onClick={() => handleSave()}
                 disabled={loading}
-                className={`px-5 py-2 active:scale-95 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center gap-2 transition-all duration-200 cursor-pointer ${saved ? 'bg-emerald-600 hover:bg-emerald-600' : 'bg-blue-600 hover:bg-blue-500'}`}
+                className={`w-36 px-5 py-2 active:scale-95 disabled:opacity-50 text-white rounded-xl text-xs font-semibold whitespace-nowrap flex items-center justify-center gap-2 transition-[background-color,transform] duration-200 cursor-pointer ${saved ? 'bg-emerald-600 hover:bg-emerald-600' : 'bg-blue-600 hover:bg-blue-500'}`}
               >
                 {loading ? <Loader2 size={14} className="animate-spin" /> : saved ? <Check size={14} /> : <Save size={14} />}
-                <span role="status">{loading ? t('common.saving') : saved ? (locale === 'en-US' ? 'Saved' : '保存成功') : t('common.saveSettings')}</span>
+                <span role="status">{loading ? t('common.saving') : saved ? (locale === 'en-US' ? 'Saved' : '保存成功') : t('common.save')}</span>
               </button>
             </div>
           </div>
