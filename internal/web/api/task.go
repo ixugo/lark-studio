@@ -7,11 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+	"uuid"
 
 	"github.com/ixugo/goddd/pkg/reason"
 	asradapter "github.com/ixugo/vdub/internal/adapter/asr"
@@ -21,6 +23,8 @@ import (
 	"github.com/ixugo/vdub/internal/core/task/store/taskdb"
 	"github.com/ixugo/vdub/pkg/web"
 	"gorm.io/gorm"
+
+	"github.com/ixugo/vdub/internal/taskfile"
 )
 
 const (
@@ -130,14 +134,18 @@ func (a TaskAPI) prepareTaskInput(in *task.CreateTaskInput) error {
 		return reason.ErrBadRequest.SetMsg(err.Error())
 	}
 	if in.OutputDir == "" {
-		baseName := strings.TrimSuffix(filepath.Base(in.InputPath), filepath.Ext(in.InputPath))
-		in.OutputDir = filepath.Join(conf.TaskOutputDir(a.conf.Pipeline.DefaultOutputDir), baseName+"_vdub")
+		root, err := taskfile.NewRoot(conf.TaskOutputDir(a.conf.Pipeline.DefaultOutputDir), []string{in.InputPath})
+		if err != nil {
+			return err
+		}
+		in.OutputDir = root
+		in.OutputName = "output.mp4"
 	}
 	if err := os.MkdirAll(in.OutputDir, 0o755); err != nil {
 		return reason.ErrServer.Withf("创建输出目录失败: %s", err)
 	}
 
-	// 在任务目录保存固定名称的源文件副本，并记录原始文件名。
+	// 隔离工作副本，保留上传名称供任务看板展示。
 	if err := StageSourceFile(in); err != nil {
 		return reason.ErrServer.Withf("准备工作源文件失败: %s", err)
 	}
@@ -319,13 +327,16 @@ func (a TaskAPI) batchCreateTasks(r *http.Request, in *batchCreateInput) (any, e
 	}
 
 	tasks := make([]*task.Task, 0, len(in.Videos))
+	outputDir := ""
+	if len(in.Videos) > 1 {
+		var err error
+		outputDir, err = taskfile.NewRoot(conf.TaskOutputDir(a.conf.Pipeline.DefaultOutputDir), in.Videos)
+		if err != nil {
+			return nil, err
+		}
+	}
 	for _, inputPath := range in.Videos {
 		if _, err := os.Stat(inputPath); err != nil {
-			continue
-		}
-		baseName := strings.TrimSuffix(filepath.Base(inputPath), filepath.Ext(inputPath))
-		outputDir := filepath.Join(filepath.Dir(inputPath), baseName+"_vdub")
-		if err := os.MkdirAll(outputDir, 0o755); err != nil {
 			continue
 		}
 		t, err := a.createBatchTask(r, inputPath, outputDir, in)
@@ -398,40 +409,43 @@ func (a TaskAPI) deleteStep(r *http.Request, in *task.DeleteStepInput) (*task.St
 	return a.taskCore.DeleteStep(r.Context(), in.ID)
 }
 
-// sourceFileMeta 记录原始文件名信息
-type sourceFileMeta struct {
-	OriginalName string    `json:"original_name"`
-	OriginalPath string    `json:"original_path"`
-	StagedName   string    `json:"staged_name"`
-	StagedPath   string    `json:"staged_path"`
-	CreatedAt    time.Time `json:"created_at"`
-}
+type sourceFileMeta = taskfile.Metadata
 
-// StageSourceFile 在任务目录保存源文件副本，视频统一为 src.mp4，其他资源保留类型后缀。
+// StageSourceFile 为每个输入建立 UUIDv4 工作目录，保留原文件名称与格式。
 func StageSourceFile(in *task.CreateTaskInput) error {
 	metaPath := filepath.Join(in.OutputDir, "source_meta.json")
 	if data, err := os.ReadFile(metaPath); err == nil {
 		var meta sourceFileMeta
 		if json.Unmarshal(data, &meta) == nil && meta.StagedPath != "" {
-			if _, statErr := os.Stat(meta.StagedPath); statErr == nil {
+			if _, statErr := os.Stat(meta.StagedPath); statErr == nil && filepath.Clean(in.InputPath) == filepath.Clean(meta.StagedPath) {
 				in.InputPath = meta.StagedPath
 				return nil
 			}
 		}
 	}
 
-	ext := strings.ToLower(filepath.Ext(in.InputPath))
-	switch ext {
-	case ".mp4", ".mkv", ".mov", ".avi", ".webm", ".flv":
-		ext = ".mp4"
+	originalPath := in.InputPath
+	origName := filepath.Base(originalPath)
+	id := uuid.NewV4().String()
+	workDir := filepath.Join(in.OutputDir, id)
+	if err := os.Mkdir(workDir, 0755); err != nil {
+		return err
 	}
-	origName := filepath.Base(in.InputPath)
-	stagedName := "src" + ext
-	if ext == ".srt" {
-		// src.srt 是听写产物，原始字幕副本使用独立名称供重跑读取。
-		stagedName = "src.input.srt"
+	committed := false
+	defer func() {
+		if !committed {
+			if err := os.RemoveAll(workDir); err != nil {
+				slog.Error("清理未完成的工作副本失败", "path", workDir, "err", err)
+			}
+		}
+	}()
+	stagedName := id + strings.ToLower(filepath.Ext(originalPath))
+	destPath := filepath.Join(workDir, stagedName)
+	metaPath = filepath.Join(workDir, "source_meta.json")
+	resultName := id + ".mp4"
+	if in.OutputName == "output.mp4" {
+		resultName = in.OutputName
 	}
-	destPath := filepath.Join(in.OutputDir, stagedName)
 
 	srcFile, err := os.Open(in.InputPath)
 	if err != nil {
@@ -463,11 +477,13 @@ func StageSourceFile(in *task.CreateTaskInput) error {
 	}
 
 	meta := sourceFileMeta{
-		OriginalName: origName,
-		OriginalPath: in.InputPath,
-		StagedName:   stagedName,
-		StagedPath:   destPath,
-		CreatedAt:    time.Now(),
+		LayoutVersion: 1,
+		ResultName:    resultName,
+		OriginalName:  origName,
+		OriginalPath:  in.InputPath,
+		StagedName:    stagedName,
+		StagedPath:    destPath,
+		CreatedAt:     time.Now(),
 	}
 	metaBytes, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
@@ -478,5 +494,7 @@ func StageSourceFile(in *task.CreateTaskInput) error {
 	}
 
 	in.InputPath = destPath
+	in.OutputDir = workDir
+	committed = true
 	return nil
 }

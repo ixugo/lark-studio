@@ -21,6 +21,7 @@ import (
 	"github.com/ixugo/vdub/internal/conf"
 	"github.com/ixugo/vdub/internal/core/pipeline"
 	"github.com/ixugo/vdub/internal/core/task"
+	"github.com/ixugo/vdub/internal/taskfile"
 	"github.com/ixugo/vdub/internal/wails"
 	"github.com/ixugo/vdub/internal/web/api"
 )
@@ -145,8 +146,12 @@ func runCLI(bc *conf.Bootstrap) {
 	// 确定输出目录
 	outputDir := *runOutput
 	if outputDir == "" {
-		baseName := strings.TrimSuffix(filepath.Base(inputPath), filepath.Ext(inputPath))
-		outputDir = filepath.Join(conf.TaskOutputDir(bc.Pipeline.DefaultOutputDir), baseName+"_vdub")
+		var err error
+		outputDir, err = taskfile.NewRoot(conf.TaskOutputDir(bc.Pipeline.DefaultOutputDir), []string{inputPath})
+		if err != nil {
+			slog.Error("创建输出目录失败", "err", err)
+			os.Exit(1)
+		}
 	}
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		fmt.Fprintf(os.Stderr, "创建输出目录失败: %s\n", err)
@@ -154,11 +159,15 @@ func runCLI(bc *conf.Bootstrap) {
 	}
 
 	staged := task.CreateTaskInput{InputPath: inputPath, OutputDir: outputDir}
+	if *runOutput == "" {
+		staged.OutputName = "output.mp4"
+	}
 	if err := api.StageSourceFile(&staged); err != nil {
 		fmt.Fprintf(os.Stderr, "准备工作源文件失败: %s\n", err)
 		os.Exit(1)
 	}
 	inputPath = staged.InputPath
+	outputDir = staged.OutputDir
 
 	// ffmpeg 裁剪（可选）
 	actualInput := inputPath

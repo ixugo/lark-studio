@@ -3,6 +3,7 @@ package pipeline
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -305,7 +306,7 @@ func (c *Core) runStepWithRetry(ctx context.Context, job Job, step string, fn fu
 			return nil
 		}
 
-		if ctx.Err() != nil || isTranslationQualityFailure(lastErr) {
+		if ctx.Err() != nil || isTranslationQualityFailure(lastErr) || isTTSRetryExhausted(lastErr) {
 			return lastErr
 		}
 
@@ -545,4 +546,12 @@ func probeMediaDuration(ffmpegBin, mediaPath string) float64 {
 	fmt.Sscanf(parts[1], "%d", &m)
 	fmt.Sscanf(parts[2], "%f", &sec)
 	return float64(h)*3600 + float64(m)*60 + sec
+}
+
+func isTTSRetryExhausted(err error) bool {
+	exhausted, ok := errors.AsType[interface {
+		error
+		RetryExhausted() bool
+	}](err)
+	return ok && exhausted.RetryExhausted()
 }

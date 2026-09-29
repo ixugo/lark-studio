@@ -34,6 +34,9 @@ func (c Core) ListTasks(ctx context.Context, in *ListTaskInput) ([]*Task, int64,
 	if err != nil {
 		return nil, 0, reason.ErrDB.Withf(`List in[%+v] err[%s]`, in, err.Error())
 	}
+	for _, item := range items {
+		enrichTaskFiles(item)
+	}
 	return items, total, nil
 }
 
@@ -47,6 +50,7 @@ func (c Core) GetTask(ctx context.Context, id string) (*Task, error) {
 		}
 		return nil, reason.ErrDB.Withf(`Get id[%v] err[%s]`, id, err.Error())
 	}
+	enrichTaskFiles(&out)
 	return &out, nil
 }
 
@@ -63,6 +67,7 @@ func (c Core) CreateTask(ctx context.Context, in *CreateTaskInput) (*Task, error
 	if err := c.store.Task().Create(ctx, &out); err != nil {
 		return nil, reason.ErrDB.Withf(`Create err[%s]`, err.Error())
 	}
+	enrichTaskFiles(&out)
 	return &out, nil
 }
 
@@ -85,6 +90,7 @@ func (c Core) UpdateTask(ctx context.Context, in *UpdateTaskInput, id string) (*
 	}, orm.Where("id=?", id)); err != nil {
 		return nil, reason.ErrDB.Withf(`Update id[%v] err[%s]`, id, err.Error())
 	}
+	enrichTaskFiles(&out)
 	return &out, nil
 }
 

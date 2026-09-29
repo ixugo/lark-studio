@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/ixugo/vdub/internal/taskfile"
 )
 
 // 字幕样式常量集中在此处，保证双语字幕使用一致的视觉层级。
@@ -61,7 +63,10 @@ func (c *Core) runBurn(ctx context.Context, job Job) error {
 
 	switch job.Mode {
 	case ModeSubtitle:
-		outputVideo := filepath.Join(job.OutputDir, "output.mp4")
+		outputVideo, err := taskfile.ResultVideoPath(job.OutputDir)
+		if err != nil {
+			return err
+		}
 		if subtitleOutput == "none" {
 			if err := c.copyVideoOnly(ctx, ffmpeg, job.InputPath, outputVideo, job.TaskID); err != nil {
 				return err
@@ -78,7 +83,10 @@ func (c *Core) runBurn(ctx context.Context, job Job) error {
 		}
 
 	case ModeTranslate:
-		outputVideo := filepath.Join(job.OutputDir, "output.mp4")
+		outputVideo, err := taskfile.ResultVideoPath(job.OutputDir)
+		if err != nil {
+			return err
+		}
 		if subtitleOutput == "none" {
 			if err := c.copyVideoOnly(ctx, ffmpeg, job.InputPath, outputVideo, job.TaskID); err != nil {
 				return err
@@ -95,7 +103,10 @@ func (c *Core) runBurn(ctx context.Context, job Job) error {
 		}
 
 	case ModeDub, ModeDirectDub:
-		outputVideo := filepath.Join(job.OutputDir, "output.mp4")
+		outputVideo, err := taskfile.ResultVideoPath(job.OutputDir)
+		if err != nil {
+			return err
+		}
 		if subtitleOutput == "burn" {
 			// 硬字幕 + 配音混音
 			if err := c.burnHardWithDub(ctx, ffmpeg, videoSrc, primarySRT, secondarySRT, dubAudio, outputVideo, job.TaskID); err != nil {

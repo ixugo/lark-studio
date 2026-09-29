@@ -243,7 +243,7 @@ export const TaskBoardView: React.FC = () => {
           <div className="space-y-4">
             {tasks.map((task) => {
               const isExpanded = activeLogTaskId === task.id;
-              const fileName = task.input_path ? task.input_path.split(/[\\/]/).pop() : '未命名任务视频';
+              const fileName = task.original_name || (task.input_path ? task.input_path.split(/[\\/]/).pop() : '未命名任务视频');
 
               return (
                 <div
@@ -263,14 +263,14 @@ export const TaskBoardView: React.FC = () => {
                         {statusBadge(task.status)}
                       </div>
                       <p className="text-[11px] font-mono text-slate-400 truncate pl-9.5">
-                        输出：{task.output_dir}
+                        输出：{task.batch_dir || task.output_dir}
                       </p>
                     </div>
 
                     {/* 操作按钮组 */}
                     <div className="flex items-center space-x-2 shrink-0">
                       <button
-                        onClick={() => handleOpenDir(task.output_dir)}
+                        onClick={() => handleOpenDir(task.batch_dir || task.output_dir)}
                         className="p-2 rounded-xl border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 hover:text-slate-800 dark:hover:text-white text-xs transition-colors"
                         title="在系统访达/资源管理器中打开输出目录"
                       >

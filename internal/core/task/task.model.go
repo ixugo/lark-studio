@@ -5,6 +5,9 @@ import "time"
 
 // Task domain model
 type Task struct {
+	OriginalName   string     `gorm:"-" json:"original_name"`
+	BatchDir       string     `gorm:"-" json:"batch_dir"`
+	ResultPath     string     `gorm:"-" json:"result_path"`
 	ID             string     `gorm:"primaryKey" json:"id"`
 	InputPath      string     `gorm:"column:input_path;notNull;default:''" json:"input_path"`
 	OutputDir      string     `gorm:"column:output_dir;notNull;default:''" json:"output_dir"`

@@ -3,6 +3,9 @@ export type TaskMode = 1 | 2 | 3 | 4 | 5 | 6; // 1: 仅字幕, 2: 双语翻译, 
 export type TaskStatus = 0 | 1 | 2 | 3 | 4; // 0: 待处理, 1: 进行中, 2: 已暂停, 3: 已完成, 4: 失败
 
 export interface Task {
+ original_name?: string;
+ batch_dir?: string;
+ result_path?: string;
   id: string;
   created_at: string;
   updated_at: string;

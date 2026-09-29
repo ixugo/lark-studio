@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/ixugo/vdub/internal/taskfile"
 )
 
 // cleanIntermediate 删除输出目录中的中间产物，保留最终交付件
@@ -20,6 +22,9 @@ func cleanIntermediate(outputDir string) int {
 		"source_meta.json": true,
 	}
 
+	if meta, err := taskfile.Read(outputDir); err == nil {
+		keep[meta.StagedName] = true
+	}
 	entries, err := os.ReadDir(outputDir)
 	if err != nil {
 		slog.Debug("cleanup: read dir failed", "dir", outputDir, "err", err)
@@ -67,6 +72,9 @@ func CleanStepAndSubsequent(outputDir string, fromStep string) int {
 		"task.log":         true,
 	}
 
+	if meta, err := taskfile.Read(outputDir); err == nil {
+		protected[meta.StagedName] = true
+	}
 	stepOrder := map[string]int{
 		StepWhisper:   1,
 		StepSplit:     2,
@@ -133,6 +141,13 @@ func CleanStepAndSubsequent(outputDir string, fromStep string) int {
 				_ = os.Remove(fullPath)
 			}
 			removed++
+		}
+	}
+	if result, err := taskfile.ResultVideoPath(outputDir); err == nil && filepath.Dir(result) != filepath.Clean(outputDir) {
+		if err := os.Remove(result); err == nil {
+			removed++
+		} else if !os.IsNotExist(err) {
+			slog.Warn("重跑清理成片失败", "path", result, "err", err)
 		}
 	}
 	return removed

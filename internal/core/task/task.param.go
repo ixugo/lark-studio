@@ -60,6 +60,7 @@ type UpdateTaskInput struct {
 }
 
 type CreateTaskInput struct {
+	OutputName     string     `json:"-"` // 内部指定单源成片名，批次使用 UUID 名称。
 	InputPath      string     `json:"input_path"`
 	OutputDir      string     `json:"output_dir"`
 	Mode           int        `json:"mode"`   // 1=仅字幕, 2=字幕+翻译, 3=字幕+翻译+配音

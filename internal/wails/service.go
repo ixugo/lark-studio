@@ -24,6 +24,7 @@ import (
 	"github.com/ixugo/vdub/internal/core/recipe"
 	"github.com/ixugo/vdub/internal/core/task"
 	"github.com/ixugo/vdub/internal/core/term"
+	"github.com/ixugo/vdub/internal/taskfile"
 	"github.com/ixugo/vdub/internal/web/api"
 	"github.com/ixugo/vdub/pkg/ws"
 )
@@ -120,10 +121,21 @@ func (s *AppService) CreateTask(in task.CreateTaskInput) (*task.Task, error) {
 // BatchCreateTasks 批量创建多视频任务。
 func (s *AppService) BatchCreateTasks(videos []string, recipe task.CreateTaskInput) ([]*task.Task, error) {
 	var created []*task.Task
+	root := recipe.OutputDir
+	if len(videos) > 1 && root == "" {
+		var err error
+		root, err = taskfile.NewRoot(conf.TaskOutputDir(s.bc.Pipeline.DefaultOutputDir), videos)
+		if err != nil {
+			return nil, err
+		}
+	}
 	for _, video := range videos {
 		item := recipe
 		item.InputPath = video
-		item.OutputDir = ""
+		item.OutputDir = root
+		if len(videos) > 1 {
+			item.OutputName = ""
+		}
 		t, err := s.CreateTask(item)
 		if err != nil {
 			return created, err
@@ -157,12 +169,16 @@ func (s *AppService) MergeSubtitle(in MergeSubtitleInput) (*task.Task, error) {
 		return nil, fmt.Errorf("字幕文件不存在: %s", in.PrimarySubPath)
 	}
 
-	// 字幕合成固定输出到统一任务目录 ~/.lark-studio/tasks。
-	baseName := strings.TrimSuffix(filepath.Base(in.VideoPath), filepath.Ext(in.VideoPath))
-	in.OutputDir = filepath.Join(conf.TasksDir(), baseName+"_vdub")
-	if err := os.MkdirAll(in.OutputDir, 0o755); err != nil {
-		return nil, fmt.Errorf("创建输出目录失败: %w", err)
+	root, err := taskfile.NewRoot(conf.TaskOutputDir(s.bc.Pipeline.DefaultOutputDir), []string{in.VideoPath})
+	if err != nil {
+		return nil, err
 	}
+	staged := task.CreateTaskInput{InputPath: in.VideoPath, OutputDir: root, OutputName: "output.mp4"}
+	if err := stageSourceFile(&staged); err != nil {
+		return nil, err
+	}
+	in.VideoPath = staged.InputPath
+	in.OutputDir = staged.OutputDir
 
 	if in.OutputContent == "bilingual" && in.SecondarySubPath != "" {
 		secData, err := os.ReadFile(in.SecondarySubPath)
@@ -722,14 +738,19 @@ func (s *AppService) prepareTaskInput(in *task.CreateTaskInput) error {
 		return err
 	}
 	if in.OutputDir == "" {
-		baseName := strings.TrimSuffix(filepath.Base(in.InputPath), filepath.Ext(in.InputPath))
-		in.OutputDir = filepath.Join(conf.TaskOutputDir(s.bc.Pipeline.DefaultOutputDir), baseName+"_vdub")
+		baseOutputDir := conf.TaskOutputDir(s.bc.Pipeline.DefaultOutputDir)
+		root, err := taskfile.NewRoot(baseOutputDir, []string{in.InputPath})
+		if err != nil {
+			return err
+		}
+		in.OutputDir = root
+		in.OutputName = "output.mp4"
 	}
 	if err := os.MkdirAll(in.OutputDir, 0o755); err != nil {
 		return fmt.Errorf("创建输出目录失败: %w", err)
 	}
 
-	// 保存统一命名的源文件副本，后续步骤只操作任务目录中的文件。
+	// 将源文件及中间产物隔离在每个视频的工作目录中。
 	if err := stageSourceFile(in); err != nil {
 		return fmt.Errorf("准备工作源文件失败: %w", err)
 	}

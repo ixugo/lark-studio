@@ -4,22 +4,24 @@ package tts
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"time"
 )
 
-const (
-	edgeTTSMaxRetries = 3
-	edgeTTSBaseDelay  = 3 * time.Second
-)
+const edgeTTSMaxRetries = 3
 
 // EdgeTTS 通过 edge-tts 命令行工具合成语音
 // 需要系统安装 edge-tts: pip install edge-tts
 type EdgeTTS struct {
 	voice string
+	run   func(context.Context, string, ...string) ([]byte, error)
+	wait  func(context.Context, time.Duration) error
 }
 
 // NewEdgeTTS 创建 edge-tts 适配器
@@ -51,39 +53,86 @@ func (e *EdgeTTS) SynthesizeWithSpeed(
 	if err != nil {
 		return err
 	}
+
+	run := e.run
+	if run == nil {
+		run = func(ctx context.Context, binary string, args ...string) ([]byte, error) {
+			return exec.CommandContext(ctx, binary, args...).CombinedOutput()
+		}
+	}
+	wait := e.wait
+	if wait == nil {
+		wait = waitEdgeRetry
+	}
+	delays := [...]time.Duration{2 * time.Second, 5 * time.Second, 10 * time.Second}
 	var lastErr error
-	for attempt := range edgeTTSMaxRetries {
+	for attempt := 0; attempt <= edgeTTSMaxRetries; attempt++ {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-
-		args := []string{
-			"--voice", voice,
-			"--text", text,
-			"--write-media", outputPath,
+		// 未完整合成的文件不进入缓存，重试之间也不复用部分音频。
+		tmp, err := os.CreateTemp(filepath.Dir(outputPath), ".edge-*"+filepath.Ext(outputPath))
+		if err != nil {
+			return err
 		}
+		temporary := tmp.Name()
+		if err := tmp.Close(); err != nil {
+			return errors.Join(err, os.Remove(temporary))
+		}
+		args := []string{"--voice", voice, "--text", text, "--write-media", temporary}
 		if rate := edgeRate(speed); rate != "+0%" {
 			args = append(args, "--rate", rate)
 		}
-		cmd := exec.CommandContext(ctx, binary, args...)
-		output, err := cmd.CombinedOutput()
+		output, err := run(ctx, binary, args...)
 		if err == nil {
+			info, statErr := os.Stat(temporary)
+			if statErr != nil {
+				err = statErr
+			} else if !info.Mode().IsRegular() || info.Size() == 0 {
+				err = fmt.Errorf("合成音频为空")
+			}
+		}
+		if err == nil {
+			err = os.Rename(temporary, outputPath)
+			if err != nil {
+				return errors.Join(err, os.Remove(temporary))
+			}
 			return nil
 		}
-
-		lastErr = fmt.Errorf("edge-tts 失败 (attempt %d): %s, output: %s", attempt+1, err, string(output))
-
-		if attempt < edgeTTSMaxRetries-1 {
-			delay := edgeTTSBaseDelay * time.Duration(1<<uint(attempt))
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(delay):
+		if cleanupErr := os.Remove(temporary); cleanupErr != nil && !os.IsNotExist(cleanupErr) {
+			return errors.Join(err, cleanupErr)
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		lastErr = fmt.Errorf("edge-tts 失败（第 %d 次请求）: %w, output: %s", attempt+1, err, output)
+		if attempt < edgeTTSMaxRetries {
+			if err := wait(ctx, delays[attempt]); err != nil {
+				return err
 			}
 		}
 	}
+	return &RetryExhaustedError{Err: lastErr}
+}
 
-	return lastErr
+// RetryExhaustedError 标记单文件重试预算已耗尽，防止外层流水线重新开始整组重试。
+type RetryExhaustedError struct{ Err error }
+
+func (e *RetryExhaustedError) Error() string {
+	return fmt.Sprintf("Edge TTS 已重试 3 次仍失败: %v", e.Err)
+}
+func (e *RetryExhaustedError) Unwrap() error        { return e.Err }
+func (e *RetryExhaustedError) RetryExhausted() bool { return true }
+
+func waitEdgeRetry(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // edgeRate 把倍率转换为 edge-tts 使用的百分比参数。

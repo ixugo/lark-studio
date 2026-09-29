@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/ixugo/goddd/pkg/orm"
+	"github.com/ixugo/vdub/internal/taskfile"
 )
 
 // removeTaskFiles 只清理本任务可确定归属的产物，避免自选目录中的无关文件被删除。
@@ -32,6 +33,33 @@ func (c Core) removeTaskFiles(ctx context.Context, item *Task) error {
 	}
 	if count > 0 {
 		return fmt.Errorf("输出目录被其他任务共用，无法安全删除产物")
+	}
+	meta, metaErr := taskfile.Read(item.OutputDir)
+	if metaErr == nil && meta.LayoutVersion == 1 {
+		result, err := taskfile.ResultVideoPath(item.OutputDir)
+		if err != nil {
+			return err
+		}
+		original, _, err := taskOriginalSource(item)
+		if err != nil {
+			return err
+		}
+		for _, path := range []string{item.OutputDir, result} {
+			if err := protectTaskInput(original, path); err != nil {
+				return err
+			}
+		}
+		if err := os.Remove(result); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		if err := os.RemoveAll(item.OutputDir); err != nil {
+			return err
+		}
+		root := filepath.Dir(item.OutputDir)
+		if remaining, err := os.ReadDir(root); err == nil && len(remaining) == 0 {
+			return os.Remove(root)
+		}
+		return nil
 	}
 	paths, err := taskArtifactPaths(item, entries)
 	if err != nil {
@@ -113,7 +141,7 @@ func taskOriginalSource(item *Task) (string, string, error) {
 // isTaskArtifact 根据流水线的固定命名识别产物，成片必须匹配本任务的源文件名。
 func isTaskArtifact(input, name string) bool {
 	switch name {
-	case "src.srt", "trans.srt", "trans.txt", "raw.mp3", "dub.mp3", "concat_list.txt",
+	case "output.mp4", "src.srt", "trans.srt", "trans.txt", "raw.mp3", "dub.mp3", "concat_list.txt",
 		"audio_segs", "lipsync.mp4", "task.log", "source_meta.json":
 		return true
 	}

@@ -8,7 +8,7 @@ paths:
       tags:
         - admin/任务管理
       summary: 创建确定参数的处理任务
-      description: 创建时展开当前配置并写入 SQLite，任务恢复时继续使用同一组参数。
+      description: 创建时展开当前配置并写入 SQLite，任务恢复时继续使用同一组参数。输入副本与中间文件位于 UUIDv4 工作子目录；自动创建的单源成片 output.mp4 与该子目录同级。重复提交会创建独立目录。
       requestBody:
         required: true
         content:
@@ -24,6 +24,33 @@ paths:
                 $ref: '#/components/schemas/Task'
         '400':
           description: 文件、模式或配方参数无效
+  /tasks/batch:
+    post:
+      tags:
+        - admin/任务管理
+      summary: 批量创建处理任务
+      description: 多于一个输入时，在默认输出根目录建立同一批次目录，每个输入使用独立 UUIDv4 工作子目录和同名 UUIDv4.mp4 成片。单输入使用单源布局。保留原文件名用于任务标题，不覆盖同名素材。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/BatchTaskInput'
+      responses:
+        '200':
+          description: 已创建的任务列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Task'
+                  total:
+                    type: integer
   /tasks/{id}/logs:
     get:
       tags:
@@ -79,6 +106,7 @@ components:
           type: string
         output_dir:
           type: string
+          description: 请求时可指定成片父目录，响应中为该输入的 UUIDv4 工作目录；成片父目录另见 batch_dir。
         mode:
           type: integer
           minimum: 1
@@ -115,11 +143,51 @@ components:
         recipe_name:
           type: string
           maxLength: 64
+    BatchTaskInput:
+      type: object
+      required: [videos, mode]
+      properties:
+        videos:
+          type: array
+          items:
+            type: string
+        mode:
+          type: integer
+          minimum: 1
+          maximum: 6
+        target_lang:
+          type: string
+        source_lang:
+          type: string
+        translator:
+          type: string
+          enum: [bing, google, openai, local]
+        output_content:
+          type: string
+        tts_engine:
+          type: string
+        tts_voice:
+          type: string
+        speech_rate:
+          type: number
+        subtitle_output:
+          type: string
+        recipe_name:
+          type: string
     Task:
       allOf:
         - $ref: '#/components/schemas/CreateTaskInput'
         - type: object
           properties:
+            original_name:
+              type: string
+              description: 上传原始文件名；从源文件记录读取，旧任务兼容。
+            batch_dir:
+              type: string
+              description: 成片目录；多输入任务共享一个批次目录，每个输入有独立 UUIDv4 工作子目录。
+            result_path:
+              type: string
+              description: 成片路径；单源自动目录使用 output.mp4，批次使用 UUIDv4.mp4，与工作子目录同级。
             id:
               type: string
             status:

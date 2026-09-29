@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"uuid"
 )
 
 func TestStagedSourceUsesStableName(t *testing.T) {
@@ -26,16 +27,11 @@ func TestStagedSourceUsesStableName(t *testing.T) {
 			if err := stageSourceFile(&in); err != nil {
 				t.Fatal(err)
 			}
-			wantExt := ext
-			if ext == ".mov" {
-				wantExt = ".mp4"
-			}
-			want := filepath.Join(output, "src"+wantExt)
-			if ext == ".srt" {
-				want = filepath.Join(output, "src.input.srt")
-			}
-			if in.InputPath != want {
-				t.Fatalf("暂存路径 = %q，期望 %q", in.InputPath, want)
+			want := in.InputPath
+			id := filepath.Base(in.OutputDir)
+			parsed, err := uuid.Parse(id)
+			if err != nil || parsed[6]>>4 != 4 || filepath.Dir(in.OutputDir) != output || filepath.Base(want) != id+ext {
+				t.Fatalf("源文件未按 UUIDv4 隔离: input=%q work=%q", want, in.OutputDir)
 			}
 			for _, path := range []string{input, want} {
 				got, err := os.ReadFile(path)
@@ -65,7 +61,7 @@ func TestStagingOwnSourceDoesNotTruncate(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := os.ReadFile(path)
-	if err != nil || string(got) != "keep source" || in.InputPath != path {
+	if err != nil || string(got) != "keep source" || in.InputPath == path {
 		t.Fatal("同目录源文件被覆盖或改名")
 	}
 }
@@ -89,7 +85,7 @@ func TestPreparedTaskUsesConfiguredOutputRoot(t *testing.T) {
 		if root == filepath.Join(home, "custom") {
 			want = root
 		}
-		if got := filepath.Dir(in.OutputDir); got != want {
+		if got := filepath.Dir(filepath.Dir(in.OutputDir)); got != want {
 			t.Fatalf("任务输出根目录=%q，期望 %q", got, want)
 		}
 	}
