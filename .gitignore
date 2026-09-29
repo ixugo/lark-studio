@@ -47,6 +47,7 @@ CLAUDE.local.md
 *.mp3
 **/.DS_Store
 tmp/
+lark-studio
 vdub
 .cursor/skills/
 vendor

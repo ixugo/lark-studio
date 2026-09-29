@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 打包 Windows amd64 zip：vdub.exe + ffmpeg.exe 同目录，解压即用。
+# 打包 Windows amd64 zip：lark-studio.exe + ffmpeg.exe 同目录，解压即用。
 # 用法：scripts/bundle-windows.sh <version> <exe> <ffmpeg-exe> <out-zip>
 set -euo pipefail
 
@@ -15,13 +15,13 @@ case "$OUT_ZIP" in
 esac
 
 WORK_DIR="$(mktemp -d)"
-trap 'rm -rf "$WORK_DIR"' EXIT
+trap 'trash "$WORK_DIR"' EXIT
 
-STAGE="$WORK_DIR/vdub"
+STAGE="$WORK_DIR/lark-studio"
 mkdir -p "$STAGE"
-cp "$EXE" "$STAGE/vdub.exe"
+cp "$EXE" "$STAGE/lark-studio.exe"
 cp "$FFMPEG_EXE" "$STAGE/ffmpeg.exe"
 
 mkdir -p "$(dirname "$OUT_ZIP")"
-(cd "$WORK_DIR" && zip -q -r "$OUT_ZIP" vdub)
+(cd "$WORK_DIR" && zip -q -r "$OUT_ZIP" lark-studio)
 echo "✓ zip: $OUT_ZIP"

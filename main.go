@@ -46,7 +46,7 @@ var (
 	runLang    = flag.String("lang", "", "target language (default from config)")
 	runSS      = flag.Float64("ss", 0, "clip start time in seconds")
 	runTo      = flag.Float64("to", 0, "clip end time in seconds")
-	runOutput  = flag.String("output", "", "output directory (default: ~/Documents/lark-studio/<video>_vdub)")
+	runOutput  = flag.String("output", "", "output directory (default: ~/Documents/lark-studio/<video>_lark_studio)")
 	serverFlag = flag.Bool("server", false, "run as headless HTTP server instead of desktop app")
 )
 
@@ -69,7 +69,7 @@ func main() {
 	}
 
 	if *showVersion {
-		fmt.Printf("vdub %s (%s/%s) built %s\n", buildVersion, gitBranch, gitHash, buildTime)
+		fmt.Printf("lark-studio %s (%s/%s) built %s\n", buildVersion, gitBranch, gitHash, buildTime)
 		return
 	}
 
@@ -257,7 +257,7 @@ func configIsNotExistWrite(path string) {
 }
 
 // injectBundledFFmpeg 当配置未指定 FFmpegBin 时，优先使用随包分发的 ffmpeg。
-// 约定：macOS .app 内位于 Contents/MacOS/ffmpeg；Windows zip 解压后与 vdub.exe 同目录。
+// 约定：macOS .app 内位于 Contents/MacOS/ffmpeg；Windows zip 解压后与 lark-studio.exe 同目录。
 // 找不到时保持空值，由下游回退到 PATH。
 func injectBundledFFmpeg(bc *conf.Bootstrap) {
 	if bc.Pipeline.FFmpegBin != "" {

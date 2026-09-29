@@ -1,7 +1,7 @@
-# vdub Makefile
+# lark-studio Makefile
 # ─────────────────────────────────────────────────────────
 
-BINARY      := vdub
+BINARY      := lark-studio
 FRONTEND_DIR := frontend
 GOOS        ?= $(shell go env GOOS)
 GOARCH      ?= $(shell go env GOARCH)
@@ -97,19 +97,43 @@ dev: ## 开发模式：一键启动 Vite 开发服务与 Go 桌面端联动运�
 	@mkdir -p $(BUILD_DIR)
 	@MACOSX_DEPLOYMENT_TARGET=$(MACOSX_DEPLOYMENT_TARGET) go build -ldflags "$(LDFLAGS) $(MACOS_LDFLAGS)" -o $(BUILD_DIR)/$(BINARY) .
 	@if [ "$(GOOS)" = "darwin" ]; then \
-		bash scripts/make-dev-app.sh "$(BUILD_DIR)/$(BINARY)" "$(BUILD_DIR)/vdub-dev.app" "$(VERSION)"; \
+		bash scripts/make-dev-app.sh "$(BUILD_DIR)/$(BINARY)" "$(BUILD_DIR)/Lark Studio.app" "$(VERSION)"; \
 	fi
 	@bash -c '\
-		cleanup() { kill 0 2>/dev/null || true; exit 0; }; \
-		trap cleanup EXIT INT TERM; \
+		APP_PID=; OPEN_PID=; VITE_PID=; BASE_APP_PIDS=; \
+		process_tree() { \
+			local parent="$$1" child; \
+			for child in $$(pgrep -P "$$parent" 2>/dev/null || true); do process_tree "$$child"; done; \
+			printf "%s\\n" "$$parent"; \
+		}; \
+		cleanup() { \
+			trap - EXIT INT TERM; \
+			pids=""; \
+			for root in "$$APP_PID" "$$OPEN_PID" "$$VITE_PID"; do \
+				if [ -n "$$root" ] && kill -0 "$$root" 2>/dev/null; then pids="$$pids $$(process_tree "$$root")"; fi; \
+			done; \
+			if [ -n "$$pids" ]; then kill -TERM $$pids 2>/dev/null || true; sleep 0.5; kill -KILL $$pids 2>/dev/null || true; fi; \
+			wait 2>/dev/null || true; \
+		}; \
+		trap cleanup EXIT; trap "exit 130" INT; trap "exit 143" TERM; \
 		(cd $(FRONTEND_DIR) && npm run dev) & \
+		VITE_PID=$$!; \
 		for i in $$(seq 1 30); do \
 			curl -s http://127.0.0.1:5173 >/dev/null 2>&1 && break; \
 			sleep 0.2; \
 		done; \
 		echo "✓ 前端热更服务已就绪，正在拉起桌面端..."; \
 		if [ "$(GOOS)" = "darwin" ]; then \
-			open -n -W --env FRONTEND_DEVSERVER_URL=http://127.0.0.1:5173 "$(BUILD_DIR)/vdub-dev.app"; \
+			BASE_APP_PIDS=$$(pgrep -f "^$(CURDIR)/$(BUILD_DIR)/Lark Studio.app/Contents/MacOS/lark-studio$$" 2>/dev/null || true); \
+			open -n -W --env FRONTEND_DEVSERVER_URL=http://127.0.0.1:5173 "$(CURDIR)/$(BUILD_DIR)/Lark Studio.app" & \
+			OPEN_PID=$$!; \
+			for i in $$(seq 1 30); do \
+				for candidate in $$(pgrep -f "^$(CURDIR)/$(BUILD_DIR)/Lark Studio.app/Contents/MacOS/lark-studio$$" 2>/dev/null || true); do \
+					case " $$BASE_APP_PIDS " in *" $$candidate "*) ;; *) APP_PID="$$candidate"; break ;; esac; \
+				done; \
+				[ -n "$$APP_PID" ] && break; sleep 0.2; \
+			done; \
+			wait "$$OPEN_PID"; \
 		else \
 			FRONTEND_DEVSERVER_URL=http://127.0.0.1:5173 $(BUILD_DIR)/$(BINARY); \
 		fi \
@@ -122,9 +146,11 @@ run: build ## 编译并启动桌面应用（单二进制内嵌模式）
 
 ffmpeg-macos: ## 下载 macOS 静态 ffmpeg（不存在时自动下载）
 	@mkdir -p $(FFMPEG_DIR)/darwin
-	@if [ ! -f $(FFMPEG_DIR)/darwin/ffmpeg ]; then \
+	@if [ ! -s $(FFMPEG_DIR)/darwin/ffmpeg ]; then \
 		echo "⬇ 下载 ffmpeg (macOS arm64)..."; \
-		curl -fSL $(FFMPEG_MACOS_URL) | gunzip > $(FFMPEG_DIR)/darwin/ffmpeg && \
+		tmpfile=$$(mktemp); \
+		curl -fSL $(FFMPEG_MACOS_URL) | gunzip > "$$tmpfile" && \
+		mv "$$tmpfile" $(FFMPEG_DIR)/darwin/ffmpeg && \
 		chmod +x $(FFMPEG_DIR)/darwin/ffmpeg; \
 	else \
 		echo "✓ ffmpeg 已存在"; \
@@ -158,11 +184,11 @@ bundle-windows: ffmpeg-windows build-windows ## 打包 Windows 一体化应用�
 	@command -v upx >/dev/null && { echo "⚙ UPX 压缩 Go 二进制..."; upx --best --lzma build/windows_amd64/$(BINARY).exe; } || echo "⚠ 跳过 UPX（未安装）"
 	@echo "✓ 构建一体化 Windows 桌面端: build/windows_amd64/$(BINARY).exe"
 
-bundle/macos/arm64: ffmpeg-macos build-release ## 打包 macOS arm64 dmg（vdub.app 内嵌 ffmpeg，ad-hoc 签名）
+bundle/macos/arm64: ffmpeg-macos build-release ## 打包 macOS arm64 dmg（Lark Studio.app 内嵌 ffmpeg，ad-hoc 签名）
 	@echo "⚙ 打包 macOS dmg..."
 	@bash scripts/bundle-macos.sh "$(VERSION)" "$(BUILD_DIR)/$(BINARY)" "$(FFMPEG_DIR)/darwin/ffmpeg" "$(DIST_DIR)/$(BINARY)_$(VERSION)_macos_arm64.dmg"
 
-bundle/windows: ffmpeg-windows build-windows ## 打包 Windows amd64 zip（vdub.exe + ffmpeg.exe 同目录，解压即用）
+bundle/windows: ffmpeg-windows build-windows ## 打包 Windows amd64 zip（lark-studio.exe + ffmpeg.exe 同目录，解压即用）
 	@command -v upx >/dev/null && { echo "⚙ UPX 压缩 Go 二进制..."; upx --best --lzma build/windows_amd64/$(BINARY).exe; } || echo "⚠ 跳过 UPX（未安装）"
 	@echo "⚙ 打包 Windows zip..."
 	@bash scripts/bundle-windows.sh "$(VERSION)" "build/windows_amd64/$(BINARY).exe" "$(FFMPEG_DIR)/windows/ffmpeg.exe" "$(DIST_DIR)/$(BINARY)_$(VERSION)_windows_amd64.zip"
