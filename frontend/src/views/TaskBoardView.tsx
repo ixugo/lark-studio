@@ -147,7 +147,7 @@ const RerunRecipeModal: React.FC<RerunRecipeModalProps> = ({ task, onClose, onSu
                 className="w-full px-3 py-2 text-left rounded-xl border border-slate-200 dark:border-white/10 hover:border-blue-500 hover:bg-blue-50/50 dark:hover:bg-blue-500/10 text-xs font-semibold text-slate-800 dark:text-slate-100 flex items-center justify-between transition-colors"
               >
                 <span>{t('rerunModal.stepTranslateBtn', '从「智能翻译」重跑 (重新翻译与生成声音)')}</span>
-                <span className="text-[10px] text-slate-400 font-normal">{t('taskBoard.rerunTips.translate', '重合成声音')}</span>
+                <span className="text-[10px] text-slate-400 font-normal">{t('taskBoard.rerunTips.translate', '重译文字幕')}</span>
               </button>
             )}
             {selectedRecipe?.do_dub && !selectedRecipe.do_translate && (
@@ -840,7 +840,7 @@ export const TaskBoardView: React.FC = () => {
                                 {stepsList.map((step) => {
                                   let tip = '';
                                   if (step.key === 'whisper') tip = t('taskBoard.rerunTips.whisper', '全量从头跑');
-                                  else if (step.key === 'translate') tip = t('taskBoard.rerunTips.translate', '重合成声音');
+                                  else if (step.key === 'translate') tip = t('taskBoard.rerunTips.translate', '重译文字幕');
                                   else if (step.key === 'tts') tip = t('taskBoard.rerunTips.tts', '重新生成声音');
                                   else if (step.key === 'merge') tip = t('taskBoard.rerunTips.merge', '重算时间轴');
                                   else if (step.key === 'burn') tip = t('taskBoard.rerunTips.burn', '直接压成片');

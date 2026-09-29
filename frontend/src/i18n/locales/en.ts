@@ -213,7 +213,7 @@ export const en: TranslationKeys = {
     rerunTips: {
       tts: 'Regenerate speech',
       whisper: 'Full rerun from start',
-      translate: 'Regenerate audio & translation',
+      translate: 'Retranslate subtitles',
       merge: 'Recalculate timeline',
       burn: 'Instant video muxing only',
     },

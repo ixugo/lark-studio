@@ -211,7 +211,7 @@ export const zh = {
     rerunTips: {
       tts: '重新生成声音',
       whisper: '全量从头跑',
-      translate: '重合成声音',
+      translate: '重译文字幕',
       merge: '重算时间轴',
       burn: '直接压成片',
     },
