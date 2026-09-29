@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"os/exec"
+	"runtime"
 	"time"
 )
 
@@ -46,6 +47,10 @@ func (e *EdgeTTS) SynthesizeWithSpeed(
 		voice = e.voice
 	}
 
+	binary, err := edgeTTSBinary()
+	if err != nil {
+		return err
+	}
 	var lastErr error
 	for attempt := range edgeTTSMaxRetries {
 		if err := ctx.Err(); err != nil {
@@ -60,7 +65,7 @@ func (e *EdgeTTS) SynthesizeWithSpeed(
 		if rate := edgeRate(speed); rate != "+0%" {
 			args = append(args, "--rate", rate)
 		}
-		cmd := exec.CommandContext(ctx, "edge-tts", args...)
+		cmd := exec.CommandContext(ctx, binary, args...)
 		output, err := cmd.CombinedOutput()
 		if err == nil {
 			return nil
@@ -88,4 +93,20 @@ func edgeRate(speed float64) string {
 	}
 	percent := int(math.Round((speed - 1) * 100))
 	return fmt.Sprintf("%+d%%", percent)
+}
+
+// edgeTTSBinary 沿用 Whisper 的 macOS 查找顺序，补足 Finder 启动时缺失的 Homebrew PATH。
+func edgeTTSBinary() (string, error) {
+	path, err := exec.LookPath("edge-tts")
+	if err == nil {
+		return path, nil
+	}
+	if runtime.GOOS == "darwin" {
+		for _, candidate := range []string{"/opt/homebrew/bin/edge-tts", "/usr/local/bin/edge-tts"} {
+			if path, lookupErr := exec.LookPath(candidate); lookupErr == nil {
+				return path, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("未找到 Edge TTS 命令，请安装 edge-tts: %w", err)
 }

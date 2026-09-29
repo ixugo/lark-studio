@@ -1,11 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { api } from './api';
 
 describe('API 客户端与数据映射测试', () => {
   it('应当正确获取配置与默认翻译引擎', async () => {
     const config = await api.getConfig();
     expect(config).toBeDefined();
-    expect(config.llm.provider).toBe('openai');
+    expect(config.llm.provider).toBe('bing');
     expect(config.llm.base_url).toContain('api.openai.com');
   });
 
@@ -43,5 +43,25 @@ describe('API 客户端与数据映射测试', () => {
     const updatedTerms = await api.listTerms();
     const found = updatedTerms.some((t) => t.text === 'Prompt' && t.translation === '提示词');
     expect(found).toBe(true);
+  });
+});
+
+
+describe('桌面试听错误传递', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('保留包含 not found 的后端错误，不误报为浏览器运行', async () => {
+    const error = new Error('Edge TTS 合成失败: executable file not found in $PATH');
+    const byName = vi.fn().mockRejectedValue(error);
+    vi.stubGlobal('window', { wails: { Call: { ByName: byName } } });
+    await expect(api.testEdgeTTS('zh-CN-XiaoxiaoNeural', '你好')).rejects.toBe(error);
+    expect(byName).toHaveBeenCalledTimes(1);
+  });
+
+  it('桌面接口返回可播放音频地址', async () => {
+    const audio = 'data:audio/mpeg;base64,dGVzdA==';
+    vi.stubGlobal('window', { wails: { Call: { ByName: vi.fn().mockResolvedValue(audio) } } });
+    await expect(api.testEdgeTTS('zh-CN-XiaoxiaoNeural', '你好')).resolves.toBe(audio);
+    await expect(api.testOpenAITTS('https://test.local', '', 'tts-1', 'alloy', 'hello')).resolves.toBe(audio);
   });
 });

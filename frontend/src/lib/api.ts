@@ -180,7 +180,7 @@ async function invokeWailsMethod<T>(methodName: string, ...args: unknown[]): Pro
       } catch (err: unknown) {
         const errMsg = err instanceof Error ? err.message : String(err);
         // 若为方法未注册，尝试下一个前缀候选
-        if (errMsg.includes('unknown bound method') || errMsg.includes('not found')) {
+        if (errMsg.includes('unknown bound method')) {
           continue;
         }
         // 若已命中绑定方法但后端执行抛错（如目录不存在），锁定前缀并向上抛出业务异常
