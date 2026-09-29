@@ -9,7 +9,6 @@ import {
   ShieldCheck,
   Download,
   Trash2,
-  RefreshCw,
   Sparkles,
   Terminal,
   ChevronDown,
@@ -17,6 +16,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { api } from '../lib/api';
+import { RefreshButton } from '../components/RefreshButton';
 import { ModelDownloadProgress, initialModelDownloadProgress, listenModelDownload } from '../lib/modelDownload';
 import { ConfigDTO, WhisperModelItem, WhisperRuntimeInfo } from '../types';
 import { useTranslation } from '../i18n';
@@ -58,7 +58,6 @@ export const AsrEngineView: React.FC = () => {
   // Whisper 运行时与模型状态
   const [runtime, setRuntime] = useState<WhisperRuntimeInfo | null>(null);
   const [runtimeInstalling, setRuntimeInstalling] = useState(false);
-  const [runtimeRefreshing, setRuntimeRefreshing] = useState(false);
   const [models, setModels] = useState<WhisperModelItem[]>([]);
   const [downloadingModel, setDownloadingModel] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<ModelDownloadProgress | null>(null);
@@ -157,12 +156,7 @@ export const AsrEngineView: React.FC = () => {
   };
 
   const handleRefreshRuntime = async () => {
-    setRuntimeRefreshing(true);
-    try {
-      await Promise.all([loadRuntime(), loadModels()]);
-    } finally {
-      setRuntimeRefreshing(false);
-    }
+    await Promise.all([loadRuntime(), loadModels()]);
   };
 
   // 立即开始下载模型，进度由后端实际传输事件更新。
@@ -508,15 +502,12 @@ export const AsrEngineView: React.FC = () => {
                             )}
                           </button>
                         )}
-                        <button
-                          type="button"
-                          onClick={handleRefreshRuntime}
-                          disabled={runtimeRefreshing}
+                        <RefreshButton
+                          onRefresh={handleRefreshRuntime}
+                          size={13}
                           className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-white/10 transition-colors"
                           title={t('asr.refreshList')}
-                        >
-                          <RefreshCw size={13} className={runtimeRefreshing ? 'animate-spin' : undefined} />
-                        </button>
+                        />
                       </div>
                     </div>
 

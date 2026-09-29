@@ -170,7 +170,6 @@ export const zh = {
   },
   taskBoard: {
     title: '任务执行看板',
-    subtitle: '实时监控音视频流水线作业状态、分步进度与底层日志流',
     totalTasks: '任务总数',
     runningTasks: '执行中',
     completedTasks: '已完成',

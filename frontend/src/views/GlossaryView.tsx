@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Plus, Trash2, Search, RotateCcw } from 'lucide-react';
+import { Plus, Trash2, Search } from 'lucide-react';
 import { api } from '../lib/api';
+import { RefreshButton } from '../components/RefreshButton';
 import { Term } from '../types';
 import { useTranslation } from '../i18n';
 
@@ -75,12 +76,11 @@ export const GlossaryView: React.FC = () => {
                 : '在翻译过程中锁定专业名词，确保翻译前后上下文精确统一'}
             </p>
           </div>
-          <button
-            onClick={loadTerms}
+          <RefreshButton
+            onRefresh={loadTerms}
+            title={english ? 'Refresh list' : '刷新列表'}
             className="p-1.5 rounded-lg border border-apple-border dark:border-apple-darkBorder hover:bg-black/5 dark:hover:bg-white/5 text-apple-muted"
-          >
-            <RotateCcw size={14} />
-          </button>
+          />
         </div>
 
         {/* 新增术语表单卡片 */}

@@ -172,7 +172,6 @@ export const en: TranslationKeys = {
   },
   taskBoard: {
     title: 'Task Execution Board',
-    subtitle: 'Monitor pipeline status, stage progress and live terminal log streams in real-time',
     totalTasks: 'Total Tasks',
     runningTasks: 'Running',
     completedTasks: 'Completed',

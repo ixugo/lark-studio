@@ -15,6 +15,7 @@ import {
   Film,
 } from 'lucide-react';
 import { api } from '../lib/api';
+import { RefreshButton } from '../components/RefreshButton';
 import { Task, TaskLog, TaskStatus } from '../types';
 
 export const TaskBoardView: React.FC = () => {
@@ -192,17 +193,15 @@ export const TaskBoardView: React.FC = () => {
             <h2 className="text-xl font-bold tracking-tight text-slate-800 dark:text-white">
               任务流转看板
             </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              实时监测并发转写、语义翻译、TTS 配音与压制步骤进度与底层日志
-            </p>
           </div>
-          <button
-            onClick={loadTasks}
+          <RefreshButton
+            onRefresh={loadTasks}
+            title="刷新列表"
+            size={13}
             className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-xs text-slate-600 dark:text-slate-300 transition-colors"
           >
-            <RotateCcw size={13} />
             <span>刷新</span>
-          </button>
+          </RefreshButton>
         </div>
 
         {/* 状态统计卡片 */}
