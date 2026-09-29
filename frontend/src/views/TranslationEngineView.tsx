@@ -17,6 +17,7 @@ import { api } from '../lib/api';
 import { ConfigDTO } from '../types';
 import { useTranslation } from '../i18n';
 import { RemoteModelSelect, useRemoteModels } from '../components/RemoteModelSelect';
+import { useSaveFeedback } from '../lib/useSaveFeedback';
 
 interface EngineItem {
   id: 'bing' | 'google' | 'openai';
@@ -62,6 +63,7 @@ export const TranslationEngineView: React.FC = () => {
   const [showApiKey, setShowApiKey] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const { saved, clearSaved, showSaved } = useSaveFeedback();
   const [testingConn, setTestingConn] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const remoteModels = useRemoteModels(config?.llm.base_url || '', config?.llm.api_key || '',
@@ -125,6 +127,7 @@ export const TranslationEngineView: React.FC = () => {
 
   const handleSave = async (engineToSet?: string) => {
     if (!config) return;
+    clearSaved();
     const targetProvider = engineToSet || config.llm.provider || activeEngine;
     if ((activeEngine === 'openai' || targetProvider === 'openai') && !remoteModels.hasModel(config.llm.model || '')) {
       setErrorMsg(tr('请先从当前接口获取并选择远程模型。', 'Fetch and select a model from the current service first.'));
@@ -144,6 +147,7 @@ export const TranslationEngineView: React.FC = () => {
       await api.updateConfig(configFormUpdates('translation', updatedConfig));
 
       setConfig(updatedConfig);
+      showSaved();
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : String(err));
     } finally {
@@ -543,10 +547,10 @@ export const TranslationEngineView: React.FC = () => {
                 type="button"
                 onClick={() => handleSave()}
                 disabled={loading}
-                className="px-5 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition-all flex items-center gap-1.5 active:scale-[0.98] disabled:opacity-50"
+                className={`px-5 py-2 rounded-xl text-xs font-bold text-white transition-all duration-200 flex items-center gap-1.5 active:scale-[0.98] disabled:opacity-50 ${saved ? 'bg-emerald-600 hover:bg-emerald-600' : 'bg-blue-600 hover:bg-blue-500'}`}
               >
-                <Save size={14} />
-                <span>{loading ? tr('正在保存...', 'Saving...') : tr('保存翻译配置', 'Save Translation Settings')}</span>
+                {saved ? <Check size={14} /> : <Save size={14} />}
+                <span role="status">{loading ? tr('正在保存...', 'Saving...') : saved ? tr('保存成功', 'Saved') : tr('保存翻译配置', 'Save Translation Settings')}</span>
               </button>
             </div>
           </div>

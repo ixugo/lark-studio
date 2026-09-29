@@ -2,6 +2,7 @@ import { configFormUpdates } from '../lib/configForms';
 import React, { useEffect, useState } from 'react';
 import {
   Save,
+  Check,
   Cpu,
   Layers,
   FolderOpen,
@@ -15,6 +16,7 @@ import {
 import { api } from '../lib/api';
 import { ConfigDTO } from '../types';
 import { useTranslation } from '../i18n';
+import { useSaveFeedback } from '../lib/useSaveFeedback';
 
 interface SettingsViewProps {
   onNavigate?: (tab: string) => void;
@@ -26,6 +28,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
   const [config, setConfig] = useState<ConfigDTO | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const { saved, clearSaved, showSaved } = useSaveFeedback();
 
   useEffect(() => {
     api.getConfig().then((cfg) => {
@@ -91,10 +94,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
 
   const handleSave = async () => {
     if (!config) return;
+    clearSaved();
     setLoading(true);
     setErrorMsg(null);
     try {
       await api.updateConfig(configFormUpdates('settings', config));
+      showSaved();
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : String(err));
     } finally {
@@ -367,10 +372,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
             type="button"
             onClick={handleSave}
             disabled={loading}
-            className="px-5 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition-all flex items-center gap-1.5 active:scale-[0.98] disabled:opacity-50"
+            className={`px-5 py-2 rounded-xl text-xs font-bold text-white transition-all duration-200 flex items-center gap-1.5 active:scale-[0.98] disabled:opacity-50 ${saved ? 'bg-emerald-600 hover:bg-emerald-600' : 'bg-blue-600 hover:bg-blue-500'}`}
           >
-            <Save size={14} />
-            <span>{loading ? (english ? 'Saving...' : '正在保存...') : (english ? 'Save settings' : '保存全局设置')}</span>
+            {saved ? <Check size={14} /> : <Save size={14} />}
+            <span role="status">{loading ? (english ? 'Saving...' : '正在保存...') : saved ? (english ? 'Saved' : '保存成功') : (english ? 'Save settings' : '保存全局设置')}</span>
           </button>
         </div>
       </div>

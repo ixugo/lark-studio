@@ -16,6 +16,7 @@ import { api } from '../lib/api';
 import { ConfigDTO, TTSCapabilities } from '../types';
 import { useTranslation } from '../i18n';
 import { RemoteModelSelect, useRemoteModels } from '../components/RemoteModelSelect';
+import { useSaveFeedback } from '../lib/useSaveFeedback';
 import { validateTTSSelection } from '../lib/ttsCapabilities';
 import {
   EDGE_TTS_VOICES,
@@ -60,6 +61,7 @@ export const TtsEngineView: React.FC = () => {
   const [showApiKey, setShowApiKey] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const { saved, clearSaved, showSaved } = useSaveFeedback();
   const [testingTTS, setTestingTTS] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -135,6 +137,7 @@ export const TtsEngineView: React.FC = () => {
 
   const handleSave = async (engineToSet?: string) => {
     if (!config) return;
+    clearSaved();
     const requestedType = engineToSet || config.tts.type || activeEngine;
     const targetType: TtsEngine = requestedType === 'openai' ? 'openai' : 'edge';
     const needsRemote = activeEngine === 'openai' || targetType === 'openai';
@@ -164,6 +167,7 @@ export const TtsEngineView: React.FC = () => {
       await api.updateConfig(updates);
 
       setConfig(updatedConfig);
+      showSaved();
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : String(err));
     } finally {
@@ -592,10 +596,10 @@ export const TtsEngineView: React.FC = () => {
                 type="button"
                 onClick={() => handleSave()}
                 disabled={loading}
-                className="px-5 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition-all flex items-center gap-1.5 active:scale-[0.98] disabled:opacity-50"
+                className={`px-5 py-2 rounded-xl text-xs font-bold text-white transition-all duration-200 flex items-center gap-1.5 active:scale-[0.98] disabled:opacity-50 ${saved ? 'bg-emerald-600 hover:bg-emerald-600' : 'bg-blue-600 hover:bg-blue-500'}`}
               >
-                <Save size={14} />
-                <span>{loading ? tr('正在保存...', 'Saving...') : tr('保存语音配置', 'Save Speech Settings')}</span>
+                {saved ? <Check size={14} /> : <Save size={14} />}
+                <span role="status">{loading ? tr('正在保存...', 'Saving...') : saved ? tr('保存成功', 'Saved') : tr('保存语音配置', 'Save Speech Settings')}</span>
               </button>
             </div>
           </div>

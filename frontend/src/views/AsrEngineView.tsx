@@ -22,6 +22,7 @@ import { ModelDownloadProgress, initialModelDownloadProgress, listenModelDownloa
 import { ConfigDTO, WhisperModelItem, WhisperRuntimeInfo } from '../types';
 import { useTranslation } from '../i18n';
 import { RemoteModelSelect, useRemoteModels } from '../components/RemoteModelSelect';
+import { useSaveFeedback } from '../lib/useSaveFeedback';
 
 interface AsrEngineItem {
   id: 'whisper-cpp' | 'openai';
@@ -55,6 +56,7 @@ export const AsrEngineView: React.FC = () => {
   const [activeEngine, setActiveEngine] = useState<'whisper-cpp' | 'openai'>('whisper-cpp');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const { saved, clearSaved, showSaved } = useSaveFeedback();
 
   // Whisper 运行时与模型状态
   const [runtime, setRuntime] = useState<WhisperRuntimeInfo | null>(null);
@@ -262,6 +264,7 @@ export const AsrEngineView: React.FC = () => {
   // 保存全局配置
   const handleSave = async (engineToSet?: string) => {
     if (!config) return;
+    clearSaved();
     const targetMode = engineToSet || config.pipeline.whisper_mode || activeEngine;
     if ((activeEngine === 'openai' || targetMode === 'openai') && !remoteModels.hasModel(config.pipeline.asr_model || '')) {
       setErrorMsg(locale === 'en-US' ? 'Fetch and select a model from the current service first.' : '请先从当前接口获取并选择远程模型。');
@@ -281,6 +284,7 @@ export const AsrEngineView: React.FC = () => {
       await api.updateConfig(configFormUpdates('asr', updatedConfig));
 
       setConfig(updatedConfig);
+      showSaved();
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : String(err));
     } finally {
@@ -783,10 +787,10 @@ export const AsrEngineView: React.FC = () => {
                 type="button"
                 onClick={() => handleSave()}
                 disabled={loading}
-                className="px-5 py-2 bg-blue-600 hover:bg-blue-500 active:scale-95 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer"
+                className={`px-5 py-2 active:scale-95 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center gap-2 transition-all duration-200 cursor-pointer ${saved ? 'bg-emerald-600 hover:bg-emerald-600' : 'bg-blue-600 hover:bg-blue-500'}`}
               >
-                {loading ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                <span>{loading ? t('common.saving') : t('common.saveSettings')}</span>
+                {loading ? <Loader2 size={14} className="animate-spin" /> : saved ? <Check size={14} /> : <Save size={14} />}
+                <span role="status">{loading ? t('common.saving') : saved ? (locale === 'en-US' ? 'Saved' : '保存成功') : t('common.saveSettings')}</span>
               </button>
             </div>
           </div>
