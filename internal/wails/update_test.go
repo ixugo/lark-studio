@@ -4,15 +4,17 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json/v2"
-	"github.com/ixugo/vdub/internal/update"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ixugo/vdub/internal/conf"
+	"github.com/ixugo/vdub/internal/update"
 )
 
 func TestIgnoreUpdatePersistsAndRejectsUnseenRelease(t *testing.T) {
@@ -51,9 +53,14 @@ func updateFixtureService(t *testing.T, version string) *AppService {
 	bc.Runtime.BuildVersion = "v0.0.1"
 	bc.Runtime.ConfigDir = t.TempDir()
 	svc := &AppService{bc: &bc}
+	return updateFixtureServiceAt(t, svc, version, time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC))
+}
+
+func updateFixtureServiceAt(t *testing.T, svc *AppService, version string, updated time.Time) *AppService {
+	t.Helper()
 	svc.updates.client = update.NewClient()
 	svc.updates.client.HTTP.Transport = updateTransport(func(r *http.Request) (*http.Response, error) {
-		body, err := json.Marshal(map[string]any{"tag_name": version, "body": "真实发布说明结构\n第二行", "assets": []any{}})
+		body, err := json.Marshal(map[string]any{"tag_name": version, "updated_at": updated, "body": "真实发布说明结构\n第二行", "assets": []any{}})
 		if err != nil {
 			return nil, err
 		}
@@ -154,5 +161,29 @@ func TestUpdateProtectsDataReferencedThroughLinks(t *testing.T) {
 	}
 	if err := validateExternalDataPath(target, filepath.Join(external, "data")); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRecentReleaseIsSuppressedForAutomaticAndManualChecks(t *testing.T) {
+	for _, manual := range []bool{false, true} {
+		t.Run(fmt.Sprint(manual), func(t *testing.T) {
+			svc := updateFixtureService(t, "v0.1.0")
+			if _, err := svc.CheckForUpdates(manual); err != nil {
+				t.Fatal(err)
+			}
+			updateFixtureServiceAt(t, svc, "v0.1.0", time.Now().Add(-time.Minute))
+			info, err := svc.CheckForUpdates(manual)
+			if err != nil || info.Available || info.Reason != "新版本正在发布，请五分钟后再检查" {
+				t.Fatalf("五分钟内不能提示更新: %#v %v", info, err)
+			}
+			if err := svc.IgnoreUpdate("v0.1.0"); err == nil {
+				t.Fatal("未认可的版本不能成为忽略记录")
+			}
+			updateFixtureServiceAt(t, svc, "v0.1.0", time.Now().Add(-6*time.Minute))
+			info, err = svc.CheckForUpdates(manual)
+			if err != nil || !info.Available {
+				t.Fatalf("超过五分钟应恢复提示: %#v %v", info, err)
+			}
+		})
 	}
 }

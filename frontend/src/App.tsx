@@ -45,7 +45,7 @@ export const AppContent: React.FC = () => {
     try {
       const info = await api.checkForUpdates(true);
       if (info.available) setUpdate(info);
-      else setUpdateFeedback(t('update.current'));
+      else setUpdateFeedback(info.reason || t('update.current'));
     } catch (err) {
       setUpdateFeedback(`${t('update.failed')}: ${String(err)}`);
     } finally {

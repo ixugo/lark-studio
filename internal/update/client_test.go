@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -22,7 +23,7 @@ func testClient(status int, body string) *Client {
 	return c
 }
 
-const releaseJSON = `{"tag_name":"v0.1.0","body":"更新说明","assets":[{"name":"lark-studio_v0.0.127_macos_arm64.dmg","size":3,"browser_download_url":"https://github.com/ixugo/lark-studio/releases/download/v0.1.0/lark-studio_v0.0.127_macos_arm64.dmg"}]}`
+const releaseJSON = `{"tag_name":"v0.1.0","updated_at":"2020-01-01T00:00:00Z","body":"更新说明","assets":[{"name":"lark-studio_v0.0.127_macos_arm64.dmg","size":3,"browser_download_url":"https://github.com/ixugo/lark-studio/releases/download/v0.1.0/lark-studio_v0.0.127_macos_arm64.dmg"}]}`
 
 func TestFetchRelease(t *testing.T) {
 	r, err := testClient(200, releaseJSON).Fetch(t.Context(), "darwin", "arm64")
@@ -91,5 +92,49 @@ func TestDownloadChecksSizeAndDigest(t *testing.T) {
 				t.Error("corrupt download left available")
 			}
 		}
+	}
+}
+
+func TestReleaseReadyUsesLatestUpdateAndStrictFiveMinuteBoundary(t *testing.T) {
+	now := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
+	for _, tt := range []struct {
+		name string
+		age  time.Duration
+		want bool
+	}{
+		{"刚发布", 0, false}, {"不到五分钟", 5*time.Minute - time.Nanosecond, false},
+		{"恰好五分钟", 5 * time.Minute, false}, {"超过五分钟", 5*time.Minute + time.Nanosecond, true},
+		{"未来时间", -time.Minute, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &Release{updatedAt: now.Add(-tt.age)}
+			if got := r.Ready(now); got != tt.want {
+				t.Fatalf("Ready = %v, want %v", got, tt.want)
+			}
+		})
+	}
+	if (&Release{}).Ready(now) {
+		t.Fatal("缺失时间不能认可")
+	}
+	for _, field := range []string{"updated_at", "published_at", "asset"} {
+		t.Run(field, func(t *testing.T) {
+			data := strings.Replace(releaseJSON, `"body":`, `"published_at":"2020-01-01T00:00:00Z","body":`, 1)
+			stamp := now.Add(-time.Minute).Format(time.RFC3339)
+			if field == "asset" {
+				data = strings.Replace(data, `"size":3`, `"updated_at":"`+stamp+`","size":3`, 1)
+			} else {
+				data = strings.Replace(data, `"`+field+`":"2020-01-01T00:00:00Z"`, `"`+field+`":"`+stamp+`"`, 1)
+			}
+			r, err := parseRelease([]byte(data), "darwin", "arm64")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if r.Ready(now) {
+				t.Fatal("最后一次修改不足五分钟不能认可")
+			}
+			if !r.Ready(now.Add(5 * time.Minute)) {
+				t.Fatal("等待后应认可")
+			}
+		})
 	}
 }
