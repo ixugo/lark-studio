@@ -100,9 +100,8 @@ func TestIntegration_E2E_Whisper(t *testing.T) {
 	assertSRTQuality(t, filepath.Join(workDir, "trans.srt"))
 
 	// 验证烧录输出视频
-	baseName := strings.TrimSuffix(filepath.Base(clipped), filepath.Ext(clipped))
-	outputVideo := filepath.Join(workDir, baseName+".trans.mp4")
-	assertOutputFiles(t, workDir, baseName+".trans.mp4")
+	outputVideo := filepath.Join(workDir, "output.mp4")
+	assertOutputFiles(t, workDir, "output.mp4")
 	t.Logf("输出视频: %s", outputVideo)
 }
 
@@ -145,8 +144,7 @@ func TestIntegration_E2E_Dub(t *testing.T) {
 		t.Fatalf("配音 E2E 流水线执行失败: %v", err)
 	}
 
-	baseName := strings.TrimSuffix(filepath.Base(clipped), filepath.Ext(clipped))
-	assertOutputFiles(t, workDir, "src.srt", "trans.txt", "trans.srt", "dub.mp3", baseName+".final.mp4")
+	assertOutputFiles(t, workDir, "src.srt", "trans.txt", "trans.srt", "dub.mp3", "output.mp4")
 }
 
 // --- helpers ---

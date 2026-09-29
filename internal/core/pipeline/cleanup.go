@@ -30,7 +30,7 @@ func cleanIntermediate(outputDir string) int {
 	for _, e := range entries {
 		name := e.Name()
 
-		if keep[name] {
+		if keep[name] || strings.HasPrefix(name, "src.") {
 			continue
 		}
 		if strings.HasSuffix(name, ".mp4") {
@@ -118,9 +118,9 @@ func CleanStepAndSubsequent(outputDir string, fromStep string) int {
 			}
 		}
 
-		// 5. burn 产物: *.sub.mp4, *.trans.mp4, *.final.mp4 等输出视频
+		// 5. burn 产物：统一成片 output.mp4，同时清理旧版本成片。
 		if fromRank <= stepOrder[StepBurn] {
-			if strings.HasSuffix(name, ".sub.mp4") || strings.HasSuffix(name, ".trans.mp4") || strings.HasSuffix(name, ".final.mp4") {
+			if name == "output.mp4" || strings.HasSuffix(name, ".sub.mp4") || strings.HasSuffix(name, ".trans.mp4") || strings.HasSuffix(name, ".final.mp4") {
 				shouldDelete = true
 			}
 		}

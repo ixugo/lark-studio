@@ -20,6 +20,7 @@ import (
 	"github.com/ixugo/vdub/internal/app"
 	"github.com/ixugo/vdub/internal/conf"
 	"github.com/ixugo/vdub/internal/core/pipeline"
+	"github.com/ixugo/vdub/internal/core/task"
 	"github.com/ixugo/vdub/internal/wails"
 	"github.com/ixugo/vdub/internal/web/api"
 )
@@ -43,7 +44,7 @@ var (
 	runLang    = flag.String("lang", "", "target language (default from config)")
 	runSS      = flag.Float64("ss", 0, "clip start time in seconds")
 	runTo      = flag.Float64("to", 0, "clip end time in seconds")
-	runOutput  = flag.String("output", "", "output directory (default: video dir + _vdub)")
+	runOutput  = flag.String("output", "", "output directory (default: ~/Documents/lark-studio/<video>_vdub)")
 	serverFlag = flag.Bool("server", false, "run as headless HTTP server instead of desktop app")
 )
 
@@ -145,12 +146,19 @@ func runCLI(bc *conf.Bootstrap) {
 	outputDir := *runOutput
 	if outputDir == "" {
 		baseName := strings.TrimSuffix(filepath.Base(inputPath), filepath.Ext(inputPath))
-		outputDir = filepath.Join(filepath.Dir(inputPath), baseName+"_vdub")
+		outputDir = filepath.Join(conf.TaskOutputDir(bc.Pipeline.DefaultOutputDir), baseName+"_vdub")
 	}
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		fmt.Fprintf(os.Stderr, "创建输出目录失败: %s\n", err)
 		os.Exit(1)
 	}
+
+	staged := task.CreateTaskInput{InputPath: inputPath, OutputDir: outputDir}
+	if err := api.StageSourceFile(&staged); err != nil {
+		fmt.Fprintf(os.Stderr, "准备工作源文件失败: %s\n", err)
+		os.Exit(1)
+	}
+	inputPath = staged.InputPath
 
 	// ffmpeg 裁剪（可选）
 	actualInput := inputPath

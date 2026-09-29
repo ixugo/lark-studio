@@ -49,7 +49,6 @@ func (c *Core) runBurn(ctx context.Context, job Job) error {
 		ffmpeg = "ffmpeg"
 	}
 
-	baseName := strings.TrimSuffix(filepath.Base(job.InputPath), filepath.Ext(job.InputPath))
 	transSRT := filepath.Join(job.OutputDir, "trans.srt")
 	srcSRT := filepath.Join(job.OutputDir, "src.srt")
 	dubAudio := filepath.Join(job.OutputDir, "dub.mp3")
@@ -62,7 +61,7 @@ func (c *Core) runBurn(ctx context.Context, job Job) error {
 
 	switch job.Mode {
 	case ModeSubtitle:
-		outputVideo := filepath.Join(job.OutputDir, baseName+".sub.mp4")
+		outputVideo := filepath.Join(job.OutputDir, "output.mp4")
 		if subtitleOutput == "none" {
 			if err := c.copyVideoOnly(ctx, ffmpeg, job.InputPath, outputVideo, job.TaskID); err != nil {
 				return err
@@ -79,7 +78,7 @@ func (c *Core) runBurn(ctx context.Context, job Job) error {
 		}
 
 	case ModeTranslate:
-		outputVideo := filepath.Join(job.OutputDir, baseName+".trans.mp4")
+		outputVideo := filepath.Join(job.OutputDir, "output.mp4")
 		if subtitleOutput == "none" {
 			if err := c.copyVideoOnly(ctx, ffmpeg, job.InputPath, outputVideo, job.TaskID); err != nil {
 				return err
@@ -95,8 +94,8 @@ func (c *Core) runBurn(ctx context.Context, job Job) error {
 			}
 		}
 
-	case ModeDub:
-		outputVideo := filepath.Join(job.OutputDir, baseName+".final.mp4")
+	case ModeDub, ModeDirectDub:
+		outputVideo := filepath.Join(job.OutputDir, "output.mp4")
 		if subtitleOutput == "burn" {
 			// 硬字幕 + 配音混音
 			if err := c.burnHardWithDub(ctx, ffmpeg, videoSrc, primarySRT, secondarySRT, dubAudio, outputVideo, job.TaskID); err != nil {

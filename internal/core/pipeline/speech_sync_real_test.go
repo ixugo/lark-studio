@@ -63,7 +63,7 @@ func TestSpeechSync30sPipeline(t *testing.T) {
 	assertSpeechSyncSubtitles(t, dir)
 	assertSpeechSyncAudio(t, dir)
 	assertSpeechSyncFrames(t, dir)
-	t.Logf("真实全流程成片：%s", filepath.Join(dir, "source-30s.final.mp4"))
+	t.Logf("真实全流程成片：%s", filepath.Join(dir, "output.mp4"))
 }
 
 // TestSpeechSyncDubPipeline 用真实识别、真实配音和 FFmpeg 验证音乐前奏不会触发片头配音。
@@ -260,7 +260,7 @@ func assertSpeechSyncAudio(t *testing.T, dir string) {
 			t.Errorf("第%d句缺少真实配音", i+1)
 		}
 	}
-	final := filepath.Join(dir, "source-30s.final.mp4")
+	final := filepath.Join(dir, "output.mp4")
 	pcm := speechSyncPCM(t, final)
 	for i, entry := range entries[:min(3, len(entries))] {
 		correlation := speechSyncCorrelation(dub, pcm, entry.StartSec, entry.EndSec)
@@ -327,7 +327,7 @@ func assertSpeechSyncFrames(t *testing.T, dir string) {
 	runSpeechSyncCommand(t, "ffmpeg", "-v", "error", "-y", "-i", filepath.Join(dir, "source-30s.mp4"), "-filter_complex", "[0:v]null[v]", "-map", "[v]", "-an", "-preset", "veryfast", baseline)
 	entries := readSpeechSyncSRT(t, dir, "trans.srt")
 	for _, sec := range []float64{5, 10, 14, 15.2, entries[0].StartSec + 0.3, entries[1].StartSec + 0.3, entries[2].StartSec + 0.3} {
-		frame := speechSyncFrame(t, filepath.Join(dir, "source-30s.final.mp4"), sec)
+		frame := speechSyncFrame(t, filepath.Join(dir, "output.mp4"), sec)
 		control := speechSyncFrame(t, baseline, sec)
 		if len(frame) != len(control) {
 			t.Fatal("画面对照尺寸不同")
@@ -345,7 +345,7 @@ func assertSpeechSyncFrames(t *testing.T, dir string) {
 			t.Errorf("%.3fs 缺少字幕像素：%d", sec, changed)
 		}
 		t.Logf("画面 %.3fs：字幕差异像素 %d", sec, changed)
-		runSpeechSyncCommand(t, "ffmpeg", "-v", "error", "-y", "-ss", fmt.Sprintf("%.3f", sec), "-i", filepath.Join(dir, "source-30s.final.mp4"), "-frames:v", "1", filepath.Join(dir, fmt.Sprintf("frame-%.3f.png", sec)))
+		runSpeechSyncCommand(t, "ffmpeg", "-v", "error", "-y", "-ss", fmt.Sprintf("%.3f", sec), "-i", filepath.Join(dir, "output.mp4"), "-frames:v", "1", filepath.Join(dir, fmt.Sprintf("frame-%.3f.png", sec)))
 	}
 }
 

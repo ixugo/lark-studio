@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/ixugo/goddd/pkg/reason"
 	asradapter "github.com/ixugo/vdub/internal/adapter/asr"
 	"github.com/ixugo/vdub/internal/conf"
@@ -131,14 +131,14 @@ func (a TaskAPI) prepareTaskInput(in *task.CreateTaskInput) error {
 	}
 	if in.OutputDir == "" {
 		baseName := strings.TrimSuffix(filepath.Base(in.InputPath), filepath.Ext(in.InputPath))
-		in.OutputDir = filepath.Join(conf.TasksDir(), baseName+"_vdub")
+		in.OutputDir = filepath.Join(conf.TaskOutputDir(a.conf.Pipeline.DefaultOutputDir), baseName+"_vdub")
 	}
 	if err := os.MkdirAll(in.OutputDir, 0o755); err != nil {
 		return reason.ErrServer.Withf("创建输出目录失败: %s", err)
 	}
 
-	// 记录原始文件名并拷贝一份至工作目录，改用安全的 uuidv4 随机名 + 原后缀，避免特殊字符导致下游异常
-	if err := stageSourceFile(in); err != nil {
+	// 在任务目录保存固定名称的源文件副本，并记录原始文件名。
+	if err := StageSourceFile(in); err != nil {
 		return reason.ErrServer.Withf("准备工作源文件失败: %s", err)
 	}
 	if in.TargetLang == "" {
@@ -407,8 +407,8 @@ type sourceFileMeta struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
-// stageSourceFile 将输入源文件拷贝一份至任务输出目录，改用安全的 uuidv4 随机名 + 原后缀，并用 json 记录原文件名
-func stageSourceFile(in *task.CreateTaskInput) error {
+// StageSourceFile 在任务目录保存源文件副本，视频统一为 src.mp4，其他资源保留类型后缀。
+func StageSourceFile(in *task.CreateTaskInput) error {
 	metaPath := filepath.Join(in.OutputDir, "source_meta.json")
 	if data, err := os.ReadFile(metaPath); err == nil {
 		var meta sourceFileMeta
@@ -420,10 +420,18 @@ func stageSourceFile(in *task.CreateTaskInput) error {
 		}
 	}
 
-	ext := filepath.Ext(in.InputPath)
+	ext := strings.ToLower(filepath.Ext(in.InputPath))
+	switch ext {
+	case ".mp4", ".mkv", ".mov", ".avi", ".webm", ".flv":
+		ext = ".mp4"
+	}
 	origName := filepath.Base(in.InputPath)
-	randomName := fmt.Sprintf("%s%s", uuid.New().String(), ext)
-	destPath := filepath.Join(in.OutputDir, randomName)
+	stagedName := "src" + ext
+	if ext == ".srt" {
+		// src.srt 是听写产物，原始字幕副本使用独立名称供重跑读取。
+		stagedName = "src.input.srt"
+	}
+	destPath := filepath.Join(in.OutputDir, stagedName)
 
 	srcFile, err := os.Open(in.InputPath)
 	if err != nil {
@@ -431,25 +439,43 @@ func stageSourceFile(in *task.CreateTaskInput) error {
 	}
 	defer srcFile.Close()
 
-	dstFile, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	sourceInfo, err := srcFile.Stat()
 	if err != nil {
-		return fmt.Errorf("创建副本文件失败: %w", err)
+		return fmt.Errorf("读取源文件信息失败: %w", err)
 	}
-	defer dstFile.Close()
-
-	if _, err := io.Copy(dstFile, srcFile); err != nil {
-		return fmt.Errorf("拷贝源文件副本失败: %w", err)
+	destInfo, statErr := os.Stat(destPath)
+	if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
+		return statErr
+	}
+	if destInfo == nil || !os.SameFile(sourceInfo, destInfo) {
+		dstFile, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+		if err != nil {
+			return fmt.Errorf("创建副本文件失败: %w", err)
+		}
+		_, copyErr := io.Copy(dstFile, srcFile)
+		closeErr := dstFile.Close()
+		if copyErr != nil {
+			return fmt.Errorf("拷贝源文件副本失败: %w", copyErr)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("保存源文件副本失败: %w", closeErr)
+		}
 	}
 
 	meta := sourceFileMeta{
 		OriginalName: origName,
 		OriginalPath: in.InputPath,
-		StagedName:   randomName,
+		StagedName:   stagedName,
 		StagedPath:   destPath,
 		CreatedAt:    time.Now(),
 	}
-	metaBytes, _ := json.MarshalIndent(meta, "", "  ")
-	_ = os.WriteFile(metaPath, metaBytes, 0o644)
+	metaBytes, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(metaPath, metaBytes, 0o644); err != nil {
+		return fmt.Errorf("保存源文件信息失败: %w", err)
+	}
 
 	in.InputPath = destPath
 	return nil

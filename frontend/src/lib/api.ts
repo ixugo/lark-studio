@@ -112,6 +112,7 @@ let mockConfig: ConfigDTO = {
     whisper_mode: 'whisper-cpp',
     whisper_model: 'large-v3-turbo',
     ffmpeg_bin: 'ffmpeg',
+    default_output_dir: '~/Documents/lark-studio',
     default_target_lang: 'zh-CN',
     translate_prompt: '',
     max_speed_factor: 1.2,

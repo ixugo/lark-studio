@@ -3,9 +3,7 @@ package wails
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -15,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	asradapter "github.com/ixugo/vdub/internal/adapter/asr"
@@ -443,7 +440,7 @@ func (s *AppService) OpenInFileManager(targetPath string) error {
 			for _, e := range entries {
 				if !e.IsDir() && strings.HasSuffix(e.Name(), ".mp4") {
 					targetVideo = filepath.Join(absPath, e.Name())
-					if strings.Contains(e.Name(), ".final.") {
+					if e.Name() == "output.mp4" || strings.Contains(e.Name(), ".final.") {
 						break
 					}
 				}
@@ -525,8 +522,10 @@ func (s *AppService) GetConfig() ConfigDTO {
 	defer s.mu.RUnlock()
 
 	c := s.bc
+	pipe := c.Pipeline
+	pipe.DefaultOutputDir = conf.TaskOutputDir(pipe.DefaultOutputDir)
 	return ConfigDTO{
-		Pipeline: c.Pipeline,
+		Pipeline: pipe,
 		LLM: LLMDTO{
 			Provider:  c.LLM.Provider,
 			BaseURL:   c.LLM.BaseURL,
@@ -724,13 +723,13 @@ func (s *AppService) prepareTaskInput(in *task.CreateTaskInput) error {
 	}
 	if in.OutputDir == "" {
 		baseName := strings.TrimSuffix(filepath.Base(in.InputPath), filepath.Ext(in.InputPath))
-		in.OutputDir = filepath.Join(filepath.Dir(in.InputPath), baseName+"_vdub")
+		in.OutputDir = filepath.Join(conf.TaskOutputDir(s.bc.Pipeline.DefaultOutputDir), baseName+"_vdub")
 	}
 	if err := os.MkdirAll(in.OutputDir, 0o755); err != nil {
 		return fmt.Errorf("创建输出目录失败: %w", err)
 	}
 
-	// 记录原始文件名并拷贝一份至工作目录，改用安全的 uuidv4 随机名 + 原后缀，避免特殊字符导致下游异常
+	// 保存统一命名的源文件副本，后续步骤只操作任务目录中的文件。
 	if err := stageSourceFile(in); err != nil {
 		return fmt.Errorf("准备工作源文件失败: %w", err)
 	}
@@ -913,61 +912,7 @@ func (s *AppService) TestOpenAITTS(baseURL, apiKey, model, voice, text string) (
 	return "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(audio), nil
 }
 
-// sourceFileMeta 记录原始文件名信息
-type sourceFileMeta struct {
-	OriginalName string    `json:"original_name"`
-	OriginalPath string    `json:"original_path"`
-	StagedName   string    `json:"staged_name"`
-	StagedPath   string    `json:"staged_path"`
-	CreatedAt    time.Time `json:"created_at"`
-}
-
-// stageSourceFile 将输入源文件拷贝一份至任务输出目录，改用安全的 uuidv4 随机名 + 原后缀，并用 json 记录原文件名
+// stageSourceFile 与 HTTP、命令行入口共用相同的源文件暂存规则。
 func stageSourceFile(in *task.CreateTaskInput) error {
-	metaPath := filepath.Join(in.OutputDir, "source_meta.json")
-	// 若已存在 source_meta.json，说明为断点重试或二次提交，直接复用
-	if data, err := os.ReadFile(metaPath); err == nil {
-		var meta sourceFileMeta
-		if json.Unmarshal(data, &meta) == nil && meta.StagedPath != "" {
-			if _, statErr := os.Stat(meta.StagedPath); statErr == nil {
-				in.InputPath = meta.StagedPath
-				return nil
-			}
-		}
-	}
-
-	ext := filepath.Ext(in.InputPath)
-	origName := filepath.Base(in.InputPath)
-	randomName := fmt.Sprintf("%s%s", uuid.New().String(), ext)
-	destPath := filepath.Join(in.OutputDir, randomName)
-
-	srcFile, err := os.Open(in.InputPath)
-	if err != nil {
-		return fmt.Errorf("读取原源文件失败: %w", err)
-	}
-	defer srcFile.Close()
-
-	dstFile, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
-	if err != nil {
-		return fmt.Errorf("创建副本文件失败: %w", err)
-	}
-	defer dstFile.Close()
-
-	if _, err := io.Copy(dstFile, srcFile); err != nil {
-		return fmt.Errorf("拷贝源文件副本失败: %w", err)
-	}
-
-	meta := sourceFileMeta{
-		OriginalName: origName,
-		OriginalPath: in.InputPath,
-		StagedName:   randomName,
-		StagedPath:   destPath,
-		CreatedAt:    time.Now(),
-	}
-	metaBytes, _ := json.MarshalIndent(meta, "", "  ")
-	_ = os.WriteFile(metaPath, metaBytes, 0o644)
-
-	// 更新输入路径为安全的随机文件名副本
-	in.InputPath = destPath
-	return nil
+	return api.StageSourceFile(in)
 }

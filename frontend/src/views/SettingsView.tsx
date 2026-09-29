@@ -29,7 +29,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    api.getConfig().then(setConfig).catch(console.error);
+    api.getConfig().then(cfg => setConfig({
+      ...cfg,
+      pipeline: { ...cfg.pipeline, default_output_dir: cfg.pipeline?.default_output_dir || '~/Documents/lark-studio' },
+    })).catch(console.error);
   }, []);
 
   const handleSelectFFmpeg = async () => {

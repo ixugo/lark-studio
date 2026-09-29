@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -154,10 +155,21 @@ func StudioDir() string {
 	return filepath.Join(home, ".lark-studio")
 }
 
-// TasksDir 返回任务统一集中输出目录，自动创建。
+// TasksDir 返回文档目录下的任务输出根目录。
 func TasksDir() string {
-	dir := filepath.Join(StudioDir(), "tasks")
-	_ = os.MkdirAll(dir, 0o755)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "."
+	}
+	return filepath.Join(home, "Documents", "lark-studio")
+}
+
+// TaskOutputDir 将空值和旧版文档目录默认值归一为当前默认目录，保留自定义路径。
+func TaskOutputDir(configured string) string {
+	dir := strings.TrimSpace(configured)
+	if dir == "" || filepath.Clean(dir) == filepath.Dir(TasksDir()) || filepath.Clean(dir) == filepath.Join(StudioDir(), "tasks") || dir == "~/Documents" {
+		return TasksDir()
+	}
 	return dir
 }
 
