@@ -1,3 +1,4 @@
+import { taskBoardStepStatus, taskBoardActiveSteps, type StepStates } from '../lib/taskBoardSteps';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   FolderOpen,
@@ -20,6 +21,7 @@ import { Task, TaskLog, TaskStatus } from '../types';
 
 export const TaskBoardView: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [taskStepStates, setTaskStepStates] = useState<Record<string, StepStates>>({});
   const [loading, setLoading] = useState(true);
   const [activeLogTaskId, setActiveLogTaskId] = useState<string | null>(null);
   const [logs, setLogs] = useState<TaskLog[]>([]);
@@ -29,6 +31,11 @@ export const TaskBoardView: React.FC = () => {
     try {
       const data = await api.listTasks();
       setTasks(data || []);
+      for (const task of data || []) {
+        api.listTaskSteps(task.id).then(steps => {
+          setTaskStepStates(previous => ({ ...previous, [task.id]: Object.fromEntries((steps || []).map(step => [step.name, step.status])) }));
+        }).catch(() => {});
+      }
     } catch (err) {
       console.error('Failed to load tasks:', err);
     } finally {
@@ -43,6 +50,9 @@ export const TaskBoardView: React.FC = () => {
     // 订阅 Wails 3 事件总线
     const unbindProgress = api.onEvent('task_progress', (data: unknown) => {
       const p = data as { task_id: string; total_progress?: number; progress?: number; step?: string; detail?: string };
+      if (p.task_id && p.step) {
+        setTaskStepStates(previous => ({ ...previous, [p.task_id]: { ...previous[p.task_id], [p.step!]: 1 } }));
+      }
       setTasks((prev) =>
         prev.map((t) =>
           t.id === p.task_id
@@ -59,6 +69,9 @@ export const TaskBoardView: React.FC = () => {
 
     const unbindStepStart = api.onEvent('task_step_started', (data: unknown) => {
       const s = data as { task_id: string; step: string; detail: string };
+      if (s.task_id && s.step) {
+        setTaskStepStates(previous => ({ ...previous, [s.task_id]: { ...previous[s.task_id], [s.step]: 1 } }));
+      }
       setTasks((prev) =>
         prev.map((t) =>
           t.id === s.task_id
@@ -66,6 +79,13 @@ export const TaskBoardView: React.FC = () => {
             : t
         )
       );
+    });
+
+    const unbindStepDone = api.onEvent('task_step_done', (data: unknown) => {
+      const d = data as { task_id: string; step: string };
+      if (d?.task_id && d?.step) {
+        setTaskStepStates(previous => ({ ...previous, [d.task_id]: { ...previous[d.task_id], [d.step]: 2 } }));
+      }
     });
 
     const unbindPaused = api.onEvent('task_paused', (data: unknown) => {
@@ -79,6 +99,7 @@ export const TaskBoardView: React.FC = () => {
       clearInterval(timer);
       unbindProgress();
       unbindStepStart();
+      unbindStepDone();
       unbindPaused();
     };
   }, [loadTasks]);
@@ -174,15 +195,9 @@ export const TaskBoardView: React.FC = () => {
     { key: 'burn', label: '字幕压制' },
   ];
 
-  const getStepStatus = (stepKey: string, task: Task) => {
-    if (task.status === 3) return 'done';
-    if (task.current_step === stepKey && task.status === 1) return 'current';
-    const stepOrder = ['whisper', 'split', 'translate', 'tts', 'merge', 'burn'];
-    const currentIndex = stepOrder.indexOf(task.current_step || '');
-    const thisIndex = stepOrder.indexOf(stepKey);
-    if (currentIndex > thisIndex) return 'done';
-    return 'pending';
-  };
+  const getStepStatus = (stepKey: string, task: Task) =>
+    taskBoardStepStatus(stepKey, task, taskStepStates[task.id]);
+  const formatStepName = (stepKey: string) => stepsList.find(step => step.key === stepKey)?.label || stepKey || '排队准备中';
 
   return (
     <div className="h-screen flex flex-col overflow-y-auto px-8 py-6 select-none">
@@ -242,6 +257,7 @@ export const TaskBoardView: React.FC = () => {
         ) : (
           <div className="space-y-4">
             {tasks.map((task) => {
+              const activeSteps = taskBoardActiveSteps(task, taskStepStates[task.id] || {});
               const isExpanded = activeLogTaskId === task.id;
               const fileName = task.original_name || (task.input_path ? task.input_path.split(/[\\/]/).pop() : '未命名任务视频');
 
@@ -326,8 +342,8 @@ export const TaskBoardView: React.FC = () => {
                       <span className="text-slate-500 dark:text-slate-400">
                         当前步骤：
                         <strong className="text-slate-800 dark:text-slate-100 ml-1 font-bold">
-                          {task.current_step ? task.current_step : '排队准备中'}
-                          {task.current_detail && ` · ${task.current_detail}`}
+                          {activeSteps.length > 1 ? activeSteps.map(formatStepName).join(" · ") : formatStepName(task.current_step)}
+                          {activeSteps.length <= 1 && task.current_detail && ` · ${task.current_detail}`}
                         </strong>
                       </span>
                       <span className="font-mono font-bold text-blue-600 dark:text-blue-400 text-xs">
@@ -351,16 +367,18 @@ export const TaskBoardView: React.FC = () => {
 
                   {/* 步骤流转状态条 */}
                   <div className="grid grid-cols-6 gap-2 pt-3 border-t border-slate-100 dark:border-white/5">
-                    {stepsList.map((step, idx) => {
+                    {stepsList.map((step) => {
                       const status = getStepStatus(step.key, task);
                       return (
                         <div
-                          key={idx}
+                          key={step.key}
                           className={`text-center py-2 px-1 rounded-xl text-[11px] font-semibold border transition-all ${
                             status === 'current'
                               ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300'
                               : status === 'done'
                               ? 'border-emerald-200 bg-emerald-50/60 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20'
+                              : status === 'error'
+                              ? 'border-rose-200 bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400'
                               : 'border-transparent text-slate-400 bg-slate-50 dark:bg-white/[0.03]'
                           }`}
                         >

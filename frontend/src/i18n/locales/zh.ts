@@ -203,11 +203,12 @@ export const zh = {
       whisper: '听写转录',
       split: '语义分句',
       translate: '智能翻译',
-      tts: 'AI 配音',
+      tts: '语音合成',
       merge: '音视频混音',
       burn: '压制合成',
     },
     rerunTips: {
+      tts: '重新生成声音',
       whisper: '全量从头跑',
       translate: '重合成声音',
       merge: '重算时间轴',

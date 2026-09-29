@@ -205,11 +205,12 @@ export const en: TranslationKeys = {
       whisper: 'Transcription',
       split: 'Sentence Splitting',
       translate: 'Smart Translation',
-      tts: 'AI Dubbing',
+      tts: 'Speech Synthesis',
       merge: 'Audio Video Mix',
       burn: 'Subtitle Muxing',
     },
     rerunTips: {
+      tts: 'Regenerate speech',
       whisper: 'Full rerun from start',
       translate: 'Regenerate audio & translation',
       merge: 'Recalculate timeline',
