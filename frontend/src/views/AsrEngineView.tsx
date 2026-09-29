@@ -53,7 +53,6 @@ export const AsrEngineView: React.FC = () => {
   const { locale, t } = useTranslation();
   const [config, setConfig] = useState<ConfigDTO | null>(null);
   const [activeEngine, setActiveEngine] = useState<'whisper-cpp' | 'openai'>('whisper-cpp');
-  const [savedSuccess, setSavedSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -208,8 +207,6 @@ export const AsrEngineView: React.FC = () => {
         });
       }
       await loadModels();
-      setSavedSuccess(true);
-      setTimeout(() => setSavedSuccess(false), 2000);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : String(err));
     }
@@ -284,8 +281,6 @@ export const AsrEngineView: React.FC = () => {
       await api.updateConfig(configFormUpdates('asr', updatedConfig));
 
       setConfig(updatedConfig);
-      setSavedSuccess(true);
-      setTimeout(() => setSavedSuccess(false), 2500);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : String(err));
     } finally {
@@ -354,13 +349,6 @@ export const AsrEngineView: React.FC = () => {
         </div>
 
         {/* 提示条 */}
-        {savedSuccess && (
-          <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center space-x-2 text-xs text-emerald-600 dark:text-emerald-400 animate-in fade-in">
-            <CheckCircle2 size={16} />
-            <span>{t('asr.saveSuccess')}</span>
-          </div>
-        )}
-
         {errorMsg && (
           <div className="p-3 bg-rose-50 border border-rose-200 dark:bg-rose-500/10 dark:border-rose-500/30 rounded-xl flex items-center gap-2 text-xs text-rose-600 dark:text-rose-300 animate-in fade-in">
             <AlertCircle size={16} />

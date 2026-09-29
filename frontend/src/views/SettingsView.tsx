@@ -7,7 +7,6 @@ import {
   FolderOpen,
   Film,
   Trash2,
-  CheckCircle2,
   AlertCircle,
   ExternalLink,
   Languages,
@@ -25,7 +24,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
   const { locale } = useTranslation();
   const english = locale === 'en-US';
   const [config, setConfig] = useState<ConfigDTO | null>(null);
-  const [savedSuccess, setSavedSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -97,8 +95,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
     setErrorMsg(null);
     try {
       await api.updateConfig(configFormUpdates('settings', config));
-      setSavedSuccess(true);
-      setTimeout(() => setSavedSuccess(false), 2500);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : String(err));
     } finally {
@@ -132,13 +128,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
         </div>
 
         {/* 提示条 */}
-        {savedSuccess && (
-          <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center space-x-2 text-xs text-emerald-600 dark:text-emerald-400 animate-in fade-in">
-            <CheckCircle2 size={16} />
-            <span>{english ? 'Global settings saved and applied.' : '全局配置已成功保存并实时生效！'}</span>
-          </div>
-        )}
-
         {errorMsg && (
           <div className="p-3.5 bg-rose-50 border border-rose-200 dark:bg-rose-500/10 dark:border-rose-500/30 rounded-xl flex items-center gap-2 text-xs text-rose-600 dark:text-rose-300 animate-in fade-in">
             <AlertCircle size={16} />

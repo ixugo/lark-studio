@@ -248,7 +248,6 @@ export const en: TranslationKeys = {
     title: 'Speech Recognition Engine',
     subtitle: 'Configure Whisper.cpp offline engine, multi-size GGML weight models and hardware acceleration',
     currentDefault: 'Current Default',
-    saveSuccess: 'Speech recognition configuration saved and applied!',
     engineList: 'ASR Engine List',
     recommended: 'Recommended',
     defaultBadge: 'Default',

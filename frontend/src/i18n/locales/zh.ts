@@ -246,7 +246,6 @@ export const zh = {
     title: '语音识别引擎',
     subtitle: '配置 Whisper.cpp 离线引擎、多尺寸 GGML 权重模型与硬件加速',
     currentDefault: '当前默认',
-    saveSuccess: '语音识别配置已保存并生效！',
     engineList: '识别引擎列表',
     recommended: '推荐',
     defaultBadge: '默认',
