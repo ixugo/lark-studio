@@ -75,3 +75,36 @@ it('桌面连接未就绪时禁止用演示配置或演示任务兜底', async (
     vi.unstubAllGlobals();
   }
 });
+
+describe('桌面更新接口', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('传递检查模式、版本与准确的绑定名', async () => {
+    const info = { version: '0.2.0', notes: '<script>plain text</script>', available: true, supported: true, reason: '' };
+    const status = { phase: 'preparing', message: 'Preparing update' };
+    const byName = vi.fn().mockImplementation((name: string) => Promise.resolve(name.endsWith('CheckForUpdates') ? info : name.endsWith('GetUpdateStatus') ? status : undefined));
+    vi.stubGlobal('window', { wails: { Call: { ByName: byName } } });
+    await expect(api.checkForUpdates(false)).resolves.toEqual(info);
+    await expect(api.checkForUpdates(true)).resolves.toEqual(info);
+    await api.ignoreUpdate('0.2.0');
+    await api.installUpdate('0.2.0');
+    await expect(api.getUpdateStatus()).resolves.toEqual(status);
+    expect(byName.mock.calls.map(([name, ...args]) => [name.split('.').at(-1), ...args])).toEqual([
+      ['CheckForUpdates', false], ['CheckForUpdates', true], ['IgnoreUpdate', '0.2.0'], ['InstallUpdate', '0.2.0'], ['GetUpdateStatus'],
+    ]);
+  });
+
+  it('检查与安装保留后端错误，浏览器不能模拟更新成功', async () => {
+    const error = new Error('release asset not found');
+    const byName = vi.fn().mockRejectedValue(error);
+    vi.stubGlobal('window', { wails: { Call: { ByName: byName } } });
+    await expect(api.checkForUpdates(true)).rejects.toBe(error);
+    await expect(api.installUpdate('0.2.0')).rejects.toBe(error);
+    expect(byName).toHaveBeenCalledTimes(2);
+    vi.unstubAllGlobals();
+    await expect(api.checkForUpdates(false)).rejects.toThrow('desktop app');
+    await expect(api.ignoreUpdate('0.2.0')).rejects.toThrow('desktop app');
+    await expect(api.installUpdate('0.2.0')).rejects.toThrow('desktop app');
+    await expect(api.getUpdateStatus()).rejects.toThrow('desktop app');
+  });
+});

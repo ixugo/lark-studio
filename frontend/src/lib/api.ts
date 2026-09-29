@@ -1,4 +1,4 @@
-import { Task, TaskLog, TaskStep, CreateTaskInput, RerunTaskOptions, ConfigDTO, Term, AppInfo } from '../types';
+import { Task, TaskLog, TaskStep, CreateTaskInput, RerunTaskOptions, ConfigDTO, Term, AppInfo, UpdateInfo, UpdateStatus } from '../types';
 
 declare global {
   interface Window {
@@ -643,6 +643,28 @@ export const api = {
       platform: 'darwin',
       arch: 'arm64',
     };
+  },
+
+  async checkForUpdates(manual: boolean): Promise<UpdateInfo> {
+    const res = await invokeWailsMethod<UpdateInfo>('CheckForUpdates', manual);
+    if (!res.called || !res.result) throw new Error('Updates require the desktop app');
+    return res.result;
+  },
+
+  async ignoreUpdate(version: string): Promise<void> {
+    const res = await invokeWailsMethod<void>('IgnoreUpdate', version);
+    if (!res.called) throw new Error('Updates require the desktop app');
+  },
+
+  async installUpdate(version: string): Promise<void> {
+    const res = await invokeWailsMethod<void>('InstallUpdate', version);
+    if (!res.called) throw new Error('Updates require the desktop app');
+  },
+
+  async getUpdateStatus(): Promise<UpdateStatus> {
+    const res = await invokeWailsMethod<UpdateStatus>('GetUpdateStatus');
+    if (!res.called || !res.result) throw new Error('Updates require the desktop app');
+    return res.result;
   },
 
   // ─── 事件监听 ───────────────────────────────────────────

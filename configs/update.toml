@@ -1,0 +1,6 @@
+# 更新偏好保存在 config.toml 同目录的 update.toml 中。
+# 自动检查不再提示被忽略版本及更早版本；手动检查不受影响。
+IgnoredVersion = ""
+# 安装成功后记录发布标签与程序校验值，防止发布标签和程序版本不一致时重复提示。
+InstalledReleaseVersion = ""
+InstalledBinarySHA256 = ""

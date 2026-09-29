@@ -199,3 +199,16 @@ export interface TTSCapabilities {
   instructions: boolean;
   languages: string[];
 }
+
+export interface UpdateInfo {
+  version: string;
+  notes: string;
+  available: boolean;
+  supported: boolean;
+  reason: string;
+}
+
+export interface UpdateStatus {
+  phase: 'idle' | 'downloading' | 'preparing' | 'restarting' | 'error';
+  message: string;
+}

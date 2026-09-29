@@ -31,6 +31,7 @@ import (
 
 // AppService 聚合所有暴露给前端界面的 Go 接口方法。
 type AppService struct {
+	updates    updateSession
 	mu         sync.RWMutex
 	app        *application.App
 	bc         *conf.Bootstrap

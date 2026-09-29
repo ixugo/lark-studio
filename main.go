@@ -22,6 +22,7 @@ import (
 	"github.com/ixugo/vdub/internal/core/pipeline"
 	"github.com/ixugo/vdub/internal/core/task"
 	"github.com/ixugo/vdub/internal/taskfile"
+	"github.com/ixugo/vdub/internal/update"
 	"github.com/ixugo/vdub/internal/wails"
 	"github.com/ixugo/vdub/internal/web/api"
 )
@@ -55,8 +56,17 @@ func getBuildRelease() bool {
 }
 
 func main() {
+	applyUpdate := flag.String("apply-update", "", "apply a prepared desktop update")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+
+	if *applyUpdate != "" {
+		if err := update.RunHelper(*applyUpdate); err != nil {
+			fmt.Fprintf(os.Stderr, "更新失败: %s\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	if *showVersion {
 		fmt.Printf("vdub %s (%s/%s) built %s\n", buildVersion, gitBranch, gitHash, buildTime)

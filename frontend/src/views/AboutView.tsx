@@ -9,7 +9,7 @@ import { api } from '../lib/api';
 import { AppInfo } from '../types';
 import { useTranslation } from '../i18n';
 
-export const AboutView: React.FC = () => {
+export const AboutView: React.FC<{ onCheckUpdates: () => void; checkingUpdates: boolean; updateFeedback: string }> = ({ onCheckUpdates, checkingUpdates, updateFeedback }) => {
   const { t } = useTranslation();
   const [appInfo, setAppInfo] = useState<AppInfo>({
     app_name: 'Lark Studio',
@@ -41,6 +41,12 @@ export const AboutView: React.FC = () => {
           <p className="text-sm text-slate-500 dark:text-slate-400">
             {t('about.tagline', '本地优先 · 智能音视频全流程译制与配音工作台')}
           </p>
+          <div className="pt-2 space-y-2">
+            <button onClick={onCheckUpdates} disabled={checkingUpdates} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50">
+              {t(checkingUpdates ? 'update.checking' : 'update.check')}
+            </button>
+            {updateFeedback && <p role="status" className="text-xs text-slate-500 dark:text-slate-400">{updateFeedback}</p>}
+          </div>
           <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 pt-2 text-xs text-slate-400 font-mono">
             <span>{t('about.platform', '平台')}: {appInfo.platform} ({appInfo.arch})</span>
             <span>•</span>

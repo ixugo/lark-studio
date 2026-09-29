@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Sidebar, TabKey } from './components/layout/Sidebar';
 import { DashboardView } from './views/DashboardView';
 import { TaskBoardView } from './views/TaskBoardView';
@@ -10,12 +10,49 @@ import { TtsEngineView } from './views/TtsEngineView';
 import { AsrEngineView } from './views/AsrEngineView';
 import { AboutView } from './views/AboutView';
 import { api } from './lib/api';
-import { LanguageProvider } from './i18n';
+import { LanguageProvider, useTranslation } from './i18n';
+import { UpdateDialog } from './components/UpdateDialog';
+import { UpdateInfo } from './types';
 
 export const AppContent: React.FC = () => {
+  const { t } = useTranslation();
+  const [update, setUpdate] = useState<UpdateInfo | null>(null);
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [updateFeedback, setUpdateFeedback] = useState('');
+  const startupCheck = useRef<Promise<UpdateInfo> | null>(null);
+  const checkPending = useRef(false);
   const [currentTab, setCurrentTab] = useState<TabKey>('dashboard');
   const [isDark, setIsDark] = useState(false);
   const [runningCount, setRunningCount] = useState(0);
+
+  useEffect(() => {
+    if (!api.isWailsEnvironment()) return;
+    // StrictMode 会重放 effect；复用同一次检查，由当前 effect 接收结果。
+    startupCheck.current ??= api.checkForUpdates(false);
+    let active = true;
+    startupCheck.current.then((info) => {
+      if (active && info.available) setUpdate(info);
+    }).catch((err) => { if (active) console.warn('Startup update check failed', err); });
+    return () => { active = false; };
+  }, []);
+
+  const checkUpdates = async () => {
+    if (checkPending.current) return;
+    if (!api.isWailsEnvironment()) { setUpdateFeedback(t('update.desktopOnly')); return; }
+    checkPending.current = true;
+    setCheckingUpdates(true);
+    setUpdateFeedback('');
+    try {
+      const info = await api.checkForUpdates(true);
+      if (info.available) setUpdate(info);
+      else setUpdateFeedback(t('update.current'));
+    } catch (err) {
+      setUpdateFeedback(`${t('update.failed')}: ${String(err)}`);
+    } finally {
+      checkPending.current = false;
+      setCheckingUpdates(false);
+    }
+  };
 
   // 初始化深浅色模式（默认跟随系统）
   useEffect(() => {
@@ -75,7 +112,7 @@ export const AppContent: React.FC = () => {
       case 'settings':
         return <SettingsView onNavigate={(tab) => setCurrentTab(tab as TabKey)} />;
       case 'about':
-        return <AboutView />;
+        return <AboutView onCheckUpdates={checkUpdates} checkingUpdates={checkingUpdates} updateFeedback={updateFeedback} />;
       default:
         return null;
     }
@@ -83,6 +120,7 @@ export const AppContent: React.FC = () => {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#F5F5F7] dark:bg-[#121215] text-[#1D1D1F] dark:text-[#F5F5F7] select-none">
+      {update && <UpdateDialog update={update} onClose={() => setUpdate(null)} />}
       <Sidebar
         currentTab={currentTab}
         onTabChange={setCurrentTab}
