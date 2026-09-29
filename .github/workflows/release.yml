@@ -10,148 +10,67 @@ permissions:
 env:
   GO_VERSION: '1.27'
   NODE_VERSION: '20'
-  FFMPEG_WIN_URL: 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip'
-  FFMPEG_MACOS_ARM64_URL: 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-darwin-arm64.gz'
-  FFMPEG_MACOS_X64_URL: 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-darwin-x64.gz'
   FFMPEG_LINUX_AMD64_URL: 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-linux-x64.gz'
   FFMPEG_LINUX_ARM64_URL: 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-linux-arm64.gz'
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
+  build-desktop:
+    name: Build ${{ matrix.platform }} package
+    # 两个 Make 目标都使用 Bash 和 Unix 工具；Windows 在 macOS 上交叉编译。
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-arm64
+            target: bundle/macos/arm64
+            goos: darwin
+            goarch: arm64
+            asset: macos_arm64.dmg
+          - platform: windows-amd64
+            target: bundle/windows
+            goos: windows
+            goarch: amd64
+            asset: windows_amd64.zip
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name }}
+      # vendor 存放 FFmpeg 等运行时文件，不是 Go 依赖目录。
+      GOFLAGS: -mod=readonly
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.release.tag_name }}
           fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: go.mod
 
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
-      - name: Build Frontend (Windows)
+      - name: Install frontend dependencies
         working-directory: frontend
+        run: npm ci
+
+      - name: Install packaging dependencies
         run: |
-          npm ci
-          npm run build
+          if ! command -v trash >/dev/null; then
+            brew install trash
+          fi
 
-      - name: Download ffmpeg (Windows)
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path vendor/ffmpeg/windows
-          $zipPath = "$env:TEMP\ffmpeg_win.zip"
-          Invoke-WebRequest -Uri $env:FFMPEG_WIN_URL -OutFile $zipPath
-          Expand-Archive -Path $zipPath -DestinationPath $env:TEMP\ffmpeg_extract -Force
-          $binDir = Get-ChildItem -Path $env:TEMP\ffmpeg_extract -Recurse -Directory -Filter "bin" | Select-Object -First 1
-          Copy-Item "$($binDir.FullName)\ffmpeg.exe" "vendor\ffmpeg\windows\ffmpeg.exe"
+      - name: Build release package
+        run: make "${{ matrix.target }}" VERSION="$RELEASE_TAG" GOOS="${{ matrix.goos }}" GOARCH="${{ matrix.goarch }}"
 
-      - name: Build whisper.cpp runtime (Windows amd64)
-        shell: pwsh
-        run: ./scripts/build-whisper-runtime.ps1 -TargetOS windows -TargetArch amd64
-
-      - name: Build Go desktop single binary (Windows amd64)
-        shell: pwsh
-        env:
-          GOOS: windows
-          GOARCH: amd64
-        run: |
-          $version = git describe --tags --always --dirty 2>$null
-          if (-not $version) { $version = "dev" }
-          $branch = git rev-parse --abbrev-ref HEAD 2>$null
-          $hash = git rev-parse --short HEAD 2>$null
-          $time = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
-          $ldflags = "-X main.buildVersion=$version -X main.gitBranch=$branch -X main.gitHash=$hash -X main.buildTime=$time -X main.release=true -s -w"
-          go build -trimpath -ldflags $ldflags -o build\windows_amd64\vdub.exe .
-
-      - name: Compress binaries with UPX
-        shell: pwsh
-        run: |
-          choco install upx -y --no-progress
-          upx --best --lzma build\windows_amd64\vdub.exe
-          upx --best --lzma vendor\ffmpeg\windows\ffmpeg.exe
-
-      - name: Assemble release package
-        shell: pwsh
-        run: |
-          $releaseDir = "build\windows_release"
-          New-Item -ItemType Directory -Force -Path $releaseDir
-          Copy-Item "build\windows_amd64\vdub.exe" "$releaseDir\vdub.exe"
-          Copy-Item "vendor\ffmpeg\windows\ffmpeg.exe" "$releaseDir\ffmpeg.exe"
-          Copy-Item "vendor\whisper\windows" "$releaseDir\whisper" -Recurse -Force
-          $tag = "${{ github.event.release.tag_name }}"
-          Compress-Archive -Path "$releaseDir\*" -DestinationPath "vdub-windows-amd64-$tag.zip"
-          tar -czf "vdub-whisper-windows-amd64.tar.gz" -C "vendor\whisper\windows" .
-
-      - name: Upload to release
+      - name: Upload package to release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            vdub-windows-amd64-*.zip
-            vdub-whisper-windows-amd64.tar.gz
-
-  build-macos:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Build Frontend (macOS)
-        working-directory: frontend
-        run: |
-          npm ci
-          npm run build
-
-      - name: Download ffmpeg (macOS arm64)
-        run: |
-          mkdir -p vendor/ffmpeg/darwin
-          curl -fSL "$FFMPEG_MACOS_ARM64_URL" | gunzip > vendor/ffmpeg/darwin/ffmpeg
-          chmod +x vendor/ffmpeg/darwin/ffmpeg
-
-      - name: Build whisper.cpp runtime (macOS arm64)
-        run: |
-          chmod +x scripts/build-whisper-runtime.sh
-          scripts/build-whisper-runtime.sh darwin arm64
-
-      - name: Build Go desktop single binary (macOS arm64)
-        env:
-          GOARCH: arm64
-          MACOSX_DEPLOYMENT_TARGET: '13.0'
-        run: |
-          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
-          BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
-          HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-          TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
-          go build -trimpath -ldflags "-X main.buildVersion=$VERSION -X main.gitBranch=$BRANCH -X main.gitHash=$HASH -X main.buildTime=$TIME -X main.release=true -s -w -extldflags=-mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET" -o build/darwin_arm64/vdub .
-
-      - name: Assemble release package
-        run: |
-          RELEASE_DIR="build/macos_release"
-          mkdir -p "$RELEASE_DIR"
-          cp build/darwin_arm64/vdub "$RELEASE_DIR/vdub"
-          cp vendor/ffmpeg/darwin/ffmpeg "$RELEASE_DIR/ffmpeg"
-          cp -R vendor/whisper/darwin "$RELEASE_DIR/whisper"
-          TAG="${{ github.event.release.tag_name }}"
-          tar -czf "vdub-macos-arm64-$TAG.tar.gz" -C "$RELEASE_DIR" .
-          tar -czf "vdub-whisper-darwin-arm64.tar.gz" -C vendor/whisper/darwin .
-
-      - name: Upload to release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            vdub-macos-arm64-*.tar.gz
-            vdub-whisper-darwin-arm64.tar.gz
+          tag_name: ${{ github.event.release.tag_name }}
+          fail_on_unmatched_files: true
+          files: build/dist/lark-studio_${{ github.event.release.tag_name }}_${{ matrix.asset }}
 
   build-linux:
     runs-on: ubuntu-latest
