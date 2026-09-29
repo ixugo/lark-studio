@@ -18,19 +18,20 @@ func (c Core) removeTaskFiles(ctx context.Context, item *Task) error {
 		return nil
 	}
 	slog.DebugContext(ctx, "清理任务产物", "task_id", item.ID, "output_dir", item.OutputDir)
-	count, err := c.store.Task().Count(ctx, orm.Where("output_dir=? AND id<>?", item.OutputDir, item.ID))
-	if err != nil {
-		return err
-	}
-	if count > 0 {
-		return fmt.Errorf("输出目录被其他任务共用，无法安全删除产物")
-	}
+	// 目录已被用户移除时没有产物可清理，不应因其他任务引用同一路径而阻止删除记录。
 	entries, err := os.ReadDir(item.OutputDir)
 	if os.IsNotExist(err) {
 		return nil
 	}
 	if err != nil {
 		return fmt.Errorf("读取任务产物目录失败: %w", err)
+	}
+	count, err := c.store.Task().Count(ctx, orm.Where("output_dir=? AND id<>?", item.OutputDir, item.ID))
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return fmt.Errorf("输出目录被其他任务共用，无法安全删除产物")
 	}
 	paths, err := taskArtifactPaths(item, entries)
 	if err != nil {

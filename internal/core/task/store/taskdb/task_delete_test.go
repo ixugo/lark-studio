@@ -168,3 +168,31 @@ func TestDeleteTaskRejectsSharedOutput(t *testing.T) {
 		t.Fatal("联删失败应保留记录")
 	}
 }
+
+// TestDeleteTaskWithMissingSharedOutput 目录已经被手动删除时，只删除所选任务记录。
+func TestDeleteTaskWithMissingSharedOutput(t *testing.T) {
+	core, item := deletionFixture(t)
+	other, err := core.CreateTask(t.Context(), &task.CreateTaskInput{InputPath: item.InputPath, OutputDir: item.OutputDir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 删除独立测试目录，复现用户先在文件管理器中删除产物的操作。
+	if err := os.Remove(item.OutputDir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := core.DeleteTask(t.Context(), item.ID); err != nil {
+		t.Fatalf("产物目录已不存在，应允许删除任务记录：%v", err)
+	}
+	if _, err := core.GetTask(t.Context(), item.ID); err == nil {
+		t.Fatal("所选任务记录仍存在")
+	}
+	if _, err := core.GetTask(t.Context(), other.ID); err != nil {
+		t.Fatalf("误删了共用目录的另一任务记录：%v", err)
+	}
+	if data, err := os.ReadFile(item.InputPath); err != nil || string(data) != "original" {
+		t.Fatalf("原素材受损：%v", err)
+	}
+	if _, err := core.DeleteTask(t.Context(), other.ID); err != nil {
+		t.Fatalf("目录不存在时也应允许删除剩余任务：%v", err)
+	}
+}
