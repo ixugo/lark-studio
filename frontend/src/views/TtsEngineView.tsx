@@ -64,7 +64,7 @@ export const TtsEngineView: React.FC = () => {
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const engineDetails = {
-    edge: { name: 'Edge TTS', tag: tr('免 Key 推荐', 'Recommended · No Key'), desc: tr('微软神经语音服务，音色自然且无需单独配置密钥。', 'Microsoft neural voices with natural speech and no API key setup.'), badge: tr('推荐', 'Recommended') },
+    edge: { name: 'Edge TTS', tag: tr('免 Key 推荐', 'Recommended · No Key'), desc: tr('微软语音服务，音色自然且无需单独配置密钥。', 'Microsoft speech service with natural voices and no API key setup.'), badge: tr('推荐', 'Recommended') },
     openai: { name: 'OpenAI TTS', tag: tr('兼容接口', 'Compatible API'), desc: tr('可连接 OpenAI 兼容的语音合成服务。', 'Connect to any OpenAI-compatible speech synthesis service.'), badge: undefined },
   };
 
@@ -84,6 +84,7 @@ export const TtsEngineView: React.FC = () => {
           type: current,
           voice: ttsVoiceForEngine(current, cfg.tts),
           model: cfg.tts?.model || 'tts-1',
+          base_url: cfg.tts?.base_url || 'https://api.openai.com/v1',
         },
       };
       setConfig(patched);
@@ -102,9 +103,9 @@ export const TtsEngineView: React.FC = () => {
         ...config,
         tts: {
           ...config.tts,
+          type: targetType,
           voice: normalizeTtsVoice(activeEngine, config.tts.voice),
           [activeEngine === 'openai' ? 'openai_voice' : 'edge_voice']: normalizeTtsVoice(activeEngine, config.tts.voice),
-          type: targetType,
         },
       };
 
@@ -137,24 +138,30 @@ export const TtsEngineView: React.FC = () => {
     } : current);
   };
 
-  // 用目标语言试听当前兼容接口，尽早发现模型名、音色名或服务地址错误。
+  // 统一试音：调用选定引擎朗读指定文本并触发播放。
   const handleTestTTS = async () => {
     if (!config) return;
     setTestingTTS(true);
     setTestResult(null);
     try {
-      const text = locale === 'en-US' ? 'Hello, I am using Lark Studio.' : '你好，我正在使用云雀工坊。';
-      const audioURL = await api.testOpenAITTS(
-        config.tts.base_url || '',
-        config.tts.api_key || '',
-        config.tts.model || '',
-        config.tts.voice || '',
-        text,
-      );
+      const isEnglishVoice = config.tts.voice?.toLowerCase().startsWith('en-') || config.tts.voice?.toLowerCase().startsWith('en_');
+      const text = isEnglishVoice ? 'Hello, I am using Lark Studio.' : '你好，我正在使用云雀工坊';
+      let audioURL = '';
+      if (activeEngine === 'edge') {
+        audioURL = await api.testEdgeTTS(config.tts.voice || 'zh-CN-XiaoxiaoNeural', text);
+      } else {
+        audioURL = await api.testOpenAITTS(
+          config.tts.base_url || '',
+          config.tts.api_key || '',
+          config.tts.model || '',
+          config.tts.voice || '',
+          text,
+        );
+      }
       audioRef.current?.pause();
       audioRef.current = new Audio(audioURL);
       await audioRef.current.play();
-      setTestResult({ success: true, message: locale === 'en-US' ? 'Preview is playing.' : '试听已开始播放。' });
+      setTestResult({ success: true, message: locale === 'en-US' ? 'Audition is playing.' : '试音播放中' });
     } catch (err) {
       setTestResult({ success: false, message: err instanceof Error ? err.message : String(err) });
     } finally {
@@ -309,22 +316,38 @@ export const TtsEngineView: React.FC = () => {
                     <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                         {tr('默认神经音色', 'Default Neural Voice')}
                     </label>
-                    <select
-                      value={config.tts.voice}
-                      onChange={(e) =>
-                        setConfig({
-                          ...config,
-                          tts: { ...config.tts, voice: e.target.value },
-                        })
-                      }
-                      className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-                    >
-                      {EDGE_TTS_VOICES.map((voice) => (
-                        <option key={voice.value} value={voice.value}>
-                          {english ? voice.enLabel : voice.zhLabel}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="flex gap-2">
+                      <select
+                        value={config.tts.voice}
+                        onChange={(e) =>
+                          setConfig({
+                            ...config,
+                            tts: { ...config.tts, voice: e.target.value },
+                          })
+                        }
+                        className="flex-1 h-10 px-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                      >
+                        {EDGE_TTS_VOICES.map((voice) => (
+                          <option key={voice.value} value={voice.value}>
+                            {english ? voice.enLabel : voice.zhLabel}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={handleTestTTS}
+                        disabled={testingTTS}
+                        className="px-4 h-10 rounded-xl bg-blue-600 hover:bg-blue-500 active:scale-95 text-white text-xs font-semibold flex items-center gap-1.5 transition-all shrink-0 shadow-sm shadow-blue-500/20 disabled:opacity-50"
+                      >
+                        {testingTTS ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} className="fill-current" />}
+                        <span>{tr('试音', 'Audition')}</span>
+                      </button>
+                    </div>
+                    {testResult && activeEngine === 'edge' && (
+                      <p className={`text-xs mt-1.5 ${testResult.success ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                        {testResult.message}
+                      </p>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
@@ -453,32 +476,34 @@ export const TtsEngineView: React.FC = () => {
                       <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                         {tr('默认音色', 'Default Voice')}
                       </label>
-                      <input
-                        type="text"
-                        placeholder={tr('如 alloy 或服务端支持的音色名', 'For example: alloy or a voice supported by your service')}
-                        value={config.tts.voice || 'alloy'}
-                        onChange={(e) =>
-                          setConfig({
-                            ...config,
-                            tts: { ...config.tts, voice: e.target.value },
-                          })
-                        }
-                        className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-                      />
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder={tr('如 alloy 或服务端支持的音色名', 'For example: alloy or a voice supported by your service')}
+                          value={config.tts.voice || 'alloy'}
+                          onChange={(e) =>
+                            setConfig({
+                              ...config,
+                              tts: { ...config.tts, voice: e.target.value },
+                            })
+                          }
+                          className="flex-1 h-10 px-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleTestTTS}
+                          disabled={testingTTS}
+                          className="px-4 h-10 rounded-xl bg-blue-600 hover:bg-blue-500 active:scale-95 text-white text-xs font-semibold flex items-center gap-1.5 transition-all shrink-0 shadow-sm shadow-blue-500/20 disabled:opacity-50"
+                        >
+                          {testingTTS ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} className="fill-current" />}
+                          <span>{tr('试音', 'Audition')}</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-3 pt-1">
-                    <button
-                      type="button"
-                      onClick={handleTestTTS}
-                      disabled={testingTTS}
-                      className="px-3.5 py-1.5 rounded-xl border border-blue-500/30 bg-blue-50/70 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50"
-                    >
-                      {testingTTS ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
-                      <span>{testingTTS ? (locale === 'en-US' ? 'Generating preview…' : '正在生成试听…') : (locale === 'en-US' ? 'Test voice and play' : '测试音色并播放')}</span>
-                    </button>
-                    {testResult && (
+                    {testResult && activeEngine === 'openai' && (
                       <span className={`text-xs ${testResult.success ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                         {testResult.message}
                       </span>
@@ -488,8 +513,7 @@ export const TtsEngineView: React.FC = () => {
               )}
             </div>
 
-            <div className="pt-4 border-t border-slate-100 dark:border-white/5 flex items-center justify-between text-xs text-slate-500">
-              <span>{tr('所做配置自动保存至本地配置中心', 'Settings are saved locally.')}</span>
+            <div className="pt-4 border-t border-slate-100 dark:border-white/5 flex items-center justify-end text-xs text-slate-500">
               <button
                 type="button"
                 onClick={() => handleSave()}

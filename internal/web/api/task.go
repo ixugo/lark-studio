@@ -191,7 +191,7 @@ func (a TaskAPI) applyTaskDefaults(in *task.CreateTaskInput) {
 	if in.SubtitleOutput == "" {
 		in.SubtitleOutput = a.conf.Pipeline.SubtitleOutput
 		if in.SubtitleOutput == "" {
-			in.SubtitleOutput = "burn"
+			in.SubtitleOutput = "soft"
 		}
 	}
 }
@@ -213,7 +213,7 @@ func validateTaskParameters(in *task.CreateTaskInput) error {
 	if !oneOf(in.TTSEngine, "edge", "openai") {
 		return reason.ErrBadRequest.SetMsg("无效的配音引擎")
 	}
-	if !oneOf(in.SubtitleOutput, "burn", "file", "none") {
+	if !oneOf(in.SubtitleOutput, "soft", "burn", "file", "none") {
 		return reason.ErrBadRequest.SetMsg("无效的字幕方式")
 	}
 	if in.SpeechRate < 0.5 || in.SpeechRate > 2 {

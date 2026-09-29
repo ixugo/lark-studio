@@ -420,9 +420,12 @@ export const AsrEngineView: React.FC = () => {
                         <h3 className="text-base font-bold text-slate-800 dark:text-white">
                           {currentMeta?.name}
                         </h3>
-                        <span className="px-2 py-0.5 text-[11px] font-medium bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 rounded-md">
-                          {t(currentMeta?.tagKey || '')}
-                        </span>
+                        {activeEngine === 'whisper-cpp' && (
+                          <span className="px-2 py-0.5 text-[11px] font-medium bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 rounded-md inline-flex items-center gap-1">
+                            <ShieldCheck size={12} />
+                            {t(currentMeta?.tagKey || '')}
+                          </span>
+                        )}
                       </div>
                       {currentMeta?.descKey && (
                         <p className="text-xs text-slate-500 dark:text-slate-400">

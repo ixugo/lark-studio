@@ -12,14 +12,14 @@ interface LanguageContextType {
   strings: TranslationKeys;
 }
 
-const STORAGE_KEY = 'vdub_locale';
+const STORAGE_KEY = 'lark_locale';
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
 export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [locale, setLocaleState] = useState<Locale>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem(STORAGE_KEY) as Locale;
+      const saved = (localStorage.getItem(STORAGE_KEY) || localStorage.getItem('vdub_locale')) as Locale;
       if (saved === 'zh-CN' || saved === 'en-US') return saved;
     }
     return 'zh-CN';

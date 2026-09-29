@@ -21,6 +21,9 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
   const [primarySubPath, setPrimarySubPath] = useState<string>('');
   const [secondarySubPath, setSecondarySubPath] = useState<string>('');
   const [isBilingual, setIsBilingual] = useState<boolean>(false);
+  const [subtitleOutput, setSubtitleOutput] = useState<string>('soft');
+  const [videoQuality, setVideoQuality] = useState<string>('原画质(推荐)');
+  const [encodeMethod, setEncodeMethod] = useState<string>('默认(推荐)');
   const [loading, setLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successToast, setSuccessToast] = useState<string | null>(null);
@@ -99,6 +102,7 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
         primary_sub_path: primarySubPath.trim(),
         secondary_sub_path: isBilingual ? secondarySubPath.trim() : undefined,
         output_content: isBilingual ? 'bilingual' : 'source',
+        subtitle_output: subtitleOutput,
       });
 
       setSuccessToast(t('subtitleMerge.startMerge', '字幕合成任务已成功创建并提交流水线！'));
@@ -335,7 +339,65 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
             </h3>
           </div>
 
-          <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* 字幕方式 */}
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
+                {t('subtitleMerge.subtitleMethod', '字幕压制方式')}
+              </label>
+              <div className="relative">
+                <select
+                  value={subtitleOutput}
+                  onChange={(e) => setSubtitleOutput(e.target.value)}
+                  className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
+                >
+                  <option value="none">{t('subtitleMerge.subNone', '无字幕')}</option>
+                  <option value="soft">{t('subtitleMerge.subSoft', '输出软字幕 (极速推荐)')}</option>
+                  <option value="burn">{t('subtitleMerge.subBurn', '将字幕编码到视频里面')}</option>
+                </select>
+              </div>
+            </div>
+
+            {/* 导出画质 */}
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
+                {t('subtitleMerge.videoQuality', '导出画质')}
+              </label>
+              <div className="relative">
+                <select
+                  value={videoQuality}
+                  onChange={(e) => setVideoQuality(e.target.value)}
+                  className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
+                >
+                  <option value="原画质(推荐)">{t('subtitleMerge.qualityOriginal', '原画质(推荐)')}</option>
+                  <option value="4K 超清">{t('subtitleMerge.quality4k', '4K 超清')}</option>
+                  <option value="1080P 高清">{t('subtitleMerge.quality1080p', '1080P 高清')}</option>
+                  <option value="720P 标清">{t('subtitleMerge.quality720p', '720P 标清')}</option>
+                </select>
+              </div>
+            </div>
+
+            {/* 编码方式 */}
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
+                {t('subtitleMerge.encodeMethod', '编码方式')}
+              </label>
+              <div className="relative">
+                <select
+                  value={encodeMethod}
+                  onChange={(e) => setEncodeMethod(e.target.value)}
+                  className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
+                >
+                  <option value="默认(推荐)">{t('subtitleMerge.codecDefault', '默认(推荐)')}</option>
+                  <option value="H.264">H.264</option>
+                  <option value="H.265">H.265</option>
+                  <option value="AV1">AV1</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3 pt-1">
             <div className="p-3.5 bg-slate-50 dark:bg-white/[0.02] border border-slate-200/80 dark:border-white/5 rounded-xl text-xs space-y-1.5">
               <div className="flex items-center gap-2 font-semibold text-slate-700 dark:text-slate-200">
                 <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
@@ -345,7 +407,6 @@ export const SubtitleMergeView: React.FC<SubtitleMergeViewProps> = ({ onTaskCrea
                 {t('subtitleMerge.step3Box1Desc', '成片将固定生成至任务工作区目录，避免路径混乱与文件覆盖。压制完成后可在【任务看板】中随时双击或点击直接在系统访达/资源管理器中定位查看。')}
               </p>
             </div>
-
           </div>
         </div>
       </div>

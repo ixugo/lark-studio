@@ -1132,7 +1132,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
                 {t('dashboard.sectionTranslation', '翻译设置')}
               </h3>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {/* 翻译引擎 */}
             <div>
               <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
@@ -1142,13 +1142,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
                 <select
                   value={translateService === 'local' ? 'openai' : translateService}
                   onChange={(e) => setTranslateService(e.target.value as 'bing' | 'google' | 'openai')}
-                  className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
+                  className="w-full h-9 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-lg pl-3 pr-9 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
                 >
                   <option value="bing">{english ? 'Bing Translator' : '必应翻译'}</option>
                   <option value="google">{english ? 'Google Translate' : 'Google 翻译'}</option>
                   <option value="openai">{english ? 'OpenAI Compatible' : 'OpenAI 兼容'}</option>
                 </select>
-                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
+                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
               </div>
             </div>
 
@@ -1161,7 +1161,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
                 <select
                   value={targetLang}
                   onChange={(e) => setTargetLang(e.target.value)}
-                  className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
+                  className="w-full h-9 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-lg pl-3 pr-9 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
                 >
                   <option value="zh-CN">{english ? 'Chinese (Simplified)' : '简体中文'}</option>
                   <option value="zh-TW">{english ? 'Chinese (Traditional)' : '繁體中文'}</option>
@@ -1171,7 +1171,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
                   <option value="de">German</option>
                   <option value="fr">French</option>
                 </select>
-                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
+                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
               </div>
             </div>
 
@@ -1304,9 +1304,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
                     onChange={(e) => setSubtitleOutput(e.target.value)}
                     className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
                   >
-                    <option value="soft">{english ? 'Soft subtitles (Fast)' : t('dashboard.subSoft', '软字幕(极速)')}</option>
-                    <option value="burn">{english ? 'Burn subtitles (Slow)' : t('dashboard.subBurn', '合成字幕(缓慢)')}</option>
-                    <option value="none">{english ? 'No subtitles' : t('dashboard.subNone', '无字幕')}</option>
+                    <option value="none">{t('dashboard.subNone', '无字幕')}</option>
+                    <option value="soft">{t('dashboard.subSoft', '输出软字幕')}</option>
+                    <option value="burn">{t('dashboard.subBurn', '将字幕编码到视频里面')}</option>
                   </select>
                   <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
                 </div>
@@ -1343,10 +1343,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
                     onChange={(e) => setVideoQuality(e.target.value)}
                     className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
                   >
-                    <option value="原画质(推荐)">{english ? 'Original (Recommended)' : t('dashboard.qualityOriginal', '原画质(推荐)')}</option>
-                    <option value="4K 超清">{english ? '4K Ultra HD' : t('dashboard.quality4k', '4K 超清')}</option>
-                    <option value="1080P 高清">{english ? '1080p Full HD' : t('dashboard.quality1080p', '1080P 高清')}</option>
-                    <option value="720P 标清">{english ? '720p HD' : t('dashboard.quality720p', '720P 标清')}</option>
+                    <option value="原画质(推荐)">{t('dashboard.qualityOriginal', '原画质(推荐)')}</option>
+                    <option value="4K 超清">{t('dashboard.quality4k', '4K 超清')}</option>
+                    <option value="1080P 高清">{t('dashboard.quality1080p', '1080P 高清')}</option>
+                    <option value="720P 标清">{t('dashboard.quality720p', '720P 标清')}</option>
                   </select>
                   <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
                 </div>
@@ -1363,7 +1363,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
                     onChange={(e) => setEncodeMethod(e.target.value)}
                     className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
                   >
-                    <option value="默认(推荐)">{english ? 'Default (Recommended)' : '默认(推荐)'}</option>
+                    <option value="默认(推荐)">{t('dashboard.codecDefault', '默认(推荐)')}</option>
                     <option value="H.264">H.264</option>
                     <option value="H.265">H.265</option>
                     <option value="AV1">AV1</option>

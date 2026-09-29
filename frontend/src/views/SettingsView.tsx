@@ -30,25 +30,47 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    api.getConfig().then(cfg => setConfig({
-      ...cfg,
-      pipeline: { ...cfg.pipeline, default_output_dir: cfg.pipeline?.default_output_dir || '~/Documents/lark-studio' },
-    })).catch(console.error);
+    api.getConfig().then((cfg) => {
+      const isWin = typeof navigator !== 'undefined' && navigator.platform?.toLowerCase().includes('win');
+      const fallbackDocs = isWin ? 'C:\\Users\\Documents\\lark-studio' : '~/Documents/lark-studio';
+      const patched: ConfigDTO = {
+        ...cfg,
+        pipeline: {
+          ...cfg.pipeline,
+          workers: cfg.pipeline?.workers ?? 2,
+          default_target_lang: cfg.pipeline?.default_target_lang || 'zh-CN',
+          ffmpeg_bin: cfg.pipeline?.ffmpeg_bin || 'ffmpeg',
+          default_output_dir: cfg.pipeline?.default_output_dir || fallbackDocs,
+          max_speed_factor: cfg.pipeline?.max_speed_factor ?? 1.2,
+          translate_chunk_size: cfg.pipeline?.translate_chunk_size ?? 10,
+          tts_workers: cfg.pipeline?.tts_workers ?? 2,
+          clean_intermediate: cfg.pipeline?.clean_intermediate ?? false,
+        },
+        llm: {
+          ...cfg.llm,
+          provider: cfg.llm?.provider || 'bing',
+          base_url: cfg.llm?.base_url || 'https://api.openai.com/v1',
+          model: cfg.llm?.model || 'gpt-4o-mini',
+        },
+        tts: {
+          ...cfg.tts,
+          type: cfg.tts?.type || 'edge',
+          voice: cfg.tts?.voice || 'zh-CN-XiaoxiaoNeural',
+          model: cfg.tts?.model || 'tts-1',
+        },
+      };
+      setConfig(patched);
+    }).catch(console.error);
   }, []);
 
   const handleSelectFFmpeg = async () => {
     try {
-      const wails = (window as any)?.wails;
-      if (wails?.Dialogs?.OpenFile) {
-        const filePath = await wails.Dialogs.OpenFile({
-          Title: english ? 'Select FFmpeg executable' : '选择 ffmpeg 可执行程序',
+      const filePath = await api.pickFFmpegFile();
+      if (filePath && config) {
+        setConfig({
+          ...config,
+          pipeline: { ...config.pipeline, ffmpeg_bin: filePath },
         });
-        if (filePath && config) {
-          setConfig({
-            ...config,
-            pipeline: { ...config.pipeline, ffmpeg_bin: filePath },
-          });
-        }
       }
     } catch (e) {
       console.warn('选择文件失败', e);
@@ -57,17 +79,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
 
   const handleSelectOutputDir = async () => {
     try {
-      const wails = (window as any)?.wails;
-      if (wails?.Dialogs?.OpenDirectory) {
-        const dirPath = await wails.Dialogs.OpenDirectory({
-          Title: english ? 'Select default video output folder' : '选择默认视频输出目录',
+      const dirPath = await api.pickDirectory();
+      if (dirPath && config) {
+        setConfig({
+          ...config,
+          pipeline: { ...config.pipeline, default_output_dir: dirPath },
         });
-        if (dirPath && config) {
-          setConfig({
-            ...config,
-            pipeline: { ...config.pipeline, default_output_dir: dirPath },
-          });
-        }
       }
     } catch (e) {
       console.warn('选择目录失败', e);
@@ -281,7 +298,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
                   className="px-3.5 h-10 rounded-xl bg-slate-100 hover:bg-slate-200/80 dark:bg-white/10 dark:hover:bg-white/15 text-slate-700 dark:text-slate-200 text-xs font-semibold border border-slate-200 dark:border-white/10 flex items-center gap-1.5 transition-colors shrink-0"
                 >
                   <FolderOpen size={14} />
-                  <span>{english ? 'Browse...' : '浏览...'}</span>
+                  <span>{english ? 'Browse' : '浏览'}</span>
                 </button>
               </div>
             </div>
@@ -293,7 +310,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
               <div className="flex gap-2">
                 <input
                   type="text"
-                  placeholder={english ? 'Leave blank to save beside the source video with an _final suffix.' : '留空则与原输入视频同目录，以 _final 后缀保存'}
+                  placeholder={english ? 'Default documents folder' : '默认文档目录'}
                   value={config.pipeline.default_output_dir}
                   onChange={(e) =>
                     setConfig({
@@ -312,7 +329,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
                   className="px-3.5 h-10 rounded-xl bg-slate-100 hover:bg-slate-200/80 dark:bg-white/10 dark:hover:bg-white/15 text-slate-700 dark:text-slate-200 text-xs font-semibold border border-slate-200 dark:border-white/10 flex items-center gap-1.5 transition-colors shrink-0"
                 >
                   <FolderOpen size={14} />
-                  <span>{english ? 'Choose folder...' : '选择目录...'}</span>
+                  <span>{english ? 'Choose folder' : '选择目录'}</span>
                 </button>
               </div>
             </div>

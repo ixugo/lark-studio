@@ -2,7 +2,6 @@ import React from 'react';
 import {
   LayoutDashboard,
   Kanban,
-  ListTodo,
   Layers,
   BookOpen,
   Settings,
@@ -20,7 +19,6 @@ import { api } from '../../lib/api';
 export type TabKey =
   | 'dashboard'
   | 'board'
-  | 'list'
   | 'merge'
   | 'translation-engine'
   | 'tts-engine'
@@ -76,7 +74,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ],
     },
     {
-      title: '系统与管理',
+      title: t('sidebar.systemManagement'),
       items: [
         { key: 'glossary', label: t('sidebar.glossary'), icon: <BookOpen size={17} /> },
         { key: 'settings', label: t('sidebar.settings'), icon: <Settings size={17} /> },
@@ -91,8 +89,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* 顶部标题区（预留 macOS 红黄绿交通灯安全高度与拖拽区） */}
         <div className="pt-7 px-2 flex items-center justify-between wails-drag">
           <div className="flex items-center space-x-2.5 wails-no-drag">
-            <div className="w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center border border-slate-200 dark:border-white/10">
-              <img src="/lark-logo.webp" alt={t('common.appTitle')} className="w-full h-full object-contain" />
+            <div className="w-8 h-8 flex items-center justify-center">
+              <img src="/lark-logo.webp" alt={t('common.appTitle')} className="w-8 h-8 object-contain" />
             </div>
             <div>
               <h1 className="text-sm font-semibold tracking-tight text-slate-800 dark:text-white">

@@ -66,7 +66,7 @@ export const TranslationEngineView: React.FC = () => {
   const engineDetails = {
     bing: { name: tr('必应翻译', 'Bing Translator'), tag: tr('免 Key 推荐', 'Recommended · No Key'), desc: tr('微软 Edge 翻译通道，异常时自动降级至谷歌翻译', 'Microsoft Edge translation with automatic fallback to Google when unavailable.'), badge: tr('推荐', 'Recommended') },
     google: { name: tr('谷歌翻译', 'Google Translate'), tag: tr('免 Key 服务', 'No Key Required'), desc: tr('公共翻译服务，支持近百种语言，速度快且稳定。', 'Public translation service supporting nearly 100 languages with fast, reliable responses.'), badge: undefined },
-    openai: { name: tr('OpenAI 兼容', 'OpenAI Compatible'), tag: tr('自定义大模型', 'Custom LLM'), desc: tr('支持 DeepSeek、GPT、Claude、Ollama 等兼容接口。', 'Works with compatible services such as DeepSeek, GPT, Claude, and Ollama.'), badge: undefined },
+    openai: { name: tr('OpenAI 兼容', 'OpenAI Compatible'), tag: tr('自定义大模型', 'Custom LLM'), desc: '', badge: undefined },
   };
 
   useEffect(() => {
@@ -80,6 +80,7 @@ export const TranslationEngineView: React.FC = () => {
         },
         llm: {
           ...cfg.llm,
+          base_url: cfg.llm?.base_url || 'https://api.openai.com/v1',
           model: cfg.llm?.model || 'gpt-4o-mini',
         },
       };
@@ -249,9 +250,11 @@ export const TranslationEngineView: React.FC = () => {
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {currentMeta?.desc}
-                      </p>
+                      {currentMeta?.desc && (
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {currentMeta.desc}
+                        </p>
+                      )}
                     </div>
                     <div>
                       {isCurrentDefault ? (
@@ -533,8 +536,7 @@ export const TranslationEngineView: React.FC = () => {
 
             </div>
 
-            <div className="pt-4 border-t border-slate-100 dark:border-white/5 flex items-center justify-between text-xs text-slate-500">
-              <span>{tr('所做配置自动保存至本地配置中心', 'Settings are saved locally.')}</span>
+            <div className="pt-4 border-t border-slate-100 dark:border-white/5 flex items-center justify-end text-xs text-slate-500">
               <button
                 type="button"
                 onClick={() => handleSave()}

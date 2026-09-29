@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
   ShieldCheck,
-  Zap,
   Layers,
   Database,
   Github,
@@ -47,8 +46,11 @@ export const AboutView: React.FC = () => {
             <span>•</span>
             <a
               href="https://github.com/ixugo/lark-studio"
+              onClick={(event) => {
+                event.preventDefault();
+                api.openProjectWebsite().catch(console.error);
+              }}
               target="_blank"
-              rel="noreferrer"
               className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-500 dark:text-blue-400"
             >
               <Github size={13} />
@@ -61,7 +63,6 @@ export const AboutView: React.FC = () => {
       {/* 核心产品特性 */}
       <div className="space-y-3">
         <div className="flex items-center gap-2">
-          <Zap className="w-4 h-4 text-blue-600 dark:text-blue-400" />
           <h2 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
             {t('about.featuresTitle', '核心特性')}
           </h2>

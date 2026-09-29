@@ -152,6 +152,7 @@ type MergeSubtitleInput struct {
 	SecondarySubPath string `json:"secondary_sub_path"`
 	OutputDir        string `json:"output_dir"`
 	OutputContent    string `json:"output_content"`
+	SubtitleOutput   string `json:"subtitle_output"`
 }
 
 // MergeSubtitle 将外部字幕与视频合成为成片视频。
@@ -199,12 +200,17 @@ func (s *AppService) MergeSubtitle(in MergeSubtitleInput) (*task.Task, error) {
 		_ = os.WriteFile(filepath.Join(in.OutputDir, "src.srt"), priData, 0o644)
 	}
 
+	subOutput := in.SubtitleOutput
+	if subOutput == "" {
+		subOutput = "soft"
+	}
+
 	taskInput := task.CreateTaskInput{
 		InputPath:      in.VideoPath,
 		OutputDir:      in.OutputDir,
 		Mode:           pipeline.ModeSubtitle,
 		OutputContent:  in.OutputContent,
-		SubtitleOutput: "burn",
+		SubtitleOutput: subOutput,
 	}
 
 	return s.CreateTask(taskInput)
@@ -431,6 +437,28 @@ func (s *AppService) PickFiles() ([]string, error) {
 	return files, nil
 }
 
+// PickDirectory 弹出系统原生目录选择器，选取默认输出目录。
+func (s *AppService) PickDirectory() (string, error) {
+	if s.app == nil {
+		return "", fmt.Errorf("桌面上下文未初始化")
+	}
+	dialog := s.app.Dialog.OpenFile().
+		CanChooseFiles(false).
+		CanChooseDirectories(true)
+	return dialog.PromptForSingleSelection()
+}
+
+// PickFFmpegFile 弹出系统原生文件选择器，选取 ffmpeg 可执行文件。
+func (s *AppService) PickFFmpegFile() (string, error) {
+	if s.app == nil {
+		return "", fmt.Errorf("桌面上下文未初始化")
+	}
+	dialog := s.app.Dialog.OpenFile().
+		CanChooseFiles(true).
+		CanChooseDirectories(false)
+	return dialog.PromptForSingleSelection()
+}
+
 // OpenInFileManager 在系统访达或文件资源管理器中定位文件，包含路径存在性检查与防注入清洗。
 func (s *AppService) OpenInFileManager(targetPath string) error {
 	cleanPath := filepath.Clean(strings.TrimSpace(targetPath))
@@ -515,6 +543,11 @@ func (s *AppService) GetAppInfo() AppInfo {
 	}
 }
 
+// OpenProjectWebsite 在系统默认浏览器中打开项目主页，避免桌面内嵌页面拦截新窗口。
+func (s *AppService) OpenProjectWebsite() error {
+	return s.app.Browser.OpenURL("https://github.com/ixugo/lark-studio")
+}
+
 // ConfigDTO 配置传输对象。
 type ConfigDTO struct {
 	Pipeline conf.Pipeline `json:"pipeline"`
@@ -540,6 +573,12 @@ func (s *AppService) GetConfig() ConfigDTO {
 	c := s.bc
 	pipe := c.Pipeline
 	pipe.DefaultOutputDir = conf.TaskOutputDir(pipe.DefaultOutputDir)
+	if strings.TrimSpace(pipe.FFmpegBin) == "" {
+		pipe.FFmpegBin = "ffmpeg"
+	}
+	if strings.TrimSpace(pipe.DefaultTargetLang) == "" {
+		pipe.DefaultTargetLang = "zh-CN"
+	}
 	return ConfigDTO{
 		Pipeline: pipe,
 		LLM: LLMDTO{

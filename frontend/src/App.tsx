@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Sidebar, TabKey } from './components/layout/Sidebar';
 import { DashboardView } from './views/DashboardView';
 import { TaskBoardView } from './views/TaskBoardView';
-import { TaskListView } from './views/TaskListView';
 import { SettingsView } from './views/SettingsView';
 import { GlossaryView } from './views/GlossaryView';
 import { SubtitleMergeView } from './views/SubtitleMergeView';
@@ -63,8 +62,6 @@ export const AppContent: React.FC = () => {
         return null;
       case 'board':
         return <TaskBoardView />;
-      case 'list':
-        return <TaskListView />;
       case 'merge':
         return <SubtitleMergeView onTaskCreated={() => setCurrentTab('board')} />;
       case 'translation-engine':
@@ -93,15 +90,19 @@ export const AppContent: React.FC = () => {
         onToggleTheme={toggleTheme}
         runningTasksCount={runningCount}
       />
-      <main className="flex-1 h-screen overflow-hidden bg-[#F5F5F7] dark:bg-[#121215]">
-        <div className={currentTab === 'dashboard' ? 'h-full' : 'hidden'}>
-          <DashboardView
-            active={currentTab === 'dashboard'}
-            onTaskCreated={() => setCurrentTab('board')}
-            onConfigureASR={() => setCurrentTab('asr-engine')}
-          />
+      <main className="flex-1 h-screen overflow-hidden bg-[#F5F5F7] dark:bg-[#121215] flex flex-col">
+        {/* macOS 原生窗口拖拽区 */}
+        <div className="h-7 w-full shrink-0 wails-drag" />
+        <div className="flex-1 overflow-hidden">
+          <div className={currentTab === 'dashboard' ? 'h-full' : 'hidden'}>
+            <DashboardView
+              active={currentTab === 'dashboard'}
+              onTaskCreated={() => setCurrentTab('board')}
+              onConfigureASR={() => setCurrentTab('asr-engine')}
+            />
+          </div>
+          {currentTab !== 'dashboard' && renderContent()}
         </div>
-        {currentTab !== 'dashboard' && renderContent()}
       </main>
     </div>
   );

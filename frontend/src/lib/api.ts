@@ -39,6 +39,8 @@ declare global {
           ResumeTask: (id: string) => Promise<void>;
           DeleteTask: (id: string) => Promise<void>;
           PickFiles: () => Promise<string[]>;
+          PickDirectory: () => Promise<string>;
+          PickFFmpegFile: () => Promise<string>;
           OpenInFileManager: (path: string) => Promise<void>;
           GetConfig: () => Promise<ConfigDTO>;
           UpdateConfig: (updates: Record<string, unknown>) => Promise<void>;
@@ -58,7 +60,7 @@ let mockTasks: Task[] = [
     created_at: new Date(Date.now() - 3600000).toISOString(),
     updated_at: new Date().toISOString(),
     input_path: 'sample-media/OpenAI_DevDay_Keynote.mp4',
-    output_dir: 'sample-output/OpenAI_DevDay_Keynote_vdub',
+    output_dir: 'sample-output/OpenAI_DevDay_Keynote_lark_studio',
     mode: 3,
     status: 1,
     current_step: 'translate',
@@ -79,7 +81,7 @@ let mockTasks: Task[] = [
     created_at: new Date(Date.now() - 86400000).toISOString(),
     updated_at: new Date(Date.now() - 85000000).toISOString(),
     input_path: 'sample-media/WWDC_VisionPro_Demo.mp4',
-    output_dir: 'sample-output/WWDC_VisionPro_Demo_vdub',
+    output_dir: 'sample-output/WWDC_VisionPro_Demo_lark_studio',
     mode: 2,
     status: 3,
     current_step: 'burn',
@@ -225,6 +227,11 @@ export const api = {
     return t;
   },
 
+  async openProjectWebsite(): Promise<void> {
+    const res = await invokeWailsMethod<void>('OpenProjectWebsite');
+    if (!res.called) window.open('https://github.com/ixugo/lark-studio', '_blank');
+  },
+
   async listTaskLogs(id: string): Promise<TaskLog[]> {
     const res = await invokeWailsMethod<TaskLog[]>('ListTaskLogs', id);
     if (res.called && res.result) return res.result;
@@ -245,7 +252,7 @@ export const api = {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       input_path: input.input_path,
-      output_dir: input.output_dir || `${input.input_path}_vdub`,
+      output_dir: input.output_dir || `${input.input_path}_lark_studio`,
       mode: input.mode,
       status: 1,
       current_step: 'whisper',
@@ -309,10 +316,13 @@ export const api = {
             current_step: opts.from_step,
             current_detail: `重跑节点: ${opts.from_step}`,
             ...(opts.mode ? { mode: opts.mode } : {}),
+            ...(opts.source_lang ? { source_lang: opts.source_lang } : {}),
             ...(opts.speech_rate ? { speech_rate: opts.speech_rate } : {}),
             ...(opts.tts_voice ? { tts_voice: opts.tts_voice } : {}),
+            ...(opts.tts_engine ? { tts_engine: opts.tts_engine } : {}),
             ...(opts.subtitle_output ? { subtitle_output: opts.subtitle_output } : {}),
             ...(opts.target_lang ? { target_lang: opts.target_lang } : {}),
+            ...(opts.translator ? { translator: opts.translator } : {}),
             ...(opts.output_content ? { output_content: opts.output_content } : {}),
             ...(opts.recipe_name ? { recipe_name: opts.recipe_name } : {}),
           }
@@ -387,6 +397,7 @@ export const api = {
     secondary_sub_path?: string;
     output_dir?: string;
     output_content?: string;
+    subtitle_output?: string;
   }): Promise<Task> {
     const res = await invokeWailsMethod<Task>('MergeSubtitle', input);
     if (res.called && res.result) return res.result;
@@ -396,7 +407,7 @@ export const api = {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       input_path: input.video_path,
-      output_dir: input.output_dir || `${input.video_path}_vdub`,
+      output_dir: input.output_dir || `${input.video_path}_lark_studio`,
       mode: 1,
       status: 1,
       current_step: 'burn',
@@ -410,7 +421,7 @@ export const api = {
       tts_engine: 'edge',
       tts_voice: '',
       speech_rate: 1.0,
-      subtitle_output: 'burn',
+      subtitle_output: input.subtitle_output || 'soft',
     };
     mockTasks = [newTask, ...mockTasks];
     return newTask;
@@ -459,7 +470,7 @@ export const api = {
     const res = await invokeWailsMethod<import('../types').RecipeItem[]>('ListRecipes');
     if (res.called && res.result) return res.result;
     try {
-      const saved = localStorage.getItem('vdub_custom_recipes');
+      const saved = localStorage.getItem('lark_custom_recipes') || localStorage.getItem('vdub_custom_recipes');
       if (saved) {
         const parsed = JSON.parse(saved);
         return parsed.map((p: any) => ({
@@ -574,8 +585,26 @@ export const api = {
     return '测试连通成功！延迟 128ms';
   },
 
+  async pickDirectory(): Promise<string> {
+    const res = await invokeWailsMethod<string>('PickDirectory');
+    if (res.called && res.result) return res.result;
+    return '';
+  },
+
+  async pickFFmpegFile(): Promise<string> {
+    const res = await invokeWailsMethod<string>('PickFFmpegFile');
+    if (res.called && res.result) return res.result;
+    return '';
+  },
+
   async testOpenAITTS(baseUrl: string, apiKey: string, model: string, voice: string, text: string): Promise<string> {
     const res = await invokeWailsMethod<string>('TestOpenAITTS', baseUrl, apiKey, model, voice, text);
+    if (res.called && res.result) return res.result;
+    throw new Error('TTS试听需要在桌面应用中运行');
+  },
+
+  async testEdgeTTS(voice: string, text: string): Promise<string> {
+    const res = await invokeWailsMethod<string>('TestEdgeTTS', voice, text);
     if (res.called && res.result) return res.result;
     throw new Error('TTS试听需要在桌面应用中运行');
   },
