@@ -848,14 +848,14 @@ func (s *AppService) SetActiveWhisperModel(nameOrPath string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	targetPath := nameOrPath
-	// 若传入的是简明模型名如 large-v3-turbo，转换为统一 models 目录的绝对路径。
-	if !strings.ContainsRune(nameOrPath, filepath.Separator) {
-		targetPath = api.ModelPath(nameOrPath)
+	targetPath, err := whisperadapter.ResolveModel(nameOrPath)
+	if err != nil {
+		return err
 	}
-
+	previousModel := s.bc.Pipeline.WhisperModel
 	s.bc.Pipeline.WhisperModel = targetPath
 	if err := conf.WriteConfig(s.bc, s.bc.Runtime.ConfigPath); err != nil {
+		s.bc.Pipeline.WhisperModel = previousModel
 		return err
 	}
 	if s.asrRouter != nil {

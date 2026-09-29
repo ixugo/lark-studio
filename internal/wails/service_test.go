@@ -188,3 +188,26 @@ func TestPrepareTaskInput(t *testing.T) {
 func TestWailsServiceBindings(t *testing.T) {
 	_ = events.Common.WindowFilesDropped
 }
+
+func TestSetActiveWhisperModelRejectsInvalidSelection(t *testing.T) {
+	for _, model := range []string{"", "/missing/ggml-tiny.bin", "/models/ggml-silero-v6.2.0.bin"} {
+		t.Run(model, func(t *testing.T) {
+			bc := conf.Bootstrap{Pipeline: conf.Pipeline{WhisperModel: "previous"}, Runtime: conf.Runtime{ConfigPath: filepath.Join(t.TempDir(), "config.toml")}}
+			err := (&AppService{bc: &bc}).SetActiveWhisperModel(model)
+			if err == nil || bc.Pipeline.WhisperModel != "previous" {
+				t.Fatalf("无效模型被接受或污染配置: err=%v model=%s", err, bc.Pipeline.WhisperModel)
+			}
+		})
+	}
+}
+
+func TestSetActiveWhisperModelRollsBackFailedSave(t *testing.T) {
+	model := filepath.Join(t.TempDir(), "custom.bin")
+	if err := os.WriteFile(model, []byte("model fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	bc := conf.Bootstrap{Pipeline: conf.Pipeline{WhisperModel: "previous"}, Runtime: conf.Runtime{ConfigPath: filepath.Join(t.TempDir(), "missing", "config.toml")}}
+	if err := (&AppService{bc: &bc}).SetActiveWhisperModel(model); err == nil || bc.Pipeline.WhisperModel != "previous" {
+		t.Fatalf("保存失败时未回滚: err=%v model=%s", err, bc.Pipeline.WhisperModel)
+	}
+}

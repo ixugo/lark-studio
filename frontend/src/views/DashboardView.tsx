@@ -17,9 +17,10 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { api } from '../lib/api';
-import { TaskMode, WhisperModelItem } from '../types';
+import { TaskMode } from '../types';
 import { useTranslation } from '../i18n';
 import { EDGE_TTS_VOICES, normalizeTtsVoice, TtsEngine } from '../lib/ttsVoices';
+import { whisperModelChoices, selectWhisperModel, configuredWhisperModel, WhisperModelChoice } from '../lib/whisperModels';
 import { loadWorkbenchDraft, saveWorkbenchDraft } from '../lib/workbenchDraft';
 
 declare global {
@@ -230,39 +231,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, act
   const [doVideo, setDoVideo] = useState(initialDraft.doVideo ?? true);
 
   // 子阶段 1：字幕与翻译配置
-  const cleanModelDisplayName = (name: string) => {
-    return name.replace(/^Whisper(\.cpp)?\s*/i, '').trim();
-  };
-
-  const [whisperModel, setWhisperModel] = useState(initialDraft.whisperModel || 'large-v3-turbo');
-  const [downloadedWhisperModels, setDownloadedWhisperModels] = useState<WhisperModelItem[]>([]);
+  const [whisperModel, setWhisperModel] = useState(initialDraft.whisperModel || '');
+  const [downloadedWhisperModels, setDownloadedWhisperModels] = useState<WhisperModelChoice[]>([]);
   const [loadingModels, setLoadingModels] = useState(true);
 
   useEffect(() => {
-    let active = true;
+    if (!active) return;
+    let mounted = true;
     Promise.all([
       api.getConfig().catch(() => null),
       api.listWhisperModels().catch(() => []),
     ]).then(([config, items]) => {
-      if (!active) return;
-      const ready = (items || []).filter((m) => m.downloaded);
+      if (!mounted) return;
+      const configuredModel = configuredWhisperModel(config?.pipeline);
+      const ready = whisperModelChoices(items || [], configuredModel);
       setDownloadedWhisperModels(ready);
       setLoadingModels(false);
-      if (!config) return;
+      setWhisperModel((selection) => selectWhisperModel(selection, configuredModel, ready));
+    }).finally(() => {
+      if (mounted) setLoadingModels(false);
+    });
+    return () => { mounted = false; };
+  }, [active]);
 
-      const configuredModel = config.pipeline?.whisper_model?.trim() || '';
-      const modelFile = configuredModel.split(/[\\/]/).pop() || '';
-      const modelName = cleanModelDisplayName(modelFile.replace(/^ggml-/i, '').replace(/\.bin$/i, ''));
-      const configuredMatch = ready.find((m) =>
-        m.path === configuredModel || cleanModelDisplayName(m.name) === modelName,
-      );
-      const fallbackModel = ready.find((m) => cleanModelDisplayName(m.name).includes('large-v3-turbo')) || ready[0];
-      if (!initialDraft.whisperModel) {
-        setWhisperModel(configuredMatch
-          ? cleanModelDisplayName(configuredMatch.name)
-          : configuredModel || (fallbackModel ? cleanModelDisplayName(fallbackModel.name) : 'large-v3-turbo'));
-      }
-
+  useEffect(() => {
+    api.getConfig().then((config) => {
       if (!initialDraft.targetLang && config.pipeline?.default_target_lang) {
         setTargetLang(config.pipeline.default_target_lang);
       }
@@ -277,10 +270,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, act
       if (!initialDraft.ttsVoice) {
         setTtsVoice(normalizeTtsVoice(preferredTtsEngine, config.tts?.voice));
       }
-    }).finally(() => {
-      if (active) setLoadingModels(false);
-    });
-    return () => { active = false; };
+    }).catch(console.error);
   }, []);
 
   const [videoLang, setVideoLang] = useState(initialDraft.videoLang || 'auto');
@@ -613,6 +603,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, act
     const finalTranslator = translateService === 'local' ? 'openai' : translateService;
 
     try {
+      if (doSub) {
+        const config = await api.getConfig();
+        if (config.pipeline.whisper_mode !== 'openai') {
+          if (!whisperModel) throw new Error(t('dashboard.noWhisperModel', '请选择已下载的识别模型，或在语音识别设置中配置自定义模型路径'));
+          await api.setActiveWhisperModel(whisperModel);
+        }
+      }
       if (selectedFiles.length === 1) {
         await api.createTask({
           input_path: selectedFiles[0],
@@ -1166,22 +1163,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, act
                   className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {downloadedWhisperModels.length === 0 ? (
-                    <option value={whisperModel}>
+                    <option value="">
                       {loadingModels
                         ? t('dashboard.loadingModels', '正在加载可用模型...')
-                        : whisperModel !== 'large-v3-turbo'
-                          ? whisperModel.split(/[\\/]/).pop()
-                          : t('dashboard.noDownloadedModels', '暂无已下载模型 (请前往语音引擎下载)')}
+                        : t('dashboard.noDownloadedModels', '暂无已下载模型 (请前往语音引擎下载)')}
                     </option>
                   ) : (
-                    downloadedWhisperModels.map((m) => {
-                      const cleanName = cleanModelDisplayName(m.name);
-                      return (
-                        <option key={m.name} value={cleanName}>
-                          {cleanName}
-                        </option>
-                      );
-                    })
+                    downloadedWhisperModels.map((model) => (
+                      <option key={model.path} value={model.path} title={model.path}>
+                        {model.custom ? `${t('dashboard.customModel', '自定义')} · ` : ''}{model.name}
+                      </option>
+                    ))
                   )}
                 </select>
                 <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />

@@ -152,6 +152,8 @@ export const en: TranslationKeys = {
     autoDetect: 'Auto Detect',
     loadingModels: 'Loading available models...',
     noDownloadedModels: 'No downloaded models (download in Speech to Text engine)',
+    customModel: 'Custom',
+    noWhisperModel: 'Select a downloaded speech model or configure a custom model path in Speech to Text settings.',
     goalVideoProduct: 'Video Product',
     goalVoiceover: 'AI Voiceover',
     goalBilingualSub: 'Bilingual Subtitles',

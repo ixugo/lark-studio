@@ -61,6 +61,13 @@ func (r *Runner) Transcribe(
 	onProgress func(int),
 	onLog func(string),
 ) error {
+	model, err := ResolveModel(r.model)
+	if err != nil {
+		return err
+	}
+	if onLog != nil {
+		onLog("语音识别模型：" + model)
+	}
 	if lang == "" {
 		lang = "auto"
 	}
@@ -71,7 +78,7 @@ func (r *Runner) Transcribe(
 
 	outputBase := strings.TrimSuffix(outputSRT, filepath.Ext(outputSRT))
 	args := []string{
-		"-m", r.model,
+		"-m", model,
 		"-f", audioPath,
 		"-l", lang,
 		"--output-srt",

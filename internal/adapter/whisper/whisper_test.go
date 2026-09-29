@@ -2,6 +2,9 @@ package whisper
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -70,5 +73,44 @@ func TestNotifyWhisperOutputClampsProgress(t *testing.T) {
 	)
 	if progress != 100 || logLine != "听写进度 100%" {
 		t.Fatalf("progress=%d log=%q", progress, logLine)
+	}
+}
+
+func TestTranscribeRejectsInvalidModelBeforeStartingProcess(t *testing.T) {
+	for _, model := range []string{"", "/missing/ggml-tiny.bin", "/models/ggml-silero-v6.2.0.bin", t.TempDir(), strings.Repeat("x", maxModelPathLength+1)} {
+		t.Run(model, func(t *testing.T) {
+			marker := filepath.Join(t.TempDir(), "launched")
+			binary := filepath.Join(t.TempDir(), "whisper-test")
+			if err := os.WriteFile(binary, []byte("#!/bin/sh\ntouch '"+marker+"'\n"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			err := (&Runner{bin: binary, model: model}).Transcribe(t.Context(), "audio.wav", "output.srt", "auto", nil, nil)
+			if err == nil || strings.Contains(err.Error(), "whisper.cpp 执行失败") {
+				t.Fatalf("应在启动前报告模型错误: %v", err)
+			}
+			if _, err := os.Stat(marker); !os.IsNotExist(err) {
+				t.Fatalf("无效模型启动了进程: %v", err)
+			}
+		})
+	}
+}
+
+func TestTranscribeUsesResolvedCustomModelPath(t *testing.T) {
+	dir := t.TempDir()
+	model := filepath.Join(dir, "custom-whisper.bin")
+	if err := os.WriteFile(model, []byte("model fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(dir, "whisper-test")
+	script := "#!/bin/sh\n[ \"$1\" = '-m' ] && [ \"$2\" = " + "'" + model + "'" + " ] || exit 2\n"
+	if err := os.WriteFile(binary, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	var logs []string
+	if err := NewRunner(binary, model).Transcribe(t.Context(), "audio.wav", filepath.Join(dir, "out.srt"), "auto", nil, func(line string) { logs = append(logs, line) }); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(logs, "\n"), model) {
+		t.Fatalf("日志缺少实际识别模型路径: %v", logs)
 	}
 }

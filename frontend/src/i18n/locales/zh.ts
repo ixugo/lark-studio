@@ -150,6 +150,8 @@ export const zh = {
     autoDetect: '自动检测',
     loadingModels: '正在加载可用模型...',
     noDownloadedModels: '暂无已下载模型 (请前往语音引擎下载)',
+    customModel: '自定义',
+    noWhisperModel: '请选择已下载的识别模型，或在语音识别设置中配置自定义模型路径',
     goalVideoProduct: '成品视频',
     goalVoiceover: 'AI配音',
     goalBilingualSub: '双语字幕',
