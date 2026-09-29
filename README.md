@@ -10,6 +10,8 @@
 
 lark-studio brings speech recognition, subtitle translation, speech synthesis, and video composition into one desktop application. Turn video or audio into subtitles, translate existing text, generate narration, or combine these steps into a complete dubbing workflow.
 
+![demo](./docs/lark.gif)
+
 ## What you can do
 
 - **Create subtitles from speech.** Transcribe video and audio with local Whisper.cpp models or an OpenAI-compatible transcription service.
