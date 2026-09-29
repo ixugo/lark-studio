@@ -459,9 +459,16 @@ func runFFmpegWithProgress(
 	scanner.Split(scanFFmpegOutput)
 
 	frameProgressCount := 0
+	var recentStderr []string
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line != "" {
+			if !isFFmpegProgressLine(line) {
+				recentStderr = append(recentStderr, line)
+				if len(recentStderr) > 6 {
+					recentStderr = recentStderr[len(recentStderr)-6:]
+				}
+			}
 			if logFn != nil {
 				// 对 frame=/size= 等高频进度输出做降采样：每 10 条仅输出 1 条，非进度类（错误、配置、元数据等）则全量保留
 				if isFFmpegProgressLine(line) {
@@ -481,6 +488,12 @@ func runFFmpegWithProgress(
 		return fmt.Errorf("读取 ffmpeg 输出失败: %w", err)
 	}
 	if err := cmd.Wait(); err != nil {
+		if len(recentStderr) > 0 {
+			return fmt.Errorf("%w: %s", err, strings.Join(recentStderr, " \n "))
+		}
+		if strings.Contains(err.Error(), "killed") {
+			return fmt.Errorf("%w (进程遭系统拦截杀死，请检查可执行文件权限或安全设置)", err)
+		}
 		return err
 	}
 	return nil
