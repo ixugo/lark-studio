@@ -22,47 +22,49 @@ type Bootstrap struct {
 
 // Pipeline 流水线处理配置
 type Pipeline struct {
-	Workers            int     `comment:"并行 worker 数量"`
+	Workers            int     `comment:"并行 worker 数量" json:"workers"`
 	WhisperMode        string  `comment:"ASR 引擎: whisper-cpp / openai" json:"whisper_mode"`
-	WhisperBin         string  `comment:"whisper.cpp 可执行文件路径（留空优先使用应用内嵌运行时）"`
+	WhisperBin         string  `comment:"whisper.cpp 可执行文件路径（留空优先使用应用内嵌运行时）" json:"whisper_bin"`
 	WhisperModel       string  `comment:"whisper ggml 模型文件路径" json:"whisper_model"`
 	ASRBaseURL         string  `comment:"OpenAI 兼容 ASR API 基础地址" json:"asr_base_url"`
 	ASRAPIKey          string  `comment:"OpenAI 兼容 ASR API 密钥" json:"asr_api_key"`
 	ASRModel           string  `comment:"OpenAI 兼容 ASR 模型名称" json:"asr_model"`
-	FFmpegBin          string  `comment:"ffmpeg 路径（空则使用 PATH 中的）"`
-	DefaultOutputDir   string  `comment:"默认输出目录"`
-	DefaultTargetLang  string  `comment:"默认目标语言"`
-	TranslatePrompt    string  `comment:"自定义翻译系统提示词（留空使用内置默认）"`
-	MaxSpeedFactor     float64 `comment:"TTS 调速上限（0 或 ≤1 不调速，推荐 1.2~1.3）"`
-	TranslateChunkSize int     `comment:"每次发给 LLM 的句子数（5~20，默认 10）"`
-	TTSWorkers         int     `comment:"TTS 并发协程数（1~4，默认 2）"`
-	CleanIntermediate  bool    `comment:"处理完成后删除中间产物（raw.mp3/audio_segs 等）"`
-	SubtitleOutput     string  `comment:"字幕输出方式: soft(软字幕流复制秒级完成，推荐) / burn(烧录画面) / none(无字幕)"`
+	FFmpegBin          string  `comment:"ffmpeg 路径（空则使用 PATH 中的）" json:"ffmpeg_bin"`
+	DefaultOutputDir   string  `comment:"默认输出目录" json:"default_output_dir"`
+	DefaultTargetLang  string  `comment:"默认目标语言" json:"default_target_lang"`
+	TranslatePrompt    string  `comment:"自定义翻译系统提示词（留空使用内置默认）" json:"translate_prompt"`
+	MaxSpeedFactor     float64 `comment:"TTS 调速上限（0 或 ≤1 不调速，推荐 1.2~1.3）" json:"max_speed_factor"`
+	TranslateChunkSize int     `comment:"每次发给 LLM 的句子数（5~20，默认 10）" json:"translate_chunk_size"`
+	TTSWorkers         int     `comment:"TTS 并发协程数（1~4，默认 2）" json:"tts_workers"`
+	CleanIntermediate  bool    `comment:"处理完成后删除中间产物（raw.mp3/audio_segs 等）" json:"clean_intermediate"`
+	SubtitleOutput     string  `comment:"字幕输出方式: soft(软字幕流复制秒级完成，推荐) / burn(烧录画面) / none(无字幕)" json:"subtitle_output"`
 }
 
 // LLM 大模型配置
 type LLM struct {
-	Provider  string `comment:"翻译服务: google / bing / deeplx / openai"`
-	BaseURL   string `comment:"OpenAI 兼容 API 地址"`
-	APIKey    string `comment:"API 密钥"`
-	Model     string `comment:"模型名称"`
-	DeepLXURL string `comment:"DeepLX 自建接口地址"`
+	Provider  string `comment:"翻译服务: google / bing / deeplx / openai" json:"provider"`
+	BaseURL   string `comment:"OpenAI 兼容 API 地址" json:"base_url"`
+	APIKey    string `comment:"API 密钥" json:"api_key"`
+	Model     string `comment:"模型名称" json:"model"`
+	DeepLXURL string `comment:"DeepLX 自建接口地址" json:"deeplx_url"`
 }
 
 // TTS 语音合成配置
 type TTS struct {
-	Type    string `comment:"TTS 类型: edge / openai"`
-	Voice   string `comment:"默认语音"`
-	BaseURL string `comment:"OpenAI TTS API 地址（Type=openai 时生效）"`
-	APIKey  string `comment:"OpenAI TTS API 密钥"`
-	Model   string `comment:"OpenAI TTS 模型名"`
+	EdgeVoice   string `comment:"Edge TTS 音色" json:"edge_voice"`
+	OpenAIVoice string `comment:"OpenAI 兼容 TTS 音色" json:"openai_voice"`
+	Type        string `comment:"TTS 类型: edge / openai" json:"type"`
+	Voice       string `comment:"默认语音" json:"voice"`
+	BaseURL     string `comment:"OpenAI TTS API 地址（Type=openai 时生效）" json:"base_url"`
+	APIKey      string `comment:"OpenAI TTS API 密钥" json:"api_key"`
+	Model       string `comment:"OpenAI TTS 模型名" json:"model"`
 }
 
 // LipSync 对口型（唇形同步）配置
 type LipSync struct {
-	Enabled bool   `comment:"是否启用对口型（MuseTalk），仅 ModeDub 生效"`
-	BaseURL string `comment:"MuseTalk API 地址"`
-	APIKey  string `comment:"API 密钥（部分服务需要）"`
+	Enabled bool   `comment:"是否启用对口型（MuseTalk），仅 ModeDub 生效" json:"enabled"`
+	BaseURL string `comment:"MuseTalk API 地址" json:"base_url"`
+	APIKey  string `comment:"API 密钥（部分服务需要）" json:"api_key"`
 }
 
 type Runtime struct {

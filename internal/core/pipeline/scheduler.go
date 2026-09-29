@@ -107,6 +107,11 @@ func (s *Scheduler) Notifier() Notifier {
 	return nil
 }
 
+// SetTTSConfig 将保存的配音端点用于后续合成请求。
+func (s *Scheduler) SetTTSConfig(engine, voice, baseURL, apiKey, model string) {
+	s.core.SetTTSConfig(engine, voice, baseURL, apiKey, model)
+}
+
 // SetTranslationClient 切换新任务使用的翻译客户端与语义分句状态。
 func (s *Scheduler) SetTranslationClient(client LLMClient, splitReady bool) {
 	s.core.SetTranslationClient(client, splitReady)

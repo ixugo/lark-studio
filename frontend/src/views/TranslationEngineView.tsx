@@ -1,3 +1,4 @@
+import { configFormUpdates } from '../lib/configForms';
 import React, { useEffect, useState } from 'react';
 import {
   Globe,
@@ -128,11 +129,7 @@ export const TranslationEngineView: React.FC = () => {
         },
       };
 
-      await api.updateConfig({
-        pipeline: updatedConfig.pipeline,
-        llm: updatedConfig.llm,
-        tts: updatedConfig.tts,
-      });
+      await api.updateConfig(configFormUpdates('translation', updatedConfig));
 
       setConfig(updatedConfig);
     } catch (err) {
@@ -144,14 +141,7 @@ export const TranslationEngineView: React.FC = () => {
 
   const handleSetDefault = (engineId: 'bing' | 'google' | 'openai') => {
     if (!config) return;
-    setConfig({
-      ...config,
-      llm: {
-        ...config.llm,
-        provider: engineId,
-      },
-    });
-    handleSave(engineId);
+    void handleSave(engineId);
   };
 
   if (!config) {

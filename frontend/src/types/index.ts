@@ -109,6 +109,8 @@ export interface ConfigDTO {
   tts: {
     type: string;
     voice: string;
+    edge_voice?: string;
+    openai_voice?: string;
     base_url: string;
     api_key: string;
     model: string;

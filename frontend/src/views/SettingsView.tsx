@@ -1,3 +1,4 @@
+import { configFormUpdates } from '../lib/configForms';
 import React, { useEffect, useState } from 'react';
 import {
   Save,
@@ -78,11 +79,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
     setLoading(true);
     setErrorMsg(null);
     try {
-      await api.updateConfig({
-        pipeline: config.pipeline,
-        llm: config.llm,
-        tts: config.tts,
-      });
+      await api.updateConfig(configFormUpdates('settings', config));
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 2500);
     } catch (err) {

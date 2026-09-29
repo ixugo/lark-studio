@@ -560,15 +560,17 @@ func (s *AppService) UpdateConfig(updates map[string]any) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	c := s.bc
-	previousPipeline := c.Pipeline
-	previousLLM := c.LLM
+	next := *s.bc
+	c := &next
 	if p, ok := updates["pipeline"].(map[string]any); ok {
 		if v, ok := p["whisper_mode"].(string); ok {
 			c.Pipeline.WhisperMode = v
 		}
 		if v, ok := p["workers"].(float64); ok {
 			c.Pipeline.Workers = int(v)
+		}
+		if v, ok := p["whisper_bin"].(string); ok {
+			c.Pipeline.WhisperBin = v
 		}
 		if v, ok := p["whisper_model"].(string); ok {
 			c.Pipeline.WhisperModel = v
@@ -587,6 +589,24 @@ func (s *AppService) UpdateConfig(updates map[string]any) error {
 		}
 		if v, ok := p["default_target_lang"].(string); ok {
 			c.Pipeline.DefaultTargetLang = v
+		}
+		if v, ok := p["default_output_dir"].(string); ok {
+			c.Pipeline.DefaultOutputDir = v
+		}
+		if v, ok := p["translate_prompt"].(string); ok {
+			c.Pipeline.TranslatePrompt = v
+		}
+		if v, ok := p["max_speed_factor"].(float64); ok {
+			c.Pipeline.MaxSpeedFactor = v
+		}
+		if v, ok := p["translate_chunk_size"].(float64); ok {
+			c.Pipeline.TranslateChunkSize = int(v)
+		}
+		if v, ok := p["tts_workers"].(float64); ok {
+			c.Pipeline.TTSWorkers = int(v)
+		}
+		if v, ok := p["clean_intermediate"].(bool); ok {
+			c.Pipeline.CleanIntermediate = v
 		}
 		if v, ok := p["subtitle_output"].(string); ok {
 			c.Pipeline.SubtitleOutput = v
@@ -615,6 +635,12 @@ func (s *AppService) UpdateConfig(updates map[string]any) error {
 	}
 
 	if t, ok := updates["tts"].(map[string]any); ok {
+		if v, ok := t["edge_voice"].(string); ok {
+			c.TTS.EdgeVoice = v
+		}
+		if v, ok := t["openai_voice"].(string); ok {
+			c.TTS.OpenAIVoice = v
+		}
 		if v, ok := t["type"].(string); ok {
 			c.TTS.Type = v
 		}
@@ -632,21 +658,31 @@ func (s *AppService) UpdateConfig(updates map[string]any) error {
 		}
 	}
 
+	if ls, ok := updates["lip_sync"].(map[string]any); ok {
+		if v, ok := ls["enabled"].(bool); ok {
+			c.LipSync.Enabled = v
+		}
+		if v, ok := ls["base_url"].(string); ok {
+			c.LipSync.BaseURL = v
+		}
+		if v, ok := ls["api_key"].(string); ok {
+			c.LipSync.APIKey = v
+		}
+	}
+
 	config := asrConfigFromPipeline(c.Pipeline)
 	if err := asradapter.ValidateConfig(config); err != nil {
-		c.Pipeline = previousPipeline
-		c.LLM = previousLLM
 		return err
 	}
 	if err := conf.WriteConfig(c, c.Runtime.ConfigPath); err != nil {
-		c.Pipeline = previousPipeline
-		c.LLM = previousLLM
 		return err
 	}
+	*s.bc = next
 	if s.asrRouter != nil {
 		s.asrRouter.SetConfig(config)
 	}
 	if s.scheduler != nil {
+		s.scheduler.SetTTSConfig(c.TTS.Type, c.TTS.Voice, c.TTS.BaseURL, c.TTS.APIKey, c.TTS.Model)
 		client := llmadapter.NewRoutingClient(c.LLM.BaseURL, c.LLM.APIKey, c.LLM.Model, c.LLM.Provider, c.LLM.DeepLXURL)
 		ready := strings.EqualFold(c.LLM.Provider, "openai") && strings.TrimSpace(c.LLM.BaseURL) != "" && strings.TrimSpace(c.LLM.Model) != ""
 		s.scheduler.SetTranslationClient(client, ready)

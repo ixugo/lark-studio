@@ -110,6 +110,15 @@ func (c *Core) SetTranslationClient(client LLMClient, splitReady bool) {
 	c.semanticSplitConfigured.Store(splitReady)
 }
 
+// SetTTSConfig 更新可热重载的配音路由器，保留正在执行的请求。
+func (c *Core) SetTTSConfig(engine, voice, baseURL, apiKey, model string) {
+	if router, ok := c.tts.(interface {
+		SetTTSConfig(string, string, string, string, string)
+	}); ok {
+		router.SetTTSConfig(engine, voice, baseURL, apiKey, model)
+	}
+}
+
 // WithTermLister 注入术语列表查询，翻译时自动将匹配术语写入 prompt
 func WithTermLister(tl TermLister) Option {
 	return func(c *Core) { c.termLister = tl }

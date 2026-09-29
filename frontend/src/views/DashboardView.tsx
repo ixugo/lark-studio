@@ -177,6 +177,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
 
   // 配方弹窗与提交状态
   const [recipeName, setRecipeName] = useState('');
+  const [recipeSaveError, setRecipeSaveError] = useState<string | null>(null);
+  const [savingRecipe, setSavingRecipe] = useState(false);
   const [showRecipeModal, setShowRecipeModal] = useState(false);
   const [recipeSavedToast, setRecipeSavedToast] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -532,7 +534,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
   };
 
   const handleSaveRecipe = async () => {
-    if (!recipeName.trim()) return;
+    if (!recipeName.trim() || savingRecipe) return;
+    setRecipeSaveError(null);
+    setSavingRecipe(true);
     const subtitleParts: string[] = [];
     if (doSub) subtitleParts.push(t('dashboard.stepWhisper', '听写转录'));
     if (doTranslate) subtitleParts.push(t('dashboard.stepTranslate', '翻译字幕'));
@@ -603,8 +607,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
         setCustomPresets((prev) => [newRecipe, ...prev]);
       }
     } catch (err) {
-      console.error('Failed to save recipe to SQLite database:', err);
-      setCustomPresets((prev) => [newRecipe, ...prev]);
+      setRecipeSaveError(err instanceof Error ? err.message : String(err));
+      return;
+    } finally {
+      setSavingRecipe(false);
     }
 
     setActivePreset(newRecipe.id);
@@ -1466,6 +1472,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
             <p className="text-xs text-slate-500 dark:text-slate-400">
               {t('dashboard.recipeModalDesc', '配方将持久化保存至服务端数据库，方便下次一键直接调用。')}
             </p>
+            {recipeSaveError && <p role="alert" className="text-xs text-rose-600">{recipeSaveError}</p>}
             <input
               type="text"
               placeholder={t('dashboard.recipeNamePlaceholder', '请输入配方名称，例如：科技视频精配方案')}
@@ -1484,7 +1491,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
               <button
                 type="button"
                 onClick={handleSaveRecipe}
-                disabled={!recipeName.trim()}
+                disabled={!recipeName.trim() || savingRecipe}
                 className="px-4 py-1.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 transition-colors"
               >
                 {t('dashboard.saveRecipeBtn', '保存配方')}

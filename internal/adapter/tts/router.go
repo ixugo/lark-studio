@@ -3,10 +3,12 @@ package tts
 import (
 	"context"
 	"fmt"
+	"sync"
 )
 
 // Router 按任务参数选择 Edge 或 OpenAI 配音。
 type Router struct {
+	mu            sync.RWMutex
 	defaultEngine string
 	edge          *EdgeTTS
 	openAI        *OpenAITTS
@@ -20,19 +22,26 @@ func NewRouter(
 	apiKey string,
 	model string,
 ) *Router {
+	r := &Router{}
+	r.SetTTSConfig(defaultEngine, voice, baseURL, apiKey, model)
+	return r
+}
+
+// SetTTSConfig 原子替换后续请求使用的端点，不等待正在进行的网络请求。
+func (r *Router) SetTTSConfig(defaultEngine, voice, baseURL, apiKey, model string) {
 	if defaultEngine == "" {
 		defaultEngine = "edge"
 	}
-	return &Router{
-		defaultEngine: defaultEngine,
-		edge:          NewEdgeTTS(voice),
-		openAI:        NewOpenAITTS(baseURL, apiKey, model, voice),
-	}
+	edge := NewEdgeTTS(voice)
+	openAI := NewOpenAITTS(baseURL, apiKey, model, voice)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.defaultEngine, r.edge, r.openAI = defaultEngine, edge, openAI
 }
 
 // Synthesize 使用全局默认引擎和正常语速，兼容基础流水线接口。
 func (r *Router) Synthesize(ctx context.Context, text, outputPath, voice string) error {
-	return r.SynthesizeWithOptions(ctx, text, outputPath, r.defaultEngine, voice, 1)
+	return r.SynthesizeWithOptions(ctx, text, outputPath, "", voice, 1)
 }
 
 // SynthesizeWithOptions 使用任务快照中的引擎、音色和语速。
@@ -44,14 +53,18 @@ func (r *Router) SynthesizeWithOptions(
 	voice string,
 	speed float64,
 ) error {
+	r.mu.RLock()
+	defaultEngine, edge, openAI := r.defaultEngine, r.edge, r.openAI
+	r.mu.RUnlock()
+
 	if engine == "" {
-		engine = r.defaultEngine
+		engine = defaultEngine
 	}
 	switch engine {
 	case "edge":
-		return r.edge.SynthesizeWithSpeed(ctx, text, outputPath, voice, speed)
+		return edge.SynthesizeWithSpeed(ctx, text, outputPath, voice, speed)
 	case "openai":
-		return r.openAI.SynthesizeWithSpeed(ctx, text, outputPath, voice, speed)
+		return openAI.SynthesizeWithSpeed(ctx, text, outputPath, voice, speed)
 	default:
 		return fmt.Errorf("不支持的配音引擎: %s", engine)
 	}

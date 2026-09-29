@@ -12,6 +12,8 @@ export const GlossaryView: React.FC = () => {
   const [source, setSource] = useState('');
   const [target, setTarget] = useState('');
   const [search, setSearch] = useState('');
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
@@ -32,14 +34,18 @@ export const GlossaryView: React.FC = () => {
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!source.trim() || !target.trim()) return;
+    if (!source.trim() || !target.trim() || saving) return;
+    setSaveError(null);
+    setSaving(true);
     try {
       await api.saveTerm(source.trim(), target.trim());
       setSource('');
       setTarget('');
       loadTerms();
     } catch (err) {
-      console.error('Failed to add term:', err);
+      setSaveError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -83,6 +89,8 @@ export const GlossaryView: React.FC = () => {
           />
         </div>
 
+        {saveError && <p role="alert" className="text-xs text-rose-600">{saveError}</p>}
+
         {/* 新增术语表单卡片 */}
         <form
           onSubmit={handleAdd}
@@ -104,6 +112,7 @@ export const GlossaryView: React.FC = () => {
           />
           <button
             type="submit"
+            disabled={saving}
             className="flex items-center space-x-1 bg-apple-accent hover:bg-apple-accentHover text-white px-4 py-1.5 rounded-lg text-xs font-semibold shrink-0"
           >
             <Plus size={14} />

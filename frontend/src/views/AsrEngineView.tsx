@@ -1,3 +1,4 @@
+import { configFormUpdates } from '../lib/configForms';
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   Cloud,
@@ -273,11 +274,7 @@ export const AsrEngineView: React.FC = () => {
         },
       };
 
-      await api.updateConfig({
-        pipeline: updatedConfig.pipeline,
-        llm: updatedConfig.llm,
-        tts: updatedConfig.tts,
-      });
+      await api.updateConfig(configFormUpdates('asr', updatedConfig));
 
       setConfig(updatedConfig);
       setSavedSuccess(true);
@@ -291,14 +288,7 @@ export const AsrEngineView: React.FC = () => {
 
   const handleSetDefault = (engineId: 'whisper-cpp' | 'openai') => {
     if (!config) return;
-    setConfig({
-      ...config,
-      pipeline: {
-        ...config.pipeline,
-        whisper_mode: engineId,
-      },
-    });
-    handleSave(engineId);
+    void handleSave(engineId);
   };
 
   if (!config) {

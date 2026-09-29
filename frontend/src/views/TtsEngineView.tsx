@@ -1,3 +1,4 @@
+import { configFormUpdates, ttsVoiceForEngine } from '../lib/configForms';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Volume2,
@@ -75,12 +76,13 @@ export const TtsEngineView: React.FC = () => {
         ...cfg,
         pipeline: {
           ...cfg.pipeline,
-          max_speed_factor: cfg.pipeline?.max_speed_factor ? cfg.pipeline.max_speed_factor : 1.2,
-          tts_workers: cfg.pipeline?.tts_workers ? cfg.pipeline.tts_workers : 2,
+          max_speed_factor: cfg.pipeline?.max_speed_factor ?? 1.2,
+          tts_workers: cfg.pipeline?.tts_workers ?? 2,
         },
         tts: {
           ...cfg.tts,
-          voice: normalizeTtsVoice(current, cfg.tts?.voice),
+          type: current,
+          voice: ttsVoiceForEngine(current, cfg.tts),
           model: cfg.tts?.model || 'tts-1',
         },
       };
@@ -100,16 +102,13 @@ export const TtsEngineView: React.FC = () => {
         ...config,
         tts: {
           ...config.tts,
-          voice: normalizeTtsVoice(targetType, config.tts.voice),
+          voice: normalizeTtsVoice(activeEngine, config.tts.voice),
+          [activeEngine === 'openai' ? 'openai_voice' : 'edge_voice']: normalizeTtsVoice(activeEngine, config.tts.voice),
           type: targetType,
         },
       };
 
-      await api.updateConfig({
-        pipeline: updatedConfig.pipeline,
-        llm: updatedConfig.llm,
-        tts: updatedConfig.tts,
-      });
+      await api.updateConfig(configFormUpdates('tts', config, activeEngine, targetType));
 
       setConfig(updatedConfig);
       setSavedSuccess(true);
@@ -123,14 +122,7 @@ export const TtsEngineView: React.FC = () => {
 
   const handleSetDefault = (engineId: 'edge' | 'openai') => {
     if (!config) return;
-    setConfig({
-      ...config,
-      tts: {
-        ...config.tts,
-        type: engineId,
-      },
-    });
-    handleSave(engineId);
+    void handleSave(engineId);
   };
 
   const handleSelectEngine = (engine: TtsEngine) => {
@@ -139,7 +131,8 @@ export const TtsEngineView: React.FC = () => {
       ...current,
       tts: {
         ...current.tts,
-        voice: normalizeTtsVoice(engine, current.tts.voice),
+        [activeEngine === 'openai' ? 'openai_voice' : 'edge_voice']: normalizeTtsVoice(activeEngine, current.tts.voice),
+        voice: ttsVoiceForEngine(engine, current.tts),
       },
     } : current);
   };
