@@ -160,6 +160,17 @@ func StudioDir() string {
 	return filepath.Join(home, ".lark-studio")
 }
 
+// DocumentsDir 返回用户系统的文档目录（macOS/Linux: ~/Documents，Windows: Documents）。
+func DocumentsDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "."
+	}
+	dir := filepath.Join(home, "Documents")
+	_ = os.MkdirAll(dir, 0o755)
+	return dir
+}
+
 // TasksDir 返回文档目录下的任务输出根目录。
 func TasksDir() string {
 	home, err := os.UserHomeDir()
