@@ -40,6 +40,9 @@ func TestPrepareTaskInputDefaultsToBing(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := conf.DefaultConfig()
+	cfg.Pipeline.WhisperMode = "openai"
+	cfg.Pipeline.ASRBaseURL = "http://localhost:8000/v1"
+	cfg.Pipeline.ASRModel = "test-model"
 	api := TaskAPI{conf: &cfg}
 	input := &task.CreateTaskInput{InputPath: inputPath, Mode: 2}
 
@@ -98,6 +101,9 @@ func TestPrepareTaskInputSnapshotsConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := conf.DefaultConfig()
+	cfg.Pipeline.WhisperMode = "openai"
+	cfg.Pipeline.ASRBaseURL = "http://localhost:8000/v1"
+	cfg.Pipeline.ASRModel = "test-model"
 	cfg.LLM.Provider = "deeplx"
 	cfg.TTS.Type = "openai"
 	cfg.TTS.Voice = "alloy"

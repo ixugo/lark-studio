@@ -9,6 +9,7 @@ export interface WorkbenchDraft {
   doTranslate: boolean;
   doDub: boolean;
   doVideo: boolean;
+  asrEngine?: '' | 'whisper-cpp' | 'openai';
   whisperModel: string;
   videoLang: string;
   targetLang: string;

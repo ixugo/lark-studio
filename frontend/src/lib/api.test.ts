@@ -65,3 +65,13 @@ describe('桌面试听错误传递', () => {
     await expect(api.testOpenAITTS('https://test.local', '', 'tts-1', 'alloy', 'hello')).resolves.toBe(audio);
   });
 });
+
+it('桌面连接未就绪时禁止用演示配置或演示任务兜底', async () => {
+  vi.stubGlobal('window', { location: { protocol: 'wails:' } });
+  try {
+    await expect(api.getConfig()).rejects.toThrow('未就绪');
+    await expect(api.createTask({ input_path: '/video.mp4', mode: 2 })).rejects.toThrow('未就绪');
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});

@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/ixugo/goddd/pkg/reason"
+	asradapter "github.com/ixugo/vdub/internal/adapter/asr"
 	"github.com/ixugo/vdub/internal/conf"
 	"github.com/ixugo/vdub/internal/core/pipeline"
 	"github.com/ixugo/vdub/internal/core/task"
@@ -120,8 +121,13 @@ func (a TaskAPI) prepareTaskInput(in *task.CreateTaskInput) error {
 	if _, err := os.Stat(in.InputPath); err != nil {
 		return reason.ErrBadRequest.SetMsg("输入文件不存在")
 	}
-	if in.Mode < pipeline.ModeSubtitle || in.Mode > pipeline.ModeDubOnly {
+	if in.Mode < pipeline.ModeSubtitle || in.Mode > pipeline.ModeTextTranslate {
 		return reason.ErrBadRequest.SetMsg("无效的处理模式")
+	}
+	p := a.conf.Pipeline
+	config := asradapter.Config{Engine: p.WhisperMode, WhisperModel: p.WhisperModel, BaseURL: p.ASRBaseURL, APIKey: p.ASRAPIKey, Model: p.ASRModel}
+	if err := pipeline.ValidateRecognitionConfig(in.InputPath, in.OutputDir, in.Mode, config); err != nil {
+		return reason.ErrBadRequest.SetMsg(err.Error())
 	}
 	if in.OutputDir == "" {
 		baseName := strings.TrimSuffix(filepath.Base(in.InputPath), filepath.Ext(in.InputPath))

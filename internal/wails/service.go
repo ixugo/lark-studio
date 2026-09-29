@@ -703,8 +703,14 @@ func (s *AppService) prepareTaskInput(in *task.CreateTaskInput) error {
 	if _, err := os.Stat(in.InputPath); err != nil {
 		return fmt.Errorf("输入文件不存在: %s", in.InputPath)
 	}
-	if in.Mode < pipeline.ModeSubtitle || in.Mode > pipeline.ModeDubOnly {
+	if in.Mode < pipeline.ModeSubtitle || in.Mode > pipeline.ModeTextTranslate {
 		in.Mode = pipeline.ModeDub
+	}
+	s.mu.RLock()
+	config := asrConfigFromPipeline(s.bc.Pipeline)
+	s.mu.RUnlock()
+	if err := pipeline.ValidateRecognitionConfig(in.InputPath, in.OutputDir, in.Mode, config); err != nil {
+		return err
 	}
 	if in.OutputDir == "" {
 		baseName := strings.TrimSuffix(filepath.Base(in.InputPath), filepath.Ext(in.InputPath))

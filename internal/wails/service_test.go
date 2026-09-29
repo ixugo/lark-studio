@@ -132,6 +132,9 @@ func TestPrepareTaskInput(t *testing.T) {
 	}
 
 	bc := conf.DefaultConfig()
+	bc.Pipeline.WhisperMode = "openai"
+	bc.Pipeline.ASRBaseURL = "http://localhost:8000/v1"
+	bc.Pipeline.ASRModel = "test-model"
 	bc.LLM.Provider = "bing"
 	svc := &AppService{bc: &bc}
 

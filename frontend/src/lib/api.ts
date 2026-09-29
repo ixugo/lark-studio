@@ -202,6 +202,9 @@ async function invokeWailsMethod<T>(methodName: string, ...args: unknown[]): Pro
     }
   }
 
+  if (window.location?.protocol === 'wails:' || window.wails?.Call?.ByName || window.go?.wails?.AppService) {
+    throw new Error('桌面服务尚未就绪，请稍后重试');
+  }
   return { called: false };
 }
 

@@ -21,6 +21,7 @@ import { TaskMode } from '../types';
 import { useTranslation } from '../i18n';
 import { EDGE_TTS_VOICES, normalizeTtsVoice, TtsEngine } from '../lib/ttsVoices';
 import { whisperModelChoices, selectWhisperModel, configuredWhisperModel, WhisperModelChoice } from '../lib/whisperModels';
+import { ASREngine, prepareASRSelection } from '../lib/asrSelection';
 import { loadWorkbenchDraft, saveWorkbenchDraft } from '../lib/workbenchDraft';
 
 declare global {
@@ -31,6 +32,7 @@ declare global {
 
 interface DashboardViewProps {
   onTaskCreated: () => void;
+  onConfigureASR: () => void;
   active?: boolean;
 }
 
@@ -125,7 +127,7 @@ const BUILTIN_PRESETS: WorkflowPreset[] = [
   },
 ];
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, active = true }) => {
+export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onConfigureASR, active = true }) => {
   const { t, locale } = useTranslation();
   const english = locale === 'en-US';
   const initialDraft = useMemo(loadWorkbenchDraft, []);
@@ -231,6 +233,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, act
   const [doVideo, setDoVideo] = useState(initialDraft.doVideo ?? true);
 
   // 子阶段 1：字幕与翻译配置
+  const [asrEngine, setAsrEngine] = useState<ASREngine>(initialDraft.asrEngine ?? '');
+  const [asrWarning, setAsrWarning] = useState<string | null>(null);
+  const [asrRemoteModel, setAsrRemoteModel] = useState('');
   const [whisperModel, setWhisperModel] = useState(initialDraft.whisperModel || '');
   const [downloadedWhisperModels, setDownloadedWhisperModels] = useState<WhisperModelChoice[]>([]);
   const [loadingModels, setLoadingModels] = useState(true);
@@ -244,6 +249,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, act
     ]).then(([config, items]) => {
       if (!mounted) return;
       const configuredModel = configuredWhisperModel(config?.pipeline);
+      const configuredEngine = config?.pipeline?.whisper_mode;
+      setAsrEngine((current) => current || (configuredEngine === 'openai' || configuredEngine === 'whisper-cpp' ? configuredEngine : ''));
+      setAsrRemoteModel(config?.pipeline?.asr_model || '');
       const ready = whisperModelChoices(items || [], configuredModel);
       setDownloadedWhisperModels(ready);
       setLoadingModels(false);
@@ -309,7 +317,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, act
       doTranslate,
       doDub,
       doVideo,
-      whisperModel,
+      asrEngine, whisperModel,
       videoLang,
       targetLang,
       translateService,
@@ -324,7 +332,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, act
     });
   }, [
     selectedFiles, activePreset, doSub, doTranslate, doDub, doVideo,
-    whisperModel, videoLang, targetLang, translateService, outputContent,
+    asrEngine, whisperModel, videoLang, targetLang, translateService, outputContent,
     ttsEngine, ttsVoice, speechRate, subtitleOutput, subtitleStyle,
     videoQuality, encodeMethod,
   ]);
@@ -590,7 +598,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, act
 
   // 提交并创建任务
   const handleStartTask = async () => {
-    if (selectedFiles.length === 0) {
+    if (selectedFiles.length === 0 && !doSub) {
       await handlePickFiles();
       return;
     }
@@ -604,11 +612,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, act
 
     try {
       if (doSub) {
-        const config = await api.getConfig();
-        if (config.pipeline.whisper_mode !== 'openai') {
-          if (!whisperModel) throw new Error(t('dashboard.noWhisperModel', '请选择已下载的识别模型，或在语音识别设置中配置自定义模型路径'));
-          await api.setActiveWhisperModel(whisperModel);
+        try {
+          await prepareASRSelection(asrEngine, whisperModel);
+        } catch (err) {
+          setAsrWarning((err as Error).message);
+          return;
         }
+      }
+      if (selectedFiles.length === 0) {
+        await handlePickFiles();
+        return;
       }
       if (selectedFiles.length === 1) {
         await api.createTask({
@@ -1150,8 +1163,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, act
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {doSub && <div>
+              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
+                {t('dashboard.asrEngine', '语音识别引擎')}
+              </label>
+              <select value={asrEngine} onChange={(e) => setAsrEngine(e.target.value as ASREngine)}
+                className="w-full h-10 bg-slate-50 dark:bg-white/[0.06] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white">
+                <option value="">{t('dashboard.chooseAsrEngine', '请选择识别引擎')}</option>
+                <option value="whisper-cpp">Whisper.cpp</option>
+                <option value="openai">{t('asrEngine.openaiCompat', 'OpenAI 兼容')}</option>
+              </select>
+            </div>}
+            {doSub && asrEngine === 'openai' && <div>
+              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
+                {t('dashboard.whisperModel', '语音识别模型')}
+              </label>
+              <button type="button" onClick={onConfigureASR} className="w-full h-10 text-left bg-slate-50 dark:bg-white/[0.06] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white">
+                {asrRemoteModel || t('dashboard.configureAsr', '前往语音识别设置')}
+              </button>
+            </div>}
             {/* 语音模型 */}
-            <div>
+            {doSub && asrEngine === 'whisper-cpp' && <div>
               <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
                 {t('dashboard.whisperModel', '语音识别模型')}
               </label>
@@ -1178,7 +1210,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, act
                 </select>
                 <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
               </div>
-            </div>
+            </div>}
 
             {/* 视频源语言 */}
             <div>
@@ -1544,6 +1576,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, act
           </button>
         </div>
       </div>
+
+      {asrWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div role="alertdialog" aria-modal="true" aria-labelledby="asr-warning-title" className="w-96 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/15 rounded-2xl p-5 space-y-4">
+            <h3 id="asr-warning-title" className="text-sm font-bold text-slate-900 dark:text-white">{t('dashboard.asrNotReady', '语音识别尚未就绪')}</h3>
+            <p className="text-sm text-slate-600 dark:text-slate-300">{asrWarning}</p>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setAsrWarning(null)} className="px-3 py-2 text-sm">{t('common.cancel', '取消')}</button>
+              <button type="button" onClick={() => { setAsrWarning(null); onConfigureASR(); }} className="px-4 py-2 rounded-xl text-sm font-bold bg-blue-600 text-white">
+                {asrEngine === 'whisper-cpp' ? t('dashboard.downloadAsrModel', '去下载模型') : t('dashboard.configureAsr', '前往语音识别设置')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 保存配方对话框 */}
       {showRecipeModal && (

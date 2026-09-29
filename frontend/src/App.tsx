@@ -98,6 +98,7 @@ export const AppContent: React.FC = () => {
           <DashboardView
             active={currentTab === 'dashboard'}
             onTaskCreated={() => setCurrentTab('board')}
+            onConfigureASR={() => setCurrentTab('asr-engine')}
           />
         </div>
         {currentTab !== 'dashboard' && renderContent()}
