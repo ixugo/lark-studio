@@ -119,9 +119,9 @@ func CleanStepAndSubsequent(outputDir string, fromStep string) int {
 			}
 		}
 
-		// 4. merge 产物: dub.mp3, concat_list.txt, silence_*.wav
+		// 4. merge 产物: dub.mp3, concat_list.txt, silence_*.wav, intermediate 目录
 		if fromRank <= stepOrder[StepMerge] {
-			if name == "dub.mp3" || name == "concat_list.txt" || strings.HasPrefix(name, "silence_") {
+			if name == "dub.mp3" || name == "concat_list.txt" || name == "intermediate" || strings.HasPrefix(name, "silence_") {
 				shouldDelete = true
 			}
 		}

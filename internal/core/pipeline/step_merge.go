@@ -38,9 +38,10 @@ func (c *Core) runMerge(ctx context.Context, job Job) error {
 	c.logEvent(job.TaskID, "info", StepMerge, "混音开始：共 %d 段配音", len(audioFiles))
 
 	dubAudio := filepath.Join(job.OutputDir, "dub.mp3")
-	// 强制删除旧的 dub.mp3 和残留拼接列表，防止历史脏文件导致静音未生效
+	// 强制删除旧的 dub.mp3 和残留中间目录，防止历史脏文件导致静音未生效
 	_ = os.Remove(dubAudio)
 	_ = os.Remove(filepath.Join(job.OutputDir, "concat_list.txt"))
+	_ = os.RemoveAll(filepath.Join(job.OutputDir, "intermediate"))
 
 	// 优先采用翻译对齐后的字幕时间轴，若不存在则回退至原始听写字幕
 	transSRT := filepath.Join(job.OutputDir, "trans.srt")
@@ -268,7 +269,9 @@ func (c *Core) concatWithTimeline(ctx context.Context, audioFiles []string, entr
 		ffmpeg = "ffmpeg"
 	}
 
-	concatList := filepath.Join(filepath.Dir(outputPath), "concat_list.txt")
+	intermediateDir := filepath.Join(filepath.Dir(outputPath), "intermediate")
+	_ = os.MkdirAll(intermediateDir, 0o755)
+	concatList := filepath.Join(intermediateDir, "concat_list.txt")
 	var sb strings.Builder
 
 	// ffmpeg concat 解析相对路径时基于列表文件所在目录，必须用绝对路径避免路径翻倍
@@ -292,7 +295,7 @@ func (c *Core) concatWithTimeline(ctx context.Context, audioFiles []string, entr
 		if targetStart > currentTimeSec {
 			gap := targetStart - currentTimeSec
 			if gap >= 0.03 {
-				silPath := filepath.Join(filepath.Dir(outputPath), fmt.Sprintf("silence_%d.wav", idx))
+				silPath := filepath.Join(intermediateDir, fmt.Sprintf("silence_%d.wav", idx))
 				if err := c.genSilence(ctx, gap, silPath); err != nil {
 					return err
 				}
@@ -363,7 +366,9 @@ func (c *Core) concatSequential(ctx context.Context, audioFiles []string, output
 		ffmpeg = "ffmpeg"
 	}
 
-	concatList := filepath.Join(filepath.Dir(outputPath), "concat_list.txt")
+	intermediateDir := filepath.Join(filepath.Dir(outputPath), "intermediate")
+	_ = os.MkdirAll(intermediateDir, 0o755)
+	concatList := filepath.Join(intermediateDir, "concat_list.txt")
 	var sb strings.Builder
 	for _, f := range audioFiles {
 		absPath, _ := filepath.Abs(f)
