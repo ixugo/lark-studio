@@ -261,16 +261,26 @@ func (s *AppService) RerunTaskWithRecipe(id string, opts RerunTaskOptions) error
 		fromStep = pipeline.StepWhisper
 	}
 
-	// 先暂停或中断原有调度
-	s.scheduler.Pause(id)
-
-	// 清理目标步骤及其后续所有产物
-	pipeline.CleanStepAndSubsequent(item.OutputDir, fromStep)
-
 	targetMode := item.Mode
 	if opts.Mode > 0 {
 		targetMode = opts.Mode
 	}
+	// 校验失败时保留原任务状态及产物，不能先清理再报错。
+	if err := pipeline.ValidateResourceMode(item.InputPath, targetMode); err != nil {
+		return err
+	}
+	if fromStep == pipeline.StepWhisper {
+		s.mu.RLock()
+		config := asrConfigFromPipeline(s.bc.Pipeline)
+		s.mu.RUnlock()
+		if err := pipeline.ValidateRecognitionConfig(item.InputPath, "", targetMode, config); err != nil {
+			return err
+		}
+	}
+
+	s.scheduler.Pause(id)
+	pipeline.CleanStepAndSubsequent(item.OutputDir, fromStep)
+
 	targetSubOutput := item.SubtitleOutput
 	if opts.SubtitleOutput != "" {
 		targetSubOutput = opts.SubtitleOutput

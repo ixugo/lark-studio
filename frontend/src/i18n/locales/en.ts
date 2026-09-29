@@ -219,8 +219,11 @@ export const en: TranslationKeys = {
   },
   rerunModal: {
     title: 'Modify Recipe & Rerun Task',
-    subtitle: 'Update recipe settings, speech rate, voice or subtitle format, and choose the starting node.',
+    subtitle: 'Choose a system or user recipe and rerun the task from a selected step.',
     recipeLabel: 'Workflow Recipe',
+    incompatible: 'Unavailable for this input',
+    stepTTSBtn: 'Rerun from AI Voice (generate audio again)',
+    recipeLoadFailed: 'User recipes failed to load. System recipes are still available.',
     recipeDubFull: 'Full Dub & Video',
     recipeSubTranslate: 'Subtitle Translation Only',
     recipeTranscribeOnly: 'Transcription Only',

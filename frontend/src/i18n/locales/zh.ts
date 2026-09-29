@@ -217,8 +217,11 @@ export const zh = {
   },
   rerunModal: {
     title: '调整配方与重跑任务',
-    subtitle: '您可以在此修改配方、重新设定配音语速、音色或字幕形式，并指定起始节点执行。',
+    subtitle: '选择系统或用户配方，按配方配置重跑任务并指定起始节点。',
     recipeLabel: '执行配方',
+    incompatible: '不适用当前资源',
+    stepTTSBtn: '从「AI 配音」重跑（重新生成声音）',
+    recipeLoadFailed: '用户配方读取失败，仍可选择系统配方。',
     recipeDubFull: '视频译文配音成片',
     recipeSubTranslate: '仅字幕翻译 (无配音)',
     recipeTranscribeOnly: '仅提取原文字幕',

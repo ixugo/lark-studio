@@ -30,7 +30,11 @@ func TestRecognitionReadiness(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if err := ValidateRecognitionConfig("video.mp4", filepath.Join(t.TempDir(), "out"), tc.mode, tc.config); (err != nil) != tc.wantErr {
+			inputPath := "video.mp4"
+			if tc.mode == ModeTextTranslate || tc.mode == ModeDubOnly {
+				inputPath = "input.txt"
+			}
+			if err := ValidateRecognitionConfig(inputPath, filepath.Join(t.TempDir(), "out"), tc.mode, tc.config); (err != nil) != tc.wantErr {
 				t.Fatalf("err=%v wantErr=%v", err, tc.wantErr)
 			}
 		})
@@ -44,5 +48,15 @@ func TestExistingSubtitleDoesNotRequireRecognition(t *testing.T) {
 	}
 	if err := ValidateRecognitionConfig("video.mp4", dir, ModeSubtitle, asr.Config{}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestMediaCannotUseTextOnlyRecipe(t *testing.T) {
+	for _, input := range []string{"video.mp4", "audio.wav"} {
+		for _, mode := range []int{ModeTextTranslate, ModeDubOnly} {
+			if err := ValidateRecognitionConfig(input, t.TempDir(), mode, asr.Config{}); err == nil {
+				t.Errorf("%s 模式 %d 跳过听写，应拒绝提交", input, mode)
+			}
+		}
 	}
 }

@@ -17,7 +17,8 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { api } from '../lib/api';
-import { TaskMode } from '../types';
+import { BUILTIN_PRESETS, WorkflowPreset, ResourceType, detectResourceType, getPresetDisplay, recipeUnavailableReason, resolveWorkflowMode, subtitleContent } from '../lib/workflowRecipes';
+export { detectResourceType } from '../lib/workflowRecipes';
 import { useTranslation } from '../i18n';
 import { EDGE_TTS_VOICES, normalizeTtsVoice, TtsEngine } from '../lib/ttsVoices';
 import { whisperModelChoices, selectWhisperModel, configuredWhisperModel, WhisperModelChoice } from '../lib/whisperModels';
@@ -36,22 +37,6 @@ interface DashboardViewProps {
   active?: boolean;
 }
 
-// 资源分类类型
-export type ResourceType = 'video' | 'audio' | 'text';
-
-const VIDEO_EXTS = ['mp4', 'mkv', 'mov', 'avi', 'webm', 'flv'];
-const AUDIO_EXTS = ['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg'];
-const TEXT_EXTS = ['txt', 'srt', 'vtt'];
-
-export function detectResourceType(filePath: string): ResourceType | null {
-  const ext = filePath.split('.').pop()?.toLowerCase();
-  if (!ext) return null;
-  if (VIDEO_EXTS.includes(ext)) return 'video';
-  if (AUDIO_EXTS.includes(ext)) return 'audio';
-  if (TEXT_EXTS.includes(ext)) return 'text';
-  return null;
-}
-
 export function getResourceTypeName(type: ResourceType | null, t?: (k: string, def?: string) => string): string {
   switch (type) {
     case 'video': return t ? t('dashboard.resTypeVideo', '视频') : '视频';
@@ -60,72 +45,6 @@ export function getResourceTypeName(type: ResourceType | null, t?: (k: string, d
     default: return t ? t('dashboard.resTypeFile', '文件') : '文件';
   }
 }
-
-// 工作流快捷预设模板
-interface WorkflowPreset {
-  id: string;
-  title: string;
-  subtitle: string;
-  badge: string;
-  isCustom?: boolean;
-  goals: {
-    sub: boolean;
-    translate: boolean;
-    dub: boolean;
-    video: boolean;
-  };
-  config?: {
-    targetLang?: string;
-    ttsVoice?: string;
-    speechRate?: number;
-    subtitleOutput?: string;
-  };
-}
-
-const BUILTIN_PRESETS: WorkflowPreset[] = [
-  {
-    id: 'dub_full',
-    title: '视频 → 译文配音成片',
-    subtitle: '全自动听写、翻译、AI配音、原声伴奏保留并秒级合成出片',
-    badge: '全流程译制',
-    goals: { sub: true, translate: true, dub: true, video: true },
-  },
-  {
-    id: 'direct_dub',
-    title: '视频 → 原文配音成片',
-    subtitle: '原文听写直接配音成片，跳过文本翻译',
-    badge: '原文重配',
-    goals: { sub: true, translate: false, dub: true, video: true },
-  },
-  {
-    id: 'bilingual_sub',
-    title: '视频/音频 → 双语字幕',
-    subtitle: '听写并翻译字幕，不配音不成片',
-    badge: '双语字幕',
-    goals: { sub: true, translate: true, dub: false, video: false },
-  },
-  {
-    id: 'text_translate',
-    title: '纯文本 → 智能翻译',
-    subtitle: '纯文本或SRT文本直接翻译为目标语言',
-    badge: '文本翻译',
-    goals: { sub: false, translate: true, dub: false, video: false },
-  },
-  {
-    id: 'text_dub',
-    title: '纯文本 → AI朗读配音',
-    subtitle: '直接将文本朗读配音为自然高质量音频',
-    badge: '语音合成',
-    goals: { sub: false, translate: false, dub: true, video: false },
-  },
-  {
-    id: 'custom',
-    title: '自定义智能流程',
-    subtitle: '自由开启或关闭各个处理流水线阶段',
-    badge: '自由组合',
-    goals: { sub: true, translate: true, dub: true, video: true },
-  },
-];
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onConfigureASR, active = true }) => {
   const { t, locale } = useTranslation();
@@ -154,7 +73,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
                 video: r.do_video,
               },
               config: {
-                targetLang: r.target_lang,
+                sourceLang: r.source_lang,
+              whisperModel: r.whisper_model,
+              translateService: r.translate_service,
+              ttsEngine: r.tts_engine as TtsEngine,
+              targetLang: r.target_lang,
                 ttsVoice: r.tts_voice,
                 speechRate: r.speech_rate,
                 subtitleOutput: r.subtitle_output,
@@ -168,56 +91,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
     };
     fetchRecipes();
   }, [t]);
-
-  // 根据当前国际化语言动态获取内置预设文案
-  const getPresetDisplay = (preset: WorkflowPreset) => {
-    if (preset.isCustom) {
-      return {
-        title: preset.title,
-        subtitle: preset.subtitle,
-        badge: preset.badge || t('dashboard.badgeMyRecipe', '我的配方'),
-      };
-    }
-    switch (preset.id) {
-      case 'dub_full':
-        return {
-          title: t('dashboard.presetDubFull', '视频 → 译文配音成片'),
-          subtitle: t('dashboard.presetDubFullDesc', '全自动听写、翻译、AI配音、原声伴奏保留并秒级合成出片'),
-          badge: t('dashboard.badgeFullDub', '全流程译制'),
-        };
-      case 'direct_dub':
-        return {
-          title: t('dashboard.presetDirectDub', '视频 → 原文配音成片'),
-          subtitle: t('dashboard.presetDirectDubDesc', '原文听写直接配音成片，跳过文本翻译'),
-          badge: t('dashboard.badgeDirectDub', '原文重配'),
-        };
-      case 'bilingual_sub':
-        return {
-          title: t('dashboard.presetBilingualSub', '视频/音频 → 双语字幕'),
-          subtitle: t('dashboard.presetBilingualSubDesc', '听写并翻译字幕，不配音不成片'),
-          badge: t('dashboard.badgeBilingualSub', '双语字幕'),
-        };
-      case 'text_translate':
-        return {
-          title: t('dashboard.presetTextTranslate', '纯文本 → 智能翻译'),
-          subtitle: t('dashboard.presetTextTranslateDesc', '纯文本或SRT文本直接翻译为目标语言'),
-          badge: t('dashboard.badgeTextTranslate', '文本翻译'),
-        };
-      case 'text_dub':
-        return {
-          title: t('dashboard.presetTextDub', '纯文本 → AI朗读配音'),
-          subtitle: t('dashboard.presetTextDubDesc', '直接将文本朗读配音为自然高质量音频'),
-          badge: t('dashboard.badgeTextDub', '语音合成'),
-        };
-      case 'custom':
-      default:
-        return {
-          title: t('dashboard.presetCustom', '自定义智能流程'),
-          subtitle: t('dashboard.presetCustomDesc', '自由开启或关闭各个处理流水线阶段'),
-          badge: t('dashboard.badgeCustom', '自由组合'),
-        };
-    }
-  };
 
   // 选中的快捷预设
   const [activePreset, setActivePreset] = useState<string>(initialDraft.activePreset || 'dub_full');
@@ -284,7 +157,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
   const [videoLang, setVideoLang] = useState(initialDraft.videoLang || 'auto');
   const [targetLang, setTargetLang] = useState(initialDraft.targetLang || 'zh-CN');
   const [translateService, setTranslateService] = useState<'openai' | 'local' | 'bing' | 'google'>(initialDraft.translateService || 'bing');
-  const [outputContent, setOutputContent] = useState(initialDraft.outputContent || 'bilingual');
+  const outputContent = subtitleContent(doTranslate);
 
   // 子阶段 2：AI 配音配置
   const [ttsEngine, setTtsEngine] = useState<TtsEngine>(initialDraft.ttsEngine || 'edge');
@@ -455,6 +328,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
     if (currentResourceType === 'video') {
       // 视频类资源：强制锁定 1.0x 原速，避免全局倍速破坏镜头画面与台词意境对应
       setSpeechRate(1.0);
+      setDoSub(true);
+      if (!doSub) setActivePreset('custom');
     } else if (currentResourceType === 'text') {
       // 文本类资源：纯配音模式
       setDoSub(false);
@@ -463,9 +338,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
       setDoVideo(false);
       setActivePreset('text_dub');
     } else if (currentResourceType === 'audio') {
-      // 音频类资源：无视频画面，强制不能成片
+      // 音频类资源先听写，且没有可合成的视频画面
+      setDoSub(true);
       setDoVideo(false);
-      if (activePreset === 'dub_full') {
+      if (!doSub || doVideo) {
         setActivePreset('custom');
       }
     }
@@ -473,12 +349,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
 
   // 切换预设模板
   const handleSelectPreset = (preset: WorkflowPreset) => {
-    if (currentResourceType === 'text' && preset.goals.video) {
-      setErrorMessage(t('dashboard.stepBurnDescDisabled', '纯文本资源无画面，仅支持文本翻译或朗读配音'));
-      return;
-    }
-    if (currentResourceType === 'audio' && preset.goals.video) {
-      setErrorMessage(t('dashboard.stepBurnDescDisabled', '音频资源无视频画面，无法选择包含成片的预设'));
+    const unavailable = recipeUnavailableReason({ do_sub: preset.goals.sub, do_video: preset.goals.video }, currentResourceType);
+    if (unavailable) {
+      setErrorMessage(english ? 'This recipe is incompatible with the input. Video and audio require transcription; text has no video picture.' : unavailable);
       return;
     }
     setActivePreset(preset.id);
@@ -487,11 +360,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
     setDoDub(preset.goals.dub);
     setDoVideo(currentResourceType === 'text' || currentResourceType === 'audio' ? false : preset.goals.video);
     if (preset.config) {
+      if (preset.config.sourceLang) setVideoLang(preset.config.sourceLang);
+      if (preset.config.whisperModel) setWhisperModel(preset.config.whisperModel);
+      if (preset.config.translateService) setTranslateService((preset.config.translateService === 'local' ? 'openai' : preset.config.translateService) as 'bing' | 'google' | 'openai');
+      if (preset.config.ttsEngine) setTtsEngine(preset.config.ttsEngine);
       if (preset.config.targetLang) setTargetLang(preset.config.targetLang);
       if (preset.config.ttsVoice) {
-        setTtsVoice(normalizeTtsVoice(ttsEngine, preset.config.ttsVoice));
+        setTtsVoice(normalizeTtsVoice(preset.config.ttsEngine || ttsEngine, preset.config.ttsVoice));
       }
-      if (preset.config.speechRate) setSpeechRate(preset.config.speechRate);
+      if (preset.config.speechRate) setSpeechRate(currentResourceType === 'video' ? 1.0 : preset.config.speechRate);
       if (preset.config.subtitleOutput) setSubtitleOutput(preset.config.subtitleOutput);
     }
   };
@@ -581,20 +458,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
     setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const resolvedMode = (): TaskMode => {
-    // 1-3-4 流程：听写转录(1) -> 跳过翻译 -> 原文配音(3) -> 压制成片(4)
-    if (doSub && !doTranslate && doDub && doVideo) return 5;
-    // 纯配音模式 (3): 纯文本朗读或音频合成
-    if (!doSub && !doTranslate && doDub) return 4;
-    // 纯文本翻译模式 (2)
-    if (!doSub && doTranslate && !doDub) return 6;
-    // 1-2-3-4 流程: 听写 -> 翻译 -> 配音 -> 压制成片
-    if (doDub && doVideo) return 3;
-    // 1-2 流程: 听写 -> 翻译字幕
-    if (doTranslate) return 2;
-    // 1 流程: 仅转写字幕
-    return 1;
-  };
+  const resolvedMode = () => resolveWorkflowMode({ do_sub: doSub, do_translate: doTranslate, do_dub: doDub, do_video: doVideo });
 
   // 提交并创建任务
   const handleStartTask = async () => {
@@ -609,8 +473,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
     const mode = resolvedMode();
     const finalSubtitleOutput = doVideo ? subtitleOutput : 'file';
     const finalTranslator = translateService === 'local' ? 'openai' : translateService;
+    const preset = [...BUILTIN_PRESETS, ...customPresets].find(item => item.id === activePreset) || BUILTIN_PRESETS.find(item => item.id === 'custom')!;
+    const recipeName = getPresetDisplay(preset, t).title;
 
     try {
+      const unavailable = recipeUnavailableReason({ do_sub: doSub, do_video: doVideo }, currentResourceType);
+      if (unavailable) throw new Error(unavailable);
       if (doSub) {
         try {
           await prepareASRSelection(asrEngine, whisperModel);
@@ -626,6 +494,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
       if (selectedFiles.length === 1) {
         await api.createTask({
           input_path: selectedFiles[0],
+          recipe_name: recipeName,
           mode,
           source_lang: videoLang,
           target_lang: targetLang,
@@ -639,6 +508,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
       } else {
         await api.batchCreateTasks(selectedFiles, {
           input_path: '',
+          recipe_name: recipeName,
           mode,
           source_lang: videoLang,
           target_lang: targetLang,
@@ -718,6 +588,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
             isCustom: true,
             goals: { sub: r.do_sub, translate: r.do_translate, dub: r.do_dub, video: r.do_video },
             config: {
+              sourceLang: r.source_lang,
+              whisperModel: r.whisper_model,
+              translateService: r.translate_service,
+              ttsEngine: r.tts_engine as TtsEngine,
               targetLang: r.target_lang,
               ttsVoice: r.tts_voice,
               speechRate: r.speech_rate,
@@ -776,12 +650,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             {[...BUILTIN_PRESETS, ...customPresets].map((preset) => {
               const isSelected = activePreset === preset.id;
-              const display = getPresetDisplay(preset);
+              const display = getPresetDisplay(preset, t);
+              const unavailable = recipeUnavailableReason({ do_sub: preset.goals.sub, do_video: preset.goals.video }, currentResourceType);
               return (
                 <div
                   key={preset.id}
                   onClick={() => handleSelectPreset(preset)}
-                  className={`text-left rounded-2xl p-4 border transition-all relative overflow-hidden group cursor-pointer ${
+                  aria-disabled={!!unavailable}
+                  title={unavailable || display.subtitle}
+                  className={`text-left rounded-2xl p-4 border transition-all relative overflow-hidden group ${unavailable ? 'opacity-45 cursor-not-allowed' : 'cursor-pointer'} ${
                     isSelected
                       ? 'bg-blue-50/40 dark:bg-blue-500/10 border-blue-600'
                       : 'bg-white hover:bg-slate-50 dark:bg-[#1C1C1E] dark:hover:bg-[#252528] border-slate-200 dark:border-[#2C2C2E]'
@@ -1235,34 +1112,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
               </div>
             </div>
 
-            {/* 输出内容模式 */}
-            {doTranslate && (
-              <div className="sm:col-span-2 lg:col-span-4 pt-1">
-                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
-                  {t('dashboard.outputContentMode', '字幕输出内容模式')}
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    { id: 'bilingual', label: t('dashboard.bilingualMode', '双语对照 (上译下原 推荐)') },
-                    { id: 'target', label: t('dashboard.targetOnlyMode', '仅输出翻译字幕') },
-                    { id: 'source', label: t('dashboard.sourceOnlyMode', '仅输出原文字幕') },
-                  ].map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setOutputContent(item.id)}
-                      className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
-                        outputContent === item.id
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'bg-slate-100 hover:bg-slate-200/80 dark:bg-white/[0.04] text-slate-600 dark:text-slate-300 border-slate-200 dark:border-white/10'
-                      }`}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+            {doSub && <p className="sm:col-span-2 lg:col-span-4 text-xs text-slate-500">{english ? 'Transcription always saves source subtitles.' : '听写转录固定提取并保存原文字幕。'}</p>}
           </div>
         </div>
         )}
@@ -1277,6 +1127,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
               </h3>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* 翻译引擎 */}
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
+                {t('dashboard.translateService', '翻译引擎')}
+              </label>
+              <div className="relative">
+                <select
+                  value={translateService === 'local' ? 'openai' : translateService}
+                  onChange={(e) => setTranslateService(e.target.value as 'bing' | 'google' | 'openai')}
+                  className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
+                >
+                  <option value="bing">{english ? 'Bing Translator' : '必应翻译'}</option>
+                  <option value="google">{english ? 'Google Translate' : 'Google 翻译'}</option>
+                  <option value="openai">{english ? 'OpenAI Compatible' : 'OpenAI 兼容'}</option>
+                </select>
+                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
+              </div>
+            </div>
+
             {/* 翻译目标语言 */}
             <div>
               <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
@@ -1300,26 +1169,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
               </div>
             </div>
 
-            {/* 翻译引擎 */}
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
-                {t('dashboard.translateService', '翻译引擎')}
-              </label>
-              <div className="relative">
-                <select
-                  value={translateService === 'local' ? 'openai' : translateService}
-                  onChange={(e) => setTranslateService(e.target.value as 'bing' | 'google' | 'openai')}
-                  className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
-                >
-                  <option value="bing">{english ? 'Bing Translator' : '必应翻译'}</option>
-                  <option value="google">{english ? 'Google Translate' : 'Google 翻译'}</option>
-                  <option value="openai">{english ? 'OpenAI Compatible' : 'OpenAI 兼容'}</option>
-                </select>
-                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
-              </div>
-            </div>
 
             </div>
+            <p className="text-xs text-slate-500">{english ? 'Translation always saves translated subtitles; source subtitles are retained.' : '翻译固定输出翻译字幕，原文字幕同时保留。'}</p>
           </div>
         )}
 
