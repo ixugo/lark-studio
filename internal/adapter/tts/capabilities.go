@@ -143,7 +143,19 @@ func validateVoices(voices []Voice) error {
 }
 
 func qwenBuiltinVoices() []Voice {
-	return []Voice{{"Vivian", "Vivian"}, {"Serena", "Serena"}, {"Uncle_Fu", "Uncle_Fu"}, {"Dylan", "Dylan"}, {"Eric", "Eric"}, {"Ryan", "Ryan"}, {"Aiden", "Aiden"}, {"Ono_Anna", "Ono_Anna"}, {"Sohee", "Sohee"}}
+	// 性别、特点和原生语言来自 Qwen 官方音色表。
+	// https://huggingface.co/Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice#supported-speakers
+	return []Voice{
+		{"Vivian", "Vivian（中文·年轻女声·明亮）"},
+		{"Serena", "Serena（中文·年轻女声·温暖柔和）"},
+		{"Uncle_Fu", "Uncle_Fu（中文·成熟男声·醇厚音色）"},
+		{"Dylan", "Dylan（中文·北京·青年男声）"},
+		{"Eric", "Eric（中文·四川成都·男声·活泼）"},
+		{"Ryan", "Ryan（英语·男声·动感且富有节奏）"},
+		{"Aiden", "Aiden（英语·美式男声·阳光）"},
+		{"Ono_Anna", "Ono_Anna（日语·女声·俏皮）"},
+		{"Sohee", "Sohee（韩语·女声·温暖）"},
+	}
 }
 
 func optionalCapabilityEndpoint(err error) bool {
