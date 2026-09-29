@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { LanguageProvider } from '../i18n';
-import { UpdateDialog } from './UpdateDialog';
+import { UpdateDialog, UpdateProgress } from './UpdateDialog';
 
 const render = (supported: boolean) => renderToStaticMarkup(
   <LanguageProvider>
@@ -27,5 +27,17 @@ describe('更新弹窗', () => {
     expect(html).toContain('No macOS asset');
     expect(html).toContain('Second line');
     expect(html).toMatch(/<button disabled=""[^>]*>立即更新<\/button>/);
+  });
+});
+
+describe('更新下载进度', () => {
+  it('下载字节只占前 99%，安装交接才达到 100%', () => {
+    for (const [phase, percent] of [['downloading', 42], ['preparing', 99], ['restarting', 100]] as const) {
+      const html = renderToStaticMarkup(<LanguageProvider><UpdateProgress status={{ phase, percent, message: '' }} /></LanguageProvider>);
+      expect(html).toContain('role="progressbar"');
+      expect(html).toContain(`aria-valuenow="${percent}"`);
+      expect(html).toContain(`width:${percent}%`);
+      expect(html).toContain(`${percent}%`);
+    }
   });
 });

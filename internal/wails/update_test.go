@@ -187,3 +187,22 @@ func TestRecentReleaseIsSuppressedForAutomaticAndManualChecks(t *testing.T) {
 		})
 	}
 }
+
+func TestUpdateStatusExposesProgress(t *testing.T) {
+	svc := &AppService{}
+	if status := svc.GetUpdateStatus(); status.Phase != "idle" || status.Percent != 0 {
+		t.Fatalf("初始状态: %+v", status)
+	}
+	for _, tt := range []struct {
+		phase   string
+		percent int
+	}{
+		{"downloading", 42}, {"preparing", 99}, {"restarting", 100},
+	} {
+		svc.setUpdateStatus(tt.phase, "正在更新", tt.percent)
+		status := svc.GetUpdateStatus()
+		if status.Phase != tt.phase || status.Percent != tt.percent {
+			t.Fatalf("状态丢失下载进度: %+v", status)
+		}
+	}
+}

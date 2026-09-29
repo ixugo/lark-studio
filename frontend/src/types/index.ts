@@ -211,4 +211,5 @@ export interface UpdateInfo {
 export interface UpdateStatus {
   phase: 'idle' | 'downloading' | 'preparing' | 'restarting' | 'error';
   message: string;
+  percent: number;
 }

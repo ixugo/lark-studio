@@ -24,7 +24,7 @@ const (
 
 type Client struct {
 	HTTP     *http.Client
-	Progress func(phase, message string)
+	Progress func(phase, message string, percent int)
 }
 
 type asset struct {
@@ -219,7 +219,11 @@ func (c *Client) download(ctx context.Context, a asset, path string) (err error)
 		}
 	}()
 	hash := sha256.New()
-	n, copyErr := io.Copy(io.MultiWriter(f, hash), io.LimitReader(resp.Body, a.Size+1))
+	c.progress("downloading", "正在下载更新安装包", 0)
+	progress := &downloadProgressWriter{writer: io.MultiWriter(f, hash), total: a.Size, report: func(percent int) {
+		c.progress("downloading", "正在下载更新安装包", percent)
+	}}
+	n, copyErr := io.Copy(progress, io.LimitReader(resp.Body, a.Size+1))
 	err = errors.Join(copyErr, f.Sync(), f.Close())
 	if err != nil {
 		return err
@@ -230,11 +234,31 @@ func (c *Client) download(ctx context.Context, a asset, path string) (err error)
 	if a.Digest != "" && !strings.EqualFold(hex.EncodeToString(hash.Sum(nil)), strings.TrimPrefix(a.Digest, "sha256:")) {
 		return errors.New("更新安装包 SHA256 校验失败")
 	}
+	c.progress("downloading", "正在下载更新安装包", 99)
 	return nil
 }
 
-func (c *Client) progress(phase, message string) {
+type downloadProgressWriter struct {
+	writer      io.Writer
+	total       int64
+	written     int64
+	lastPercent int
+	report      func(int)
+}
+
+func (w *downloadProgressWriter) Write(p []byte) (int, error) {
+	n, err := w.writer.Write(p)
+	w.written += int64(n)
+	percent := min(98, int(w.written*99/w.total))
+	if percent > w.lastPercent {
+		w.lastPercent = percent
+		w.report(percent)
+	}
+	return n, err
+}
+
+func (c *Client) progress(phase, message string, percent int) {
 	if c.Progress != nil {
-		c.Progress(phase, message)
+		c.Progress(phase, message, percent)
 	}
 }

@@ -353,6 +353,7 @@ export const en: TranslationKeys = {
     actionTranslate: 'Force custom translation',
   },
   update: {
+    progress: 'Update progress',
     check: 'Check for Updates',
     checking: 'Checking for updates…',
     current: 'You are up to date',

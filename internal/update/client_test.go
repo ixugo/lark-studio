@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -134,6 +135,67 @@ func TestReleaseReadyUsesLatestUpdateAndStrictFiveMinuteBoundary(t *testing.T) {
 			}
 			if !r.Ready(now.Add(5 * time.Minute)) {
 				t.Fatal("等待后应认可")
+			}
+		})
+	}
+}
+
+type singleByteReader struct{ remaining []byte }
+
+func (r *singleByteReader) Read(p []byte) (int, error) {
+	if len(r.remaining) == 0 {
+		return 0, io.EOF
+	}
+	p[0] = r.remaining[0]
+	r.remaining = r.remaining[1:]
+	return 1, nil
+}
+
+func TestDownloadProgressFollowsReceivedBytesAndStopsBeforeInstallation(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		payload  string
+		size     int64
+		digest   string
+		complete bool
+	}{
+		{"完整下载", "abcd", 4, "", true},
+		{"大小不符", "abcde", 4, "", false},
+		{"摘要不符", "abcd", 4, fmt.Sprintf("sha256:%x", sha256.Sum256([]byte("wrong"))), false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewClient()
+			c.HTTP.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: 200, Body: io.NopCloser(&singleByteReader{remaining: []byte(tt.payload)}), Header: make(http.Header), Request: r}, nil
+			})
+			var progress []int
+			c.Progress = func(phase, message string, percent int) {
+				if phase != "downloading" {
+					t.Errorf("phase = %s", phase)
+				}
+				progress = append(progress, percent)
+			}
+			path := t.TempDir() + "/asset"
+			err := c.download(t.Context(), asset{Name: "asset", URL: "https://github.com/ixugo/lark-studio/releases/download/v1.0.0/asset", Size: tt.size, Digest: tt.digest}, path)
+			if (err == nil) != tt.complete {
+				t.Fatalf("download err = %v", err)
+			}
+			if len(progress) < 3 || progress[0] != 0 {
+				t.Fatalf("missing byte progress: %v", progress)
+			}
+			for i, p := range progress {
+				if p < 0 || p > 99 || (i > 0 && p < progress[i-1]) {
+					t.Fatalf("invalid progress: %v", progress)
+				}
+			}
+			if tt.complete && !slices.Equal(progress, []int{0, 24, 49, 74, 98, 99}) {
+				t.Fatalf("分块进度不是按接收字节变化: %v", progress)
+			}
+			if tt.complete && progress[len(progress)-1] != 99 {
+				t.Fatalf("completed download = %v", progress)
+			}
+			if !tt.complete && progress[len(progress)-1] == 99 {
+				t.Fatalf("corrupt download completed: %v", progress)
 			}
 		})
 	}

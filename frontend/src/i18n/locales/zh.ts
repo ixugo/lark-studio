@@ -351,6 +351,7 @@ export const zh = {
     actionTranslate: '强制使用指定译文',
   },
   update: {
+    progress: '更新进度',
     check: '检查更新',
     checking: '正在检查更新…',
     current: '已是最新版本',

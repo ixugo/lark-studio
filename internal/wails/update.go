@@ -21,8 +21,9 @@ import (
 
 const (
 	// 启动检查不长时间占用请求，安装允许下载较大的发布包。
-	updateCheckTimeout   = 20 * time.Second
-	updateInstallTimeout = 10 * time.Minute
+	updateCheckTimeout       = 20 * time.Second
+	updateInstallTimeout     = 10 * time.Minute
+	updateRestartDisplayTime = 750 * time.Millisecond
 )
 
 // UpdateInfo 中的 available 已按自动或手动检查的忽略规则计算。
@@ -37,6 +38,7 @@ type UpdateInfo struct {
 type UpdateStatus struct {
 	Phase   string `json:"phase"`
 	Message string `json:"message"`
+	Percent int    `json:"percent"`
 }
 
 type updateSession struct {
@@ -166,10 +168,10 @@ func (s *AppService) GetUpdateStatus() UpdateStatus {
 	return s.updates.status
 }
 
-func (s *AppService) setUpdateStatus(phase, message string) {
+func (s *AppService) setUpdateStatus(phase, message string, percent int) {
 	s.updates.mu.Lock()
 	defer s.updates.mu.Unlock()
-	s.updates.status = UpdateStatus{Phase: phase, Message: message}
+	s.updates.status = UpdateStatus{Phase: phase, Message: message, Percent: percent}
 }
 
 func (s *AppService) InstallUpdate(version string) error {
@@ -179,7 +181,7 @@ func (s *AppService) InstallUpdate(version string) error {
 	}
 	err = s.prepareAndRestart(latest)
 	if err != nil {
-		s.setUpdateStatus("error", err.Error())
+		s.setUpdateStatus("error", err.Error(), 0)
 	}
 	return err
 }
@@ -247,7 +249,9 @@ func (s *AppService) prepareAndRestart(latest *update.Release) (err error) {
 		return fmt.Errorf("启动更新程序失败: %w", err)
 	}
 	handedOff = true
-	s.setUpdateStatus("restarting", "更新已就绪，正在重启应用…")
+	s.setUpdateStatus("restarting", "更新已就绪，正在重启应用…", 100)
+	// 留出一次状态轮询和进度条动画的时间，再退出旧应用。
+	time.Sleep(updateRestartDisplayTime)
 	s.app.Quit()
 	return nil
 }

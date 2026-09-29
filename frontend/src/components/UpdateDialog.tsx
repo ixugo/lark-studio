@@ -6,12 +6,28 @@ import { useTranslation } from '../i18n';
 
 const STATUS_POLL_MS = 500;
 
+export const UpdateProgress: React.FC<{ status: UpdateStatus }> = ({ status }) => {
+  const { t } = useTranslation();
+  const percent = Math.max(0, Math.min(100, status.percent));
+  return (
+    <div className="mt-4" role="status" aria-live="polite">
+      <div className="flex justify-between gap-3 text-sm text-blue-600 dark:text-blue-400">
+        <span>{status.message || t(`update.${status.phase}`)}</span>
+        <span>{percent}%</span>
+      </div>
+      <div role="progressbar" aria-label={t('update.progress')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-white/10">
+        <div className="h-full rounded-full bg-blue-600 transition-[width] duration-300" style={{ width: `${percent}%` }} />
+      </div>
+    </div>
+  );
+};
+
 export const UpdateDialog: React.FC<{ update: UpdateInfo; onClose: () => void }> = ({ update, onClose }) => {
   const { t } = useTranslation();
   const dialog = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
   const [installing, setInstalling] = useState(false);
-  const [status, setStatus] = useState<UpdateStatus>({ phase: 'idle', message: '' });
+  const [status, setStatus] = useState<UpdateStatus>({ phase: 'idle', message: '', percent: 0 });
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -41,15 +57,15 @@ export const UpdateDialog: React.FC<{ update: UpdateInfo; onClose: () => void }>
 
   const install = async () => {
     setError('');
-    setStatus({ phase: 'downloading', message: '' });
+    setStatus({ phase: 'downloading', message: '', percent: 0 });
     setBusy(true);
     setInstalling(true);
     try {
       await api.installUpdate(update.version);
-      setStatus({ phase: 'restarting', message: '' });
+      setStatus({ phase: 'restarting', message: '', percent: 100 });
     } catch (err) {
       setError(String(err));
-      setStatus({ phase: 'error', message: '' });
+      setStatus({ phase: 'error', message: '', percent: 0 });
       setBusy(false);
       setInstalling(false);
     }
@@ -91,7 +107,7 @@ export const UpdateDialog: React.FC<{ update: UpdateInfo; onClose: () => void }>
         </div>
         <div className="mt-4 max-h-64 overflow-y-auto whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700 dark:text-slate-300">{update.notes || t('update.noNotes')}</div>
         {!update.supported && <p className="mt-4 text-sm text-amber-600 dark:text-amber-400">{update.reason || t('update.unsupported')}</p>}
-        {installing && <p role="status" aria-live="polite" className="mt-4 text-sm text-blue-600 dark:text-blue-400">{status.message || t(`update.${status.phase}`)}</p>}
+        {installing && <UpdateProgress status={status} />}
         {error && <p role="alert" className="mt-4 text-sm text-red-600 dark:text-red-400 break-words">{t('update.failed')}: {error}</p>}
         <div className="flex justify-end gap-3 mt-6">
           <button disabled={busy} onClick={ignore} className="px-4 py-2 text-sm rounded-lg bg-slate-100 dark:bg-white/10 disabled:opacity-50">{t('update.ignore')}</button>

@@ -48,11 +48,11 @@ func (c *Client) Prepare(ctx context.Context, release *Release, executable strin
 		}
 	}()
 	archive := filepath.Join(stageRoot, release.asset.Name)
-	c.progress("downloading", "正在下载更新安装包")
+	c.progress("downloading", "正在下载更新安装包", 0)
 	if err = c.download(ctx, release.asset, archive); err != nil {
 		return nil, err
 	}
-	c.progress("preparing", "正在校验并准备更新")
+	c.progress("preparing", "正在校验并准备更新", 99)
 	staged, err := stageApplication(ctx, archive, stageRoot, runtime.GOOS)
 	if err != nil {
 		return nil, err

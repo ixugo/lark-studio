@@ -81,7 +81,7 @@ describe('桌面更新接口', () => {
 
   it('传递检查模式、版本与准确的绑定名', async () => {
     const info = { version: '0.2.0', notes: '<script>plain text</script>', available: true, supported: true, reason: '' };
-    const status = { phase: 'preparing', message: 'Preparing update' };
+    const status = { phase: 'preparing', message: 'Preparing update', percent: 99 };
     const byName = vi.fn().mockImplementation((name: string) => Promise.resolve(name.endsWith('CheckForUpdates') ? info : name.endsWith('GetUpdateStatus') ? status : undefined));
     vi.stubGlobal('window', { wails: { Call: { ByName: byName } } });
     await expect(api.checkForUpdates(false)).resolves.toEqual(info);
