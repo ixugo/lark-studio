@@ -1152,13 +1152,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
           </div>
         </div>
 
-        {/* 阶段 1：字幕与翻译设置 */}
+        {/* 阶段 1：字幕设置 */}
         {(doSub || doTranslate) && (
           <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl border border-slate-200/90 dark:border-[#2C2C2E] p-5 space-y-4 animate-in fade-in duration-200">
             <div className="flex items-center gap-2">
               <Languages className="w-4 h-4 text-blue-600 dark:text-blue-400" />
               <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
-                {t('dashboard.sectionSubTrans', '字幕与翻译设置')}
+                {t('dashboard.sectionSubtitle', '字幕设置')}
               </h3>
             </div>
 
@@ -1235,50 +1235,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
               </div>
             </div>
 
-            {/* 翻译目标语言 */}
-            <div className={doTranslate ? 'opacity-100' : 'opacity-40 pointer-events-none'}>
-              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
-                {t('dashboard.targetLang', '翻译目标语言')} {!doTranslate && `(${t('dashboard.targetLangDisabled', '未启用翻译')})`}
-              </label>
-              <div className="relative">
-                <select
-                  value={targetLang}
-                  onChange={(e) => setTargetLang(e.target.value)}
-                  disabled={!doTranslate}
-                  className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
-                >
-                  <option value="zh-CN">{english ? 'Chinese (Simplified)' : '简体中文'}</option>
-                  <option value="zh-TW">{english ? 'Chinese (Traditional)' : '繁體中文'}</option>
-                  <option value="en">English</option>
-                  <option value="ja">{english ? 'Japanese' : '日本語'}</option>
-                  <option value="ko">{english ? 'Korean' : '한국어'}</option>
-                  <option value="de">German</option>
-                  <option value="fr">French</option>
-                </select>
-                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
-              </div>
-            </div>
-
-            {/* 翻译服务商 */}
-            <div className={doTranslate ? 'opacity-100' : 'opacity-40 pointer-events-none'}>
-              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
-                {t('dashboard.translateService', '翻译服务商')}
-              </label>
-              <div className="relative">
-                <select
-                  value={translateService}
-                  onChange={(e) => setTranslateService(e.target.value as any)}
-                  disabled={!doTranslate}
-                  className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
-                >
-                  <option value="bing">{english ? 'Bing Translator' : '必应翻译'}</option>
-                  <option value="google">{english ? 'Google Translate' : '谷歌翻译'}</option>
-                  <option value="openai">{english ? 'OpenAI Compatible' : 'OpenAI 兼容接口'}</option>
-                </select>
-                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
-              </div>
-            </div>
-
             {/* 输出内容模式 */}
             {doTranslate && (
               <div className="sm:col-span-2 lg:col-span-4 pt-1">
@@ -1309,6 +1265,62 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
             )}
           </div>
         </div>
+        )}
+
+        {/* 翻译设置 */}
+        {doTranslate && (
+          <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl border border-slate-200/90 dark:border-[#2C2C2E] p-5 space-y-4 animate-in fade-in duration-200">
+            <div className="flex items-center gap-2">
+              <Languages className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                {t('dashboard.sectionTranslation', '翻译设置')}
+              </h3>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* 翻译目标语言 */}
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
+                {t('dashboard.targetLang', '翻译目标语言')}
+              </label>
+              <div className="relative">
+                <select
+                  value={targetLang}
+                  onChange={(e) => setTargetLang(e.target.value)}
+                  className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
+                >
+                  <option value="zh-CN">{english ? 'Chinese (Simplified)' : '简体中文'}</option>
+                  <option value="zh-TW">{english ? 'Chinese (Traditional)' : '繁體中文'}</option>
+                  <option value="en">English</option>
+                  <option value="ja">{english ? 'Japanese' : '日本語'}</option>
+                  <option value="ko">{english ? 'Korean' : '한국어'}</option>
+                  <option value="de">German</option>
+                  <option value="fr">French</option>
+                </select>
+                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
+              </div>
+            </div>
+
+            {/* 翻译引擎 */}
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
+                {t('dashboard.translateService', '翻译引擎')}
+              </label>
+              <div className="relative">
+                <select
+                  value={translateService === 'local' ? 'openai' : translateService}
+                  onChange={(e) => setTranslateService(e.target.value as 'bing' | 'google' | 'openai')}
+                  className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
+                >
+                  <option value="bing">{english ? 'Bing Translator' : '必应翻译'}</option>
+                  <option value="google">{english ? 'Google Translate' : 'Google 翻译'}</option>
+                  <option value="openai">{english ? 'OpenAI Compatible' : 'OpenAI 兼容'}</option>
+                </select>
+                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
+              </div>
+            </div>
+
+            </div>
+          </div>
         )}
 
         {/* 阶段 2：AI 配音设置 */}
