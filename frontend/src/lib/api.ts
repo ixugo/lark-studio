@@ -597,6 +597,24 @@ export const api = {
     return '';
   },
 
+  async listRemoteModels(baseURL: string, apiKey: string): Promise<Array<{ id: string }>> {
+    const res = await invokeWailsMethod<Array<{ id: string }>>('ListRemoteModels', baseURL, apiKey);
+    if (res.called && res.result) return res.result;
+    throw new Error('请在桌面应用中读取远程模型列表');
+  },
+
+  async getTTSCapabilities(baseURL: string, apiKey: string, model: string): Promise<import('../types').TTSCapabilities> {
+    const res = await invokeWailsMethod<import('../types').TTSCapabilities>('GetTTSCapabilities', baseURL, apiKey, model);
+    if (res.called && res.result) return res.result;
+    throw new Error('请在桌面应用中读取语音服务能力');
+  },
+
+  async testConfiguredTTS(config: ConfigDTO['tts'], text: string): Promise<string> {
+    const res = await invokeWailsMethod<string>('TestConfiguredTTS', config, text);
+    if (res.called && res.result) return res.result;
+    throw new Error('请在桌面应用中试听');
+  },
+
   async testOpenAITTS(baseUrl: string, apiKey: string, model: string, voice: string, text: string): Promise<string> {
     const res = await invokeWailsMethod<string>('TestOpenAITTS', baseUrl, apiKey, model, voice, text);
     if (res.called && res.result) return res.result;

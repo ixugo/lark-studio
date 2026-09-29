@@ -51,13 +51,16 @@ type LLM struct {
 
 // TTS 语音合成配置
 type TTS struct {
-	EdgeVoice   string `comment:"Edge TTS 音色" json:"edge_voice"`
-	OpenAIVoice string `comment:"OpenAI 兼容 TTS 音色" json:"openai_voice"`
-	Type        string `comment:"TTS 类型: edge / openai" json:"type"`
-	Voice       string `comment:"默认语音" json:"voice"`
-	BaseURL     string `comment:"OpenAI TTS API 地址（Type=openai 时生效）" json:"base_url"`
-	APIKey      string `comment:"OpenAI TTS API 密钥" json:"api_key"`
-	Model       string `comment:"OpenAI TTS 模型名" json:"model"`
+	Protocol     string `comment:"语音服务协议: openai / mlx" json:"protocol"`
+	Language     string `comment:"MLX 合成语言，Auto 按任务目标语言" json:"language"`
+	Instructions string `comment:"支持时使用的情绪和风格指令" json:"instructions"`
+	EdgeVoice    string `comment:"Edge TTS 音色" json:"edge_voice"`
+	OpenAIVoice  string `comment:"OpenAI 兼容 TTS 音色" json:"openai_voice"`
+	Type         string `comment:"TTS 类型: edge / openai" json:"type"`
+	Voice        string `comment:"默认语音" json:"voice"`
+	BaseURL      string `comment:"OpenAI TTS API 地址（Type=openai 时生效）" json:"base_url"`
+	APIKey       string `comment:"OpenAI TTS API 密钥" json:"api_key"`
+	Model        string `comment:"OpenAI TTS 模型名" json:"model"`
 }
 
 // LipSync 对口型（唇形同步）配置
@@ -295,4 +298,24 @@ func (bc *Bootstrap) ApplyEnvOverrides() {
 	if v := os.Getenv("VDUB_WHISPER_MODE"); v != "" {
 		bc.Pipeline.WhisperMode = v
 	}
+}
+
+// VoiceForEngine 只使用所选引擎的音色，避免 Edge 的默认音色覆盖 OpenAI 配置。
+func VoiceForEngine(config TTS, engine string) string {
+	if strings.EqualFold(engine, "openai") {
+		if config.OpenAIVoice != "" {
+			return config.OpenAIVoice
+		}
+		if config.Type == "" || strings.EqualFold(config.Type, "openai") {
+			return config.Voice
+		}
+		return ""
+	}
+	if config.EdgeVoice != "" {
+		return config.EdgeVoice
+	}
+	if !strings.EqualFold(config.Type, "openai") && config.Voice != "" {
+		return config.Voice
+	}
+	return "zh-CN-XiaoxiaoNeural"
 }

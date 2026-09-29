@@ -23,7 +23,8 @@ func batchService(t *testing.T) (*AppService, []string, *gorm.DB) {
 	bc := conf.DefaultConfig()
 	bc.Pipeline.DefaultOutputDir = filepath.Join(dir, "results")
 	bc.Pipeline.WhisperMode = "openai"
-	bc.Pipeline.ASRBaseURL = "http://localhost:8000/v1"
+	modelServer := newRemoteModelTestServer(t, "test-model")
+	bc.Pipeline.ASRBaseURL = modelServer.URL + "/v1"
 	bc.Pipeline.ASRModel = "test-model"
 	core := task.NewCore(taskdb.NewDB(db).AutoMigrate(true))
 	scheduler := pipeline.NewScheduler(nil, nil)

@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	ttsadapter "github.com/ixugo/vdub/internal/adapter/tts"
 	"log/slog"
 	"sync"
 )
@@ -108,8 +109,8 @@ func (s *Scheduler) Notifier() Notifier {
 }
 
 // SetTTSConfig 将保存的配音端点用于后续合成请求。
-func (s *Scheduler) SetTTSConfig(engine, voice, baseURL, apiKey, model string) {
-	s.core.SetTTSConfig(engine, voice, baseURL, apiKey, model)
+func (s *Scheduler) SetTTSConfig(engine, voice, baseURL, apiKey, model string, options ...ttsadapter.SpeechOptions) {
+	s.core.SetTTSConfig(engine, voice, baseURL, apiKey, model, options...)
 }
 
 // SetTranslationClient 切换新任务使用的翻译客户端与语义分句状态。

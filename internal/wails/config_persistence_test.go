@@ -12,12 +12,15 @@ import (
 // 模拟页面保存、重新读取和应用重启，按浏览器实际使用的小写字段核对全部输入。
 func TestSettingsFormsRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
+	asrServer := newRemoteModelTestServer(t, "custom-asr")
+	translationServer := newRemoteModelTestServer(t, "custom-translate")
+	ttsServer := newTTSConfigurationFixture(t, "custom-tts")
 	bc := conf.Bootstrap{Runtime: conf.Runtime{ConfigPath: path}}
 	svc := &AppService{bc: &bc}
 	updates := map[string]any{
-		"pipeline": map[string]any{"workers": 3, "whisper_mode": "openai", "whisper_bin": "/test/whisper-cli", "whisper_model": "/test/ggml.bin", "asr_base_url": "https://asr.example/v1", "asr_api_key": "fixture-asr", "asr_model": "custom-asr", "ffmpeg_bin": "/test/ffmpeg", "default_output_dir": "/test/output", "default_target_lang": "ja", "translate_prompt": "保持术语", "translate_chunk_size": 7, "max_speed_factor": 1.35, "tts_workers": 3, "clean_intermediate": true, "subtitle_output": "none"},
-		"llm":      map[string]any{"provider": "openai", "base_url": "https://translate.example/v1", "api_key": "fixture-translate", "model": "custom-translate", "deeplx_url": "https://deeplx.example"},
-		"tts":      map[string]any{"type": "openai", "voice": "custom-voice", "edge_voice": "en-US-JennyNeural", "openai_voice": "custom-voice", "base_url": "https://tts.example/v1", "api_key": "fixture-tts", "model": "custom-tts"},
+		"pipeline": map[string]any{"workers": 3, "whisper_mode": "openai", "whisper_bin": "/test/whisper-cli", "whisper_model": "/test/ggml.bin", "asr_base_url": asrServer.URL + "/v1", "asr_api_key": "fixture-asr", "asr_model": "custom-asr", "ffmpeg_bin": "/test/ffmpeg", "default_output_dir": "/test/output", "default_target_lang": "ja", "translate_prompt": "保持术语", "translate_chunk_size": 7, "max_speed_factor": 1.35, "tts_workers": 3, "clean_intermediate": true, "subtitle_output": "none"},
+		"llm":      map[string]any{"provider": "openai", "base_url": translationServer.URL + "/v1", "api_key": "fixture-translate", "model": "custom-translate", "deeplx_url": "https://deeplx.example"},
+		"tts":      map[string]any{"type": "openai", "voice": "custom-voice", "edge_voice": "en-US-JennyNeural", "openai_voice": "custom-voice", "base_url": ttsServer.URL + "/v1", "api_key": "fixture-tts", "model": "custom-tts"},
 		"lip_sync": map[string]any{"enabled": true, "base_url": "https://lipsync.example", "api_key": "fixture-lipsync"},
 	}
 	raw, _ := json.Marshal(updates)

@@ -51,6 +51,7 @@ func TestOpenAITTSRejectsMissingConfiguration(t *testing.T) {
 
 // TestWhisperModelConfigRoundTrip 保证模型路径经前端配置、TOML 持久化与重载后保持一致。
 func TestWhisperModelConfigRoundTrip(t *testing.T) {
+	server := newRemoteModelTestServer(t, "whisper-1")
 	path := filepath.Join(t.TempDir(), "config.toml")
 	want := filepath.Join(t.TempDir(), "ggml-large-v3-turbo.bin")
 	bc := conf.Bootstrap{Runtime: conf.Runtime{ConfigPath: path}}
@@ -58,7 +59,7 @@ func TestWhisperModelConfigRoundTrip(t *testing.T) {
 	updates := map[string]any{"pipeline": map[string]any{
 		"whisper_model": want,
 		"whisper_mode":  "openai",
-		"asr_base_url":  "https://asr.example/v1",
+		"asr_base_url":  server.URL + "/v1",
 		"asr_api_key":   "test-key",
 		"asr_model":     "whisper-1",
 	}}
@@ -73,7 +74,7 @@ func TestWhisperModelConfigRoundTrip(t *testing.T) {
 	if loaded.Pipeline.WhisperModel != want {
 		t.Fatalf("TOML 模型路径 = %q，期望 %q", loaded.Pipeline.WhisperModel, want)
 	}
-	if loaded.Pipeline.WhisperMode != "openai" || loaded.Pipeline.ASRBaseURL != "https://asr.example/v1" || loaded.Pipeline.ASRAPIKey != "test-key" || loaded.Pipeline.ASRModel != "whisper-1" {
+	if loaded.Pipeline.WhisperMode != "openai" || loaded.Pipeline.ASRBaseURL != server.URL+"/v1" || loaded.Pipeline.ASRAPIKey != "test-key" || loaded.Pipeline.ASRModel != "whisper-1" {
 		t.Fatalf("ASR 配置未完整持久化: %+v", loaded.Pipeline)
 	}
 
@@ -96,6 +97,12 @@ func TestWhisperModelConfigRoundTrip(t *testing.T) {
 // TestUpdateConfigSwitchesSharedASRRouter 确保设置页保存的默认引擎用于后续转录。
 func TestUpdateConfigSwitchesSharedASRRouter(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			if _, err := io.WriteString(w, `{"data":[{"id":"whisper-1"}]}`); err != nil {
+				t.Errorf("写入模型列表失败: %v", err)
+			}
+			return
+		}
 		if r.URL.Path != "/v1/audio/transcriptions" {
 			t.Errorf("ASR 请求路径 = %q", r.URL.Path)
 		}
@@ -133,7 +140,10 @@ func TestPrepareTaskInput(t *testing.T) {
 
 	bc := conf.DefaultConfig()
 	bc.Pipeline.WhisperMode = "openai"
-	bc.Pipeline.ASRBaseURL = "http://localhost:8000/v1"
+	modelServer := newRemoteModelTestServer(t, "test-model", bc.LLM.Model)
+	bc.Pipeline.ASRBaseURL = modelServer.URL + "/v1"
+	bc.LLM.BaseURL = modelServer.URL + "/v1"
+	bc.Pipeline.DefaultOutputDir = filepath.Join(tmpDir, "results")
 	bc.Pipeline.ASRModel = "test-model"
 	bc.LLM.Provider = "bing"
 	svc := &AppService{bc: &bc}

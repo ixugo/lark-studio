@@ -133,6 +133,9 @@ func (a TaskAPI) prepareTaskInput(in *task.CreateTaskInput) error {
 	if err := pipeline.ValidateRecognitionConfig(in.InputPath, in.OutputDir, in.Mode, config); err != nil {
 		return reason.ErrBadRequest.SetMsg(err.Error())
 	}
+	if err := pipeline.ValidateRemoteTask(context.Background(), pipeline.Job{InputPath: in.InputPath, OutputDir: in.OutputDir, Mode: in.Mode, Translator: in.Translator, TTSEngine: in.TTSEngine, TTSVoice: in.TTSVoice}, a.conf); err != nil {
+		return reason.ErrBadRequest.SetMsg(err.Error())
+	}
 	if in.OutputDir == "" {
 		root, err := taskfile.NewRoot(conf.TaskOutputDir(a.conf.Pipeline.DefaultOutputDir), []string{in.InputPath})
 		if err != nil {
@@ -183,7 +186,7 @@ func (a TaskAPI) applyTaskDefaults(in *task.CreateTaskInput) {
 		}
 	}
 	if in.TTSVoice == "" {
-		in.TTSVoice = a.conf.TTS.Voice
+		in.TTSVoice = conf.VoiceForEngine(a.conf.TTS, in.TTSEngine)
 	}
 	if in.SpeechRate == 0 {
 		in.SpeechRate = 1

@@ -69,6 +69,8 @@ func NewPipelineCoreWithASR(bc *conf.Bootstrap, asrRouter *asradapter.Router, op
 		bc.TTS.Model,
 	)
 
+	tc.SetTTSConfig(bc.TTS.Type, bc.TTS.Voice, bc.TTS.BaseURL, bc.TTS.APIKey, bc.TTS.Model, tts.SpeechOptions{Protocol: bc.TTS.Protocol, Language: bc.TTS.Language, Instructions: bc.TTS.Instructions})
+
 	if bc.LipSync.Enabled && bc.LipSync.BaseURL != "" {
 		ls := lipsync.NewMuseTalkClient(bc.LipSync.BaseURL, bc.LipSync.APIKey)
 		opts = append(opts, pipeline.WithLipSync(ls))

@@ -111,6 +111,9 @@ export interface ConfigDTO {
     voice: string;
     edge_voice?: string;
     openai_voice?: string;
+    protocol?: string;
+    language?: string;
+    instructions?: string;
     base_url: string;
     api_key: string;
     model: string;
@@ -187,4 +190,12 @@ export interface AppInfo {
   build_version: string;
   platform: string;
   arch: string;
+}
+
+export interface TTSCapabilities {
+  protocol: 'openai' | 'mlx';
+  voices: Array<{ id: string; name: string }>;
+  voice_source: 'remote' | 'qwen_builtin' | 'manual';
+  instructions: boolean;
+  languages: string[];
 }

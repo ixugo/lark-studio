@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	ttsadapter "github.com/ixugo/vdub/internal/adapter/tts"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -111,11 +112,11 @@ func (c *Core) SetTranslationClient(client LLMClient, splitReady bool) {
 }
 
 // SetTTSConfig 更新可热重载的配音路由器，保留正在执行的请求。
-func (c *Core) SetTTSConfig(engine, voice, baseURL, apiKey, model string) {
+func (c *Core) SetTTSConfig(engine, voice, baseURL, apiKey, model string, options ...ttsadapter.SpeechOptions) {
 	if router, ok := c.tts.(interface {
-		SetTTSConfig(string, string, string, string, string)
+		SetTTSConfig(string, string, string, string, string, ...ttsadapter.SpeechOptions)
 	}); ok {
-		router.SetTTSConfig(engine, voice, baseURL, apiKey, model)
+		router.SetTTSConfig(engine, voice, baseURL, apiKey, model, options...)
 	}
 }
 

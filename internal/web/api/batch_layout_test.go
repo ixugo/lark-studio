@@ -22,7 +22,8 @@ func TestHTTPBatchSharesOutputRoot(t *testing.T) {
 	bc := conf.DefaultConfig()
 	bc.Pipeline.DefaultOutputDir = filepath.Join(dir, "results")
 	bc.Pipeline.WhisperMode = "openai"
-	bc.Pipeline.ASRBaseURL = "http://localhost:8000/v1"
+	modelServer := newTaskModelCatalogFixture(t, "test-model")
+	bc.Pipeline.ASRBaseURL = modelServer.URL + "/v1"
 	bc.Pipeline.ASRModel = "test-model"
 	sched := pipeline.NewScheduler(nil, nil)
 	t.Cleanup(sched.Stop)

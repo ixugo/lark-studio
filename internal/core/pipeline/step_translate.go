@@ -91,6 +91,11 @@ func (c *Core) translateOnly(ctx context.Context, job Job, entries []srtEntry, s
 
 // translateAndTTS 在质量检查通过后发布最终配音，消费者通过文本指纹复用已测量音频。
 func (c *Core) translateAndTTS(ctx context.Context, job Job, entries []srtEntry, sentences []string) error {
+	prepared, err := c.prepareSpeechContext(ctx, job)
+	if err != nil {
+		return err
+	}
+	ctx = prepared
 	ttsWorkers := normalizedTTSWorkers(c.cfg.TTSWorkers)
 	ttsCh := make(chan ttsPair, 300)
 	audioDir := filepath.Join(job.OutputDir, "audio_segs")

@@ -18,6 +18,14 @@ func TestSavedTTSConfigChangesActualSynthesisRequest(t *testing.T) {
 		Voice string `json:"voice"`
 	}
 	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			w.Write([]byte(`{"data":[{"id":"new-model"}]}`))
+			return
+		}
+		if r.URL.Path == "/openapi.json" || r.URL.Path == "/v1/audio/voices" {
+			w.WriteHeader(404)
+			return
+		}
 		if r.URL.Path != "/v1/audio/speech" {
 			t.Errorf("合成路径=%s", r.URL.Path)
 		}

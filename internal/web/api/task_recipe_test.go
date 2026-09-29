@@ -2,6 +2,9 @@ package api
 
 import (
 	"context"
+	"encoding/json/v2"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -41,7 +44,9 @@ func TestPrepareTaskInputDefaultsToBing(t *testing.T) {
 	}
 	cfg := conf.DefaultConfig()
 	cfg.Pipeline.WhisperMode = "openai"
-	cfg.Pipeline.ASRBaseURL = "http://localhost:8000/v1"
+	modelServer := newTaskModelCatalogFixture(t, "test-model", cfg.TTS.Model)
+	cfg.Pipeline.ASRBaseURL = modelServer.URL + "/v1"
+	cfg.Pipeline.DefaultOutputDir = filepath.Join(t.TempDir(), "results")
 	cfg.Pipeline.ASRModel = "test-model"
 	api := TaskAPI{conf: &cfg}
 	input := &task.CreateTaskInput{InputPath: inputPath, Mode: 2}
@@ -102,10 +107,13 @@ func TestPrepareTaskInputSnapshotsConfig(t *testing.T) {
 	}
 	cfg := conf.DefaultConfig()
 	cfg.Pipeline.WhisperMode = "openai"
-	cfg.Pipeline.ASRBaseURL = "http://localhost:8000/v1"
+	modelServer := newTaskModelCatalogFixture(t, "test-model", cfg.TTS.Model)
+	cfg.Pipeline.ASRBaseURL = modelServer.URL + "/v1"
+	cfg.Pipeline.DefaultOutputDir = filepath.Join(t.TempDir(), "results")
 	cfg.Pipeline.ASRModel = "test-model"
 	cfg.LLM.Provider = "deeplx"
 	cfg.TTS.Type = "openai"
+	cfg.TTS.BaseURL = modelServer.URL + "/v1"
 	cfg.TTS.Voice = "alloy"
 	cfg.Pipeline.SubtitleOutput = "file"
 	api := TaskAPI{conf: &cfg}
@@ -142,4 +150,28 @@ func TestValidateTaskParametersRejectsInvalidRecipe(t *testing.T) {
 	if err := validateTaskParameters(input); err == nil {
 		t.Fatal("无效翻译引擎应返回错误")
 	}
+}
+
+// newTaskModelCatalogFixture 保留真实模型标识，只替换测试中不可达的服务地址。
+func newTaskModelCatalogFixture(t *testing.T, models ...string) *httptest.Server {
+	t.Helper()
+	items := make([]map[string]string, 0, len(models))
+	for _, model := range models {
+		items = append(items, map[string]string{"id": model})
+	}
+	body, err := json.Marshal(map[string]any{"data": items})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			http.NotFound(w, r)
+			return
+		}
+		if _, err := w.Write(body); err != nil {
+			t.Errorf("写测试模型目录失败: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+	return server
 }

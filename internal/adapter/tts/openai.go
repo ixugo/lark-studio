@@ -19,6 +19,7 @@ type OpenAITTS struct {
 	model   string
 	voice   string
 	client  *http.Client
+	options SpeechOptions
 }
 
 // NewOpenAITTS 创建 OpenAI 兼容 TTS 适配器
@@ -28,7 +29,7 @@ func NewOpenAITTS(baseURL, apiKey, model, voice string) *OpenAITTS {
 		apiKey:  apiKey,
 		model:   model,
 		voice:   voice,
-		client:  &http.Client{Timeout: 120 * time.Second},
+		client:  &http.Client{Timeout: 120 * time.Second, CheckRedirect: func(req *http.Request, via []*http.Request) error { return http.ErrUseLastResponse }},
 	}
 }
 
@@ -77,17 +78,28 @@ func (t *OpenAITTS) SynthesizeBytes(ctx context.Context, text, voice string, spe
 		return nil, "", fmt.Errorf("TTS API 请求失败: %w", err)
 	}
 	defer resp.Body.Close()
-	return readSpeechResponse(resp)
+	data, media, err := readSpeechResponse(resp)
+	if err != nil && t.apiKey != "" {
+		return nil, "", fmt.Errorf("%s", strings.ReplaceAll(err.Error(), t.apiKey, "[redacted]"))
+	}
+	return data, media, err
 }
 
 // speechRequest 统一构造带模型、音色与语速的兼容接口请求。
 func (t *OpenAITTS) speechRequest(ctx context.Context, text, voice string, speed float64) (*http.Request, error) {
-	body, err := json.Marshal(map[string]any{
-		"model": t.model,
-		"input": text,
-		"voice": voice,
-		"speed": speed,
-	})
+	payload := map[string]any{"model": t.model, "input": text, "voice": voice, "speed": speed, "response_format": "wav"}
+	if t.options.Protocol == "mlx" {
+		if t.options.Language != "" {
+			payload["lang_code"] = t.options.Language
+		}
+		if t.options.Instructions != "" {
+			payload["instruct"] = t.options.Instructions
+		}
+
+	} else if t.options.Instructions != "" {
+		payload["instructions"] = t.options.Instructions
+	}
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
@@ -108,15 +120,22 @@ func (t *OpenAITTS) speechRequest(ctx context.Context, text, voice string, speed
 // readSpeechResponse 读取兼容服务的音频或错误详情，供试听与任务合成共用。
 func readSpeechResponse(resp *http.Response) ([]byte, string, error) {
 	if resp.StatusCode != http.StatusOK {
-		respBody, readErr := io.ReadAll(resp.Body)
+		respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 1024))
 		if readErr != nil {
 			return nil, "", fmt.Errorf("读取 TTS 错误响应失败: %w", readErr)
 		}
 		return nil, "", fmt.Errorf("TTS API 返回 %d: %s", resp.StatusCode, string(respBody))
 	}
-	data, err := io.ReadAll(resp.Body)
+	const maxSpeechResponseBytes = 32 << 20
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxSpeechResponseBytes+1))
 	if err != nil {
 		return nil, "", fmt.Errorf("读取 TTS 音频失败: %w", err)
+	}
+	if len(data) == 0 {
+		return nil, "", fmt.Errorf("TTS 服务没有返回音频")
+	}
+	if len(data) > maxSpeechResponseBytes {
+		return nil, "", fmt.Errorf("TTS 音频响应超过 32 MiB")
 	}
 	return data, resp.Header.Get("Content-Type"), nil
 }

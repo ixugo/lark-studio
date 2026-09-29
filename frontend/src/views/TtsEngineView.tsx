@@ -14,8 +14,10 @@ import {
   Loader2,
 } from 'lucide-react';
 import { api } from '../lib/api';
-import { ConfigDTO } from '../types';
+import { ConfigDTO, TTSCapabilities } from '../types';
 import { useTranslation } from '../i18n';
+import { RemoteModelSelect, useRemoteModels } from '../components/RemoteModelSelect';
+import { validateTTSSelection } from '../lib/ttsCapabilities';
 import {
   EDGE_TTS_VOICES,
   normalizeTtsVoice,
@@ -63,6 +65,32 @@ export const TtsEngineView: React.FC = () => {
   const [testingTTS, setTestingTTS] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const remoteEnabled = !!config && (activeEngine === 'openai' || config.tts.type === 'openai');
+  const baseURL = config?.tts.base_url || '';
+  const apiKey = config?.tts.api_key || '';
+  const model = config?.tts.model || '';
+  const remoteModels = useRemoteModels(baseURL, apiKey, remoteEnabled);
+  const modelConfirmed = remoteModels.hasModel(model);
+  const [capabilityState, setCapabilityState] = useState<{
+    baseURL: string; apiKey: string; model: string; value: TTSCapabilities | null; error: string;
+  } | null>(null);
+  const capabilityRequest = useRef(0);
+  const capabilities = modelConfirmed && capabilityState?.baseURL === baseURL &&
+    capabilityState.apiKey === apiKey && capabilityState.model === model ? capabilityState.value : null;
+  const capabilityError = capabilityState?.baseURL === baseURL && capabilityState.apiKey === apiKey &&
+    capabilityState.model === model ? capabilityState.error : '';
+
+  useEffect(() => {
+    const request = ++capabilityRequest.current;
+    setCapabilityState(null);
+    if (!modelConfirmed) return;
+    api.getTTSCapabilities(baseURL, apiKey, model).then(value => {
+      if (request === capabilityRequest.current) setCapabilityState({ baseURL, apiKey, model, value, error: '' });
+    }).catch(error => {
+      if (request === capabilityRequest.current) setCapabilityState({ baseURL, apiKey, model, value: null, error: error instanceof Error ? error.message : String(error) });
+    });
+    return () => { ++capabilityRequest.current; };
+  }, [baseURL, apiKey, model, modelConfirmed]);
   const engineDetails = {
     edge: { name: 'Edge TTS', tag: tr('免 Key 推荐', 'Recommended · No Key'), desc: tr('微软语音服务，音色自然且无需单独配置密钥。', 'Microsoft speech service with natural voices and no API key setup.'), badge: tr('推荐', 'Recommended') },
     openai: { name: 'OpenAI TTS', tag: tr('兼容接口', 'Compatible API'), desc: tr('可连接 OpenAI 兼容的语音合成服务。', 'Connect to any OpenAI-compatible speech synthesis service.'), badge: undefined },
@@ -82,8 +110,10 @@ export const TtsEngineView: React.FC = () => {
         tts: {
           ...cfg.tts,
           type: current,
-          voice: ttsVoiceForEngine(current, cfg.tts),
-          model: cfg.tts?.model || 'tts-1',
+          voice: current === 'openai' ? cfg.tts.openai_voice ?? cfg.tts.voice ?? '' : ttsVoiceForEngine(current, cfg.tts),
+          model: cfg.tts?.model || '',
+          language: cfg.tts?.language || 'Auto',
+          instructions: cfg.tts?.instructions || '',
           base_url: cfg.tts?.base_url || 'https://api.openai.com/v1',
         },
       };
@@ -92,24 +122,48 @@ export const TtsEngineView: React.FC = () => {
     }).catch(console.error);
   }, []);
 
+  const validateRemoteTTS = (voice: string) => {
+    if (!config || !modelConfirmed) return tr('请先获取并选择远程模型。', 'Fetch and select a remote model first.');
+    if (!capabilities) return capabilityError || tr('请等待语音服务能力查询完成。', 'Wait for the speech service capabilities.');
+    const error = validateTTSSelection(capabilities, { ...config.tts, voice });
+    const messages = {
+      voice: tr('请选择当前模型支持的音色。', 'Select a voice supported by the current model.'),
+      instructions: tr('当前模型不支持情绪指令，请清空后保存。', 'This model does not support instructions. Clear them before saving.'),
+      instructions_length: tr('情绪指令不能超过 4096 字符。', 'Instructions cannot exceed 4096 characters.'),
+      language: tr('请选择当前模型支持的语言。', 'Select a language supported by the current model.'),
+    };
+    return error ? messages[error] : '';
+  };
+
   const handleSave = async (engineToSet?: string) => {
     if (!config) return;
+    const requestedType = engineToSet || config.tts.type || activeEngine;
+    const targetType: TtsEngine = requestedType === 'openai' ? 'openai' : 'edge';
+    const needsRemote = activeEngine === 'openai' || targetType === 'openai';
+    const remoteVoice = activeEngine === 'openai' ? config.tts.voice : ttsVoiceForEngine('openai', config.tts);
+    const error = needsRemote ? validateRemoteTTS(remoteVoice) : '';
+    if (error) { setErrorMsg(error); return; }
     setLoading(true);
     setErrorMsg(null);
     try {
-      const requestedType = engineToSet || config.tts.type || activeEngine;
-      const targetType: TtsEngine = requestedType === 'openai' ? 'openai' : 'edge';
+      const selectedVoice = activeEngine === 'openai' ? config.tts.voice : normalizeTtsVoice('edge', config.tts.voice);
       const updatedConfig = {
         ...config,
         tts: {
           ...config.tts,
           type: targetType,
-          voice: normalizeTtsVoice(activeEngine, config.tts.voice),
-          [activeEngine === 'openai' ? 'openai_voice' : 'edge_voice']: normalizeTtsVoice(activeEngine, config.tts.voice),
+          voice: selectedVoice,
+          [activeEngine === 'openai' ? 'openai_voice' : 'edge_voice']: selectedVoice,
+          protocol: needsRemote ? capabilities!.protocol : config.tts.protocol,
         },
       };
 
-      await api.updateConfig(configFormUpdates('tts', config, activeEngine, targetType));
+      const updates = configFormUpdates('tts', updatedConfig, activeEngine, targetType);
+      if (activeEngine === 'openai' && updates.tts) {
+        updates.tts.openai_voice = selectedVoice;
+        if (targetType === 'openai') updates.tts.voice = selectedVoice;
+      }
+      await api.updateConfig(updates);
 
       setConfig(updatedConfig);
       setSavedSuccess(true);
@@ -132,8 +186,8 @@ export const TtsEngineView: React.FC = () => {
       ...current,
       tts: {
         ...current.tts,
-        [activeEngine === 'openai' ? 'openai_voice' : 'edge_voice']: normalizeTtsVoice(activeEngine, current.tts.voice),
-        voice: ttsVoiceForEngine(engine, current.tts),
+        [activeEngine === 'openai' ? 'openai_voice' : 'edge_voice']: activeEngine === 'openai' ? current.tts.voice : normalizeTtsVoice('edge', current.tts.voice),
+        voice: engine === 'openai' ? current.tts.openai_voice ?? (activeEngine === 'openai' ? current.tts.voice : '') : ttsVoiceForEngine(engine, current.tts),
       },
     } : current);
   };
@@ -141,6 +195,13 @@ export const TtsEngineView: React.FC = () => {
   // 统一试音：调用选定引擎朗读指定文本并触发播放。
   const handleTestTTS = async () => {
     if (!config) return;
+    if (activeEngine === 'openai') {
+      const error = validateRemoteTTS(config.tts.voice);
+      if (error) {
+        setTestResult({ success: false, message: error });
+        return;
+      }
+    }
     setTestingTTS(true);
     setTestResult(null);
     try {
@@ -150,13 +211,7 @@ export const TtsEngineView: React.FC = () => {
       if (activeEngine === 'edge') {
         audioURL = await api.testEdgeTTS(config.tts.voice || 'zh-CN-XiaoxiaoNeural', text);
       } else {
-        audioURL = await api.testOpenAITTS(
-          config.tts.base_url || '',
-          config.tts.api_key || '',
-          config.tts.model || '',
-          config.tts.voice || '',
-          text,
-        );
+        audioURL = await api.testConfiguredTTS({ ...config.tts, type: 'openai', protocol: capabilities!.protocol }, text);
       }
       audioRef.current?.pause();
       audioRef.current = new Audio(audioURL);
@@ -458,18 +513,9 @@ export const TtsEngineView: React.FC = () => {
                       <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                         {tr('TTS 模型', 'TTS Model')}
                       </label>
-                      <input
-                        type="text"
-                        placeholder={tr('如 tts-1 或自定义模型名', 'For example: tts-1 or a custom model name')}
-                        value={config.tts.model || 'tts-1'}
-                        onChange={(e) =>
-                          setConfig({
-                            ...config,
-                            tts: { ...config.tts, model: e.target.value },
-                          })
-                        }
-                        className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-                      />
+                      <RemoteModelSelect catalog={remoteModels} value={config.tts.model || ''}
+                        hasAddress={!!config.tts.base_url?.trim()}
+                        onChange={model => setConfig({ ...config, tts: { ...config.tts, model } })} />
                     </div>
 
                     <div>
@@ -477,18 +523,21 @@ export const TtsEngineView: React.FC = () => {
                         {tr('默认音色', 'Default Voice')}
                       </label>
                       <div className="flex gap-2">
-                        <input
-                          type="text"
-                          placeholder={tr('如 alloy 或服务端支持的音色名', 'For example: alloy or a voice supported by your service')}
-                          value={config.tts.voice || 'alloy'}
-                          onChange={(e) =>
-                            setConfig({
-                              ...config,
-                              tts: { ...config.tts, voice: e.target.value },
-                            })
-                          }
-                          className="flex-1 h-10 px-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-                        />
+                        {capabilities?.voices.length ? (
+                          <select aria-label={tr('默认音色', 'Default Voice')}
+                            value={capabilities.voices.some(voice => voice.id === config.tts.voice) ? config.tts.voice : ''}
+                            onChange={event => setConfig({ ...config, tts: { ...config.tts, voice: event.target.value } })}
+                            className="flex-1 min-w-0 h-10 px-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-800 dark:text-white disabled:opacity-50">
+                            <option value="">{tr('请选择音色', 'Select a voice')}</option>
+                            {capabilities.voices.map(voice => <option key={voice.id} value={voice.id}>{voice.name || voice.id}</option>)}
+                          </select>
+                        ) : (
+                          <input type="text" disabled={!capabilities || capabilities.voice_source !== 'manual'}
+                            placeholder={tr('填写服务端支持的音色名', 'Enter a voice supported by the service')}
+                            value={config.tts.voice || ''} maxLength={256}
+                            onChange={event => setConfig({ ...config, tts: { ...config.tts, voice: event.target.value } })}
+                            className="flex-1 min-w-0 h-10 px-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-800 dark:text-white disabled:opacity-50" />
+                        )}
                         <button
                           type="button"
                           onClick={handleTestTTS}
@@ -499,8 +548,44 @@ export const TtsEngineView: React.FC = () => {
                           <span>{tr('试音', 'Audition')}</span>
                         </button>
                       </div>
+                      <p className="text-[11px] text-slate-400 mt-1.5">
+                        {capabilityError || (!modelConfirmed ? tr('请选择远程模型以获取音色与服务能力。', 'Select a remote model to fetch voices and capabilities.')
+                          : !capabilities ? tr('正在查询音色与服务能力…', 'Loading voices and service capabilities…')
+                            : capabilities.voice_source === 'qwen_builtin' ? tr('Qwen 内置音色，服务未返回音色列表。', 'Built-in Qwen voices; the service did not return a voice list.')
+                              : capabilities.voice_source === 'manual' ? tr('服务未提供音色查询接口，请填写其支持的音色。', 'The service has no voice discovery endpoint. Enter a supported voice.')
+                                : tr('音色列表来自当前服务。', 'The voice list comes from the current service.'))}
+                      </p>
                     </div>
                   </div>
+
+                  {capabilities?.protocol === 'mlx' && capabilities.languages.length > 0 && (
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">{tr('配音语言', 'Speech Language')}</label>
+                      <select value={capabilities.languages.includes(config.tts.language || 'Auto') ? config.tts.language || 'Auto' : ''}
+                        onChange={event => setConfig({ ...config, tts: { ...config.tts, language: event.target.value } })}
+                        className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-800 dark:text-white">
+                        <option value="" disabled>{tr('请选择语言', 'Select a language')}</option>
+                        {capabilities.languages.map(language => <option key={language} value={language}>{language === 'Auto' ? tr('自动 · 随任务目标语言', 'Auto · Follow the task target language') : language}</option>)}
+                      </select>
+                    </div>
+                  )}
+
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">{tr('情绪与语气指令', 'Emotion and Style Instructions')}</label>
+                    {capabilities?.instructions ? (
+                      <textarea rows={2} maxLength={4096} value={config.tts.instructions || ''}
+                        onChange={event => setConfig({ ...config, tts: { ...config.tts, instructions: event.target.value } })}
+                        placeholder={tr('例如：用温暖、平静的语气朗读。', 'For example: Read in a warm, calm voice.')}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-800 dark:text-white" />
+                    ) : (
+                      <p className="text-[11px] text-slate-400">
+                        {tr('当前模型未启用情绪指令；Qwen 0.6B 通常不支持，请选择支持指令的 1.7B 模型。', 'Instructions are unavailable; Qwen 0.6B generally does not support them. Select a compatible 1.7B model.')}
+                        {config.tts.instructions && <button type="button" onClick={() => setConfig({ ...config, tts: { ...config.tts, instructions: '' } })}
+                          className="ml-2 text-blue-600">{tr('清空原指令', 'Clear saved instructions')}</button>}
+                      </p>
+                    )}
+                  </div>
+
 
                   <div className="flex flex-wrap items-center gap-3 pt-1">
                     {testResult && activeEngine === 'openai' && (

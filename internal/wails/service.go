@@ -297,6 +297,25 @@ func (s *AppService) RerunTaskWithRecipe(id string, opts RerunTaskOptions) error
 		}
 	}
 
+	validationJob := taskPipelineJob(item)
+	validationJob.Mode, validationJob.ResumeFrom = targetMode, fromStep
+	if fromStep == pipeline.StepWhisper {
+		// 输出字幕将随听写重跑清理，不能用它跳过新模型校验。
+		validationJob.OutputDir = ""
+	}
+	if opts.Translator != "" {
+		validationJob.Translator = opts.Translator
+	}
+	if opts.TTSEngine != "" {
+		validationJob.TTSEngine = opts.TTSEngine
+	}
+	if opts.TTSVoice != "" {
+		validationJob.TTSVoice = opts.TTSVoice
+	}
+	if err := pipeline.ValidateRemoteTask(ctx, validationJob, s.bc); err != nil {
+		return err
+	}
+
 	s.scheduler.Pause(id)
 	pipeline.CleanStepAndSubsequent(item.OutputDir, fromStep)
 
@@ -674,6 +693,15 @@ func (s *AppService) UpdateConfig(updates map[string]any) error {
 	}
 
 	if t, ok := updates["tts"].(map[string]any); ok {
+		if v, ok := t["protocol"].(string); ok {
+			c.TTS.Protocol = v
+		}
+		if v, ok := t["language"].(string); ok {
+			c.TTS.Language = v
+		}
+		if v, ok := t["instructions"].(string); ok {
+			c.TTS.Instructions = v
+		}
 		if v, ok := t["edge_voice"].(string); ok {
 			c.TTS.EdgeVoice = v
 		}
@@ -713,6 +741,22 @@ func (s *AppService) UpdateConfig(updates map[string]any) error {
 	if err := asradapter.ValidateConfig(config); err != nil {
 		return err
 	}
+	if err := s.validateRemoteConfig(updates, c); err != nil {
+		return err
+	}
+	openAISettingsChanged := c.TTS.BaseURL != s.bc.TTS.BaseURL || c.TTS.APIKey != s.bc.TTS.APIKey ||
+		c.TTS.Model != s.bc.TTS.Model || c.TTS.OpenAIVoice != s.bc.TTS.OpenAIVoice ||
+		c.TTS.Protocol != s.bc.TTS.Protocol || c.TTS.Language != s.bc.TTS.Language ||
+		c.TTS.Instructions != s.bc.TTS.Instructions ||
+		(strings.EqualFold(strings.TrimSpace(c.TTS.Type), "openai") && (c.TTS.Type != s.bc.TTS.Type || c.TTS.Voice != s.bc.TTS.Voice))
+	if _, ok := updates["tts"]; ok && openAISettingsChanged {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		err := ttsadapter.ValidateSpeechSelection(ctx, c.TTS.BaseURL, c.TTS.APIKey, c.TTS.Model, conf.VoiceForEngine(c.TTS, "openai"), ttsSpeechOptions(c.TTS))
+		cancel()
+		if err != nil {
+			return err
+		}
+	}
 	if err := conf.WriteConfig(c, c.Runtime.ConfigPath); err != nil {
 		return err
 	}
@@ -721,7 +765,7 @@ func (s *AppService) UpdateConfig(updates map[string]any) error {
 		s.asrRouter.SetConfig(config)
 	}
 	if s.scheduler != nil {
-		s.scheduler.SetTTSConfig(c.TTS.Type, c.TTS.Voice, c.TTS.BaseURL, c.TTS.APIKey, c.TTS.Model)
+		s.scheduler.SetTTSConfig(c.TTS.Type, c.TTS.Voice, c.TTS.BaseURL, c.TTS.APIKey, c.TTS.Model, ttsSpeechOptions(c.TTS))
 		client := llmadapter.NewRoutingClient(c.LLM.BaseURL, c.LLM.APIKey, c.LLM.Model, c.LLM.Provider, c.LLM.DeepLXURL)
 		ready := strings.EqualFold(c.LLM.Provider, "openai") && strings.TrimSpace(c.LLM.BaseURL) != "" && strings.TrimSpace(c.LLM.Model) != ""
 		s.scheduler.SetTranslationClient(client, ready)
@@ -812,6 +856,9 @@ func (s *AppService) prepareTaskInput(in *task.CreateTaskInput) error {
 	if err := pipeline.ValidateRecognitionConfig(in.InputPath, in.OutputDir, in.Mode, config); err != nil {
 		return err
 	}
+	if err := pipeline.ValidateRemoteTask(context.Background(), pipeline.Job{InputPath: in.InputPath, OutputDir: in.OutputDir, Mode: in.Mode, Translator: in.Translator, TTSEngine: in.TTSEngine, TTSVoice: in.TTSVoice}, s.bc); err != nil {
+		return err
+	}
 	if in.OutputDir == "" {
 		baseOutputDir := conf.TaskOutputDir(s.bc.Pipeline.DefaultOutputDir)
 		root, err := taskfile.NewRoot(baseOutputDir, []string{in.InputPath})
@@ -858,7 +905,7 @@ func (s *AppService) prepareTaskInput(in *task.CreateTaskInput) error {
 		}
 	}
 	if in.TTSVoice == "" {
-		in.TTSVoice = s.bc.TTS.Voice
+		in.TTSVoice = conf.VoiceForEngine(s.bc.TTS, in.TTSEngine)
 	}
 	if in.SpeechRate == 0 {
 		in.SpeechRate = 1

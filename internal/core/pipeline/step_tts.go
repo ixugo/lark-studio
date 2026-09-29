@@ -11,6 +11,11 @@ import (
 // runTTS 文本转语音步骤
 // ModeDub 模式下，若翻译步骤已通过流水线完成 TTS，则自动跳过
 func (c *Core) runTTS(ctx context.Context, job Job) error {
+	prepared, err := c.prepareSpeechContext(ctx, job)
+	if err != nil {
+		return err
+	}
+	ctx = prepared
 	if job.Mode == ModeDub {
 		audioDir := filepath.Join(job.OutputDir, "audio_segs")
 		if info, err := os.Stat(audioDir); err == nil && info.IsDir() {

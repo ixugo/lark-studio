@@ -16,6 +16,7 @@ import {
 import { api } from '../lib/api';
 import { ConfigDTO } from '../types';
 import { useTranslation } from '../i18n';
+import { RemoteModelSelect, useRemoteModels } from '../components/RemoteModelSelect';
 
 interface EngineItem {
   id: 'bing' | 'google' | 'openai';
@@ -63,6 +64,8 @@ export const TranslationEngineView: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [testingConn, setTestingConn] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const remoteModels = useRemoteModels(config?.llm.base_url || '', config?.llm.api_key || '',
+    !!config && (activeEngine === 'openai' || config.llm.provider === 'openai'));
   const engineDetails = {
     bing: { name: tr('必应翻译', 'Bing Translator'), tag: tr('免 Key 推荐', 'Recommended · No Key'), desc: tr('微软 Edge 翻译通道，异常时自动降级至谷歌翻译', 'Microsoft Edge translation with automatic fallback to Google when unavailable.'), badge: tr('推荐', 'Recommended') },
     google: { name: tr('谷歌翻译', 'Google Translate'), tag: tr('免 Key 服务', 'No Key Required'), desc: tr('公共翻译服务，支持近百种语言，速度快且稳定。', 'Public translation service supporting nearly 100 languages with fast, reliable responses.'), badge: undefined },
@@ -81,7 +84,7 @@ export const TranslationEngineView: React.FC = () => {
         llm: {
           ...cfg.llm,
           base_url: cfg.llm?.base_url || 'https://api.openai.com/v1',
-          model: cfg.llm?.model || 'gpt-4o-mini',
+          model: cfg.llm?.model || '',
         },
       };
       setConfig(patched);
@@ -97,13 +100,17 @@ export const TranslationEngineView: React.FC = () => {
 
   const handleTestConnection = async () => {
     if (!config) return;
+    if (!remoteModels.hasModel(config.llm.model || '')) {
+      setTestResult({ success: false, message: tr('请先获取远程模型并选择模型。', 'Fetch the remote models and select a model first.') });
+      return;
+    }
     setTestingConn(true);
     setTestResult(null);
     try {
       const res = await api.testOpenAITranslate(
         config.llm.base_url || '',
         config.llm.api_key || '',
-        config.llm.model || 'gpt-4o-mini'
+        config.llm.model
       );
       setTestResult({ success: true, message: res });
     } catch (err) {
@@ -118,10 +125,14 @@ export const TranslationEngineView: React.FC = () => {
 
   const handleSave = async (engineToSet?: string) => {
     if (!config) return;
+    const targetProvider = engineToSet || config.llm.provider || activeEngine;
+    if ((activeEngine === 'openai' || targetProvider === 'openai') && !remoteModels.hasModel(config.llm.model || '')) {
+      setErrorMsg(tr('请先从当前接口获取并选择远程模型。', 'Fetch and select a model from the current service first.'));
+      return;
+    }
     setLoading(true);
     setErrorMsg(null);
     try {
-      const targetProvider = engineToSet || config.llm.provider || activeEngine;
       const updatedConfig = {
         ...config,
         llm: {
@@ -439,18 +450,9 @@ export const TranslationEngineView: React.FC = () => {
                       <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                         {tr('模型名称 Model', 'Model Name')}
                       </label>
-                      <input
-                        type="text"
-                        placeholder="qwen2.5:7b, deepseek-chat, gpt-4o-mini"
-                        value={config.llm.model}
-                        onChange={(e) =>
-                          setConfig({
-                            ...config,
-                            llm: { ...config.llm, model: e.target.value },
-                          })
-                        }
-                        className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-                      />
+                      <RemoteModelSelect catalog={remoteModels} value={config.llm.model || ''}
+                        hasAddress={!!config.llm.base_url?.trim()}
+                        onChange={model => setConfig({ ...config, llm: { ...config.llm, model } })} />
                     </div>
 
                     <div>

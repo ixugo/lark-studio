@@ -56,9 +56,11 @@ func DefaultConfig() Bootstrap {
 			Model:    "qwen2.5:7b",
 		},
 		TTS: TTS{
-			Type:  "edge",
-			Voice: "zh-CN-XiaoxiaoNeural",
-			Model: "tts-1",
+			Protocol: "openai",
+			Language: "Auto",
+			Type:     "edge",
+			Voice:    "zh-CN-XiaoxiaoNeural",
+			Model:    "tts-1",
 		},
 	}
 }

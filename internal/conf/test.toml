@@ -89,6 +89,12 @@
   DeepLXURL = ''
 
 [TTS]
+  # 语音服务协议: openai / mlx
+  Protocol = ''
+  # MLX 合成语言，Auto 按任务目标语言
+  Language = ''
+  # 支持时使用的情绪和风格指令
+  Instructions = ''
   # Edge TTS 音色
   EdgeVoice = ''
   # OpenAI 兼容 TTS 音色

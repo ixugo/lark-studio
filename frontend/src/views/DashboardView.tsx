@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   UploadCloud,
   FileVideo,
@@ -24,6 +24,8 @@ import { EDGE_TTS_VOICES, normalizeTtsVoice, TtsEngine } from '../lib/ttsVoices'
 import { whisperModelChoices, selectWhisperModel, configuredWhisperModel, WhisperModelChoice } from '../lib/whisperModels';
 import { ASREngine, prepareASRSelection } from '../lib/asrSelection';
 import { loadWorkbenchDraft, saveWorkbenchDraft } from '../lib/workbenchDraft';
+import { configuredWorkbenchVoice, validateWorkbenchTTS } from '../lib/workbenchTTS';
+import type { ConfigDTO, TTSCapabilities } from '../types';
 
 declare global {
   interface Window {
@@ -112,6 +114,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
   const [whisperModel, setWhisperModel] = useState(initialDraft.whisperModel || '');
   const [downloadedWhisperModels, setDownloadedWhisperModels] = useState<WhisperModelChoice[]>([]);
   const [loadingModels, setLoadingModels] = useState(true);
+  const activation = useRef({ active, version: 0 });
+  if (activation.current.active !== active) activation.current = { active, version: activation.current.version + 1 };
+  const [ttsConfigSnapshot, setTtsConfigSnapshot] = useState<{ version: number; value: ConfigDTO['tts'] } | null>(null);
+  const ttsConfig = active && ttsConfigSnapshot?.version === activation.current.version ? ttsConfigSnapshot.value : null;
+  const [ttsConfigError, setTtsConfigError] = useState('');
+  const initializedDefaults = useRef(false);
+  const explicitlySelectedTtsEngine = useRef(!!initialDraft.ttsEngine);
+  const engineVoices = useRef<Partial<Record<TtsEngine, string>>>(initialDraft.ttsEngine && initialDraft.ttsVoice
+    ? { [initialDraft.ttsEngine]: initialDraft.ttsVoice } : {});
 
   useEffect(() => {
     if (!active) return;
@@ -136,23 +147,37 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
   }, [active]);
 
   useEffect(() => {
+    setTtsConfigSnapshot(null);
+    setTtsConfigError('');
+    if (!active) return;
+    let mounted = true;
+    const version = activation.current.version;
     api.getConfig().then((config) => {
-      if (!initialDraft.targetLang && config.pipeline?.default_target_lang) {
+      if (!mounted) return;
+      setTtsConfigSnapshot({ version, value: config.tts });
+      if (!initializedDefaults.current && !initialDraft.targetLang && config.pipeline?.default_target_lang) {
         setTargetLang(config.pipeline.default_target_lang);
       }
-      if (!initialDraft.translateService && ['google', 'bing', 'openai'].includes(config.llm?.provider)) {
+      if (!initializedDefaults.current && !initialDraft.translateService && ['google', 'bing', 'openai'].includes(config.llm?.provider)) {
         setTranslateService(config.llm.provider as 'google' | 'bing' | 'openai');
       }
       const configuredTtsEngine = ['edge', 'openai'].includes(config.tts?.type)
         ? config.tts.type as TtsEngine
         : 'edge';
-      const preferredTtsEngine = initialDraft.ttsEngine || configuredTtsEngine;
-      if (!initialDraft.ttsEngine) setTtsEngine(configuredTtsEngine);
-      if (!initialDraft.ttsVoice) {
-        setTtsVoice(normalizeTtsVoice(preferredTtsEngine, config.tts?.voice));
-      }
-    }).catch(console.error);
-  }, []);
+      const preferredTtsEngine = initializedDefaults.current || explicitlySelectedTtsEngine.current
+        ? selectedTtsEngine.current : configuredTtsEngine;
+      if (!initializedDefaults.current && !explicitlySelectedTtsEngine.current) setTtsEngine(configuredTtsEngine);
+      setTtsVoice(current => {
+        const voice = current || configuredWorkbenchVoice(preferredTtsEngine, config.tts);
+        engineVoices.current[preferredTtsEngine] = voice;
+        return voice;
+      });
+      initializedDefaults.current = true;
+    }).catch(error => {
+      if (mounted) setTtsConfigError(error instanceof Error ? error.message : String(error));
+    });
+    return () => { mounted = false; };
+  }, [active]);
 
   const [videoLang, setVideoLang] = useState(initialDraft.videoLang || 'auto');
   const [targetLang, setTargetLang] = useState(initialDraft.targetLang || 'zh-CN');
@@ -161,12 +186,39 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
 
   // 子阶段 2：AI 配音配置
   const [ttsEngine, setTtsEngine] = useState<TtsEngine>(initialDraft.ttsEngine || 'edge');
-  const [ttsVoice, setTtsVoice] = useState(initialDraft.ttsVoice || 'zh-CN-XiaoxiaoNeural');
+  const [ttsVoice, setTtsVoice] = useState(initialDraft.ttsVoice || '');
   const [speechRate, setSpeechRate] = useState<number>(initialDraft.speechRate ?? 1.0);
+  const selectedTtsEngine = useRef(ttsEngine);
+  selectedTtsEngine.current = ttsEngine;
+  const [ttsCapabilityState, setTtsCapabilityState] = useState<{
+    config: ConfigDTO['tts']; value: TTSCapabilities | null; error: string;
+  } | null>(null);
+  const ttsCapabilities = active && ttsEngine === 'openai' && ttsCapabilityState?.config === ttsConfig
+    ? ttsCapabilityState.value : null;
+  const ttsCapabilityError = ttsCapabilityState?.config === ttsConfig ? ttsCapabilityState?.error || '' : '';
+
+  useEffect(() => {
+    setTtsCapabilityState(null);
+    if (!active || !doDub || ttsEngine !== 'openai' || !ttsConfig) return;
+    let mounted = true;
+    api.getTTSCapabilities(ttsConfig.base_url || '', ttsConfig.api_key || '', ttsConfig.model || '').then(value => {
+      if (mounted) setTtsCapabilityState({ config: ttsConfig, value, error: '' });
+    }).catch(error => {
+      if (mounted) setTtsCapabilityState({ config: ttsConfig, value: null, error: error instanceof Error ? error.message : String(error) });
+    });
+    return () => { mounted = false; };
+  }, [active, doDub, ttsEngine, ttsConfig]);
+
+  const handleTtsVoiceChange = (voice: string) => {
+    engineVoices.current[ttsEngine] = voice;
+    setTtsVoice(voice);
+  };
 
   const handleTtsEngineChange = (engine: TtsEngine) => {
+    explicitlySelectedTtsEngine.current = true;
+    engineVoices.current[ttsEngine] = ttsVoice;
     setTtsEngine(engine);
-    setTtsVoice((voice) => normalizeTtsVoice(engine, voice));
+    setTtsVoice(engineVoices.current[engine] ?? (ttsConfig ? configuredWorkbenchVoice(engine, ttsConfig) : ''));
   };
 
   // 子阶段 3：成品视频压制配置
@@ -365,10 +417,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
       if (preset.config.sourceLang) setVideoLang(preset.config.sourceLang);
       if (preset.config.whisperModel) setWhisperModel(preset.config.whisperModel);
       if (preset.config.translateService) setTranslateService((preset.config.translateService === 'local' ? 'openai' : preset.config.translateService) as 'bing' | 'google' | 'openai');
-      if (preset.config.ttsEngine) setTtsEngine(preset.config.ttsEngine);
+      if (preset.config.ttsEngine) handleTtsEngineChange(preset.config.ttsEngine);
       if (preset.config.targetLang) setTargetLang(preset.config.targetLang);
       if (preset.config.ttsVoice) {
-        setTtsVoice(normalizeTtsVoice(preset.config.ttsEngine || ttsEngine, preset.config.ttsVoice));
+        const engine = preset.config.ttsEngine || ttsEngine;
+        const voice = engine === 'openai' ? preset.config.ttsVoice : normalizeTtsVoice('edge', preset.config.ttsVoice);
+        engineVoices.current[engine] = voice;
+        setTtsVoice(voice);
       }
       if (preset.config.speechRate) setSpeechRate(currentResourceType === 'video' ? 1.0 : preset.config.speechRate);
       if (preset.config.subtitleOutput) setSubtitleOutput(preset.config.subtitleOutput);
@@ -493,6 +548,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
         await handlePickFiles();
         return;
       }
+      const selectedVoice = ttsVoice || (ttsConfig ? configuredWorkbenchVoice(ttsEngine, ttsConfig) : '');
+      if (doDub && ttsEngine === 'openai') {
+        if (!ttsConfig) throw new Error(ttsConfigError || (english ? 'Wait for the speech settings to load.' : '请等待语音合成配置加载完成。'));
+        const error = validateWorkbenchTTS(ttsCapabilities, ttsConfig, selectedVoice);
+        const messages = {
+          capabilities: ttsCapabilityError || (english ? 'Wait for the speech capabilities to load.' : '请等待语音服务能力查询完成。'),
+          voice: english ? 'The draft or recipe voice is unavailable. Select a voice from the current service.' : '草稿或配方音色不在当前服务清单中，请重新选择音色。',
+          instructions: english ? 'This model does not support the configured instructions.' : '当前模型不支持所配置的情绪指令，请修改语音设置。',
+          instructions_length: english ? 'Instructions cannot exceed 4096 characters.' : '情绪指令不能超过 4096 字符，请修改语音设置。',
+          language: english ? 'The configured language is unavailable.' : '当前模型不支持所配置的配音语言，请修改语音设置。',
+        };
+        if (error) throw new Error(messages[error]);
+      }
       if (selectedFiles.length === 1) {
         await api.createTask({
           input_path: selectedFiles[0],
@@ -503,7 +571,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
           translator: finalTranslator,
           output_content: outputContent,
           tts_engine: ttsEngine,
-          tts_voice: ttsVoice,
+          tts_voice: selectedVoice,
           speech_rate: speechRate,
           subtitle_output: finalSubtitleOutput,
         });
@@ -517,7 +585,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
           translator: finalTranslator,
           output_content: outputContent,
           tts_engine: ttsEngine,
-          tts_voice: ttsVoice,
+          tts_voice: selectedVoice,
           speech_rate: speechRate,
           subtitle_output: finalSubtitleOutput,
         });
@@ -1220,7 +1288,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
                     <>
                       <select
                         value={ttsVoice}
-                        onChange={(e) => setTtsVoice(e.target.value)}
+                        onChange={(e) => handleTtsVoiceChange(e.target.value)}
                         className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
                       >
                         {EDGE_TTS_VOICES.map((voice) => (
@@ -1231,16 +1299,39 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onTaskCreated, onC
                       </select>
                       <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
                     </>
+                  ) : ttsCapabilities?.voices.length ? (
+                    <select aria-label={english ? 'Speech voice' : '声音音色'}
+                      value={ttsCapabilities.voices.some(voice => voice.id === ttsVoice) ? ttsVoice : ''}
+                      onChange={event => handleTtsVoiceChange(event.target.value)}
+                      className="w-full h-10 bg-slate-50 dark:bg-white/[0.06] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40">
+                      <option value="">{english ? 'Select a voice' : '请选择音色'}</option>
+                      {ttsCapabilities.voices.map(voice => <option key={voice.id} value={voice.id}>{voice.name || voice.id}</option>)}
+                    </select>
                   ) : (
                     <input
                       type="text"
                       value={ttsVoice}
-                      onChange={(e) => setTtsVoice(e.target.value)}
-                      placeholder={english ? 'For example: alloy or a custom voice' : '如 alloy 或服务端支持的音色名'}
+                      onChange={(e) => handleTtsVoiceChange(e.target.value)}
+                      disabled={!ttsCapabilities || ttsCapabilities.voice_source !== 'manual'}
+                      maxLength={256}
+                      placeholder={english ? 'Enter a voice supported by the service' : '填写服务端支持的音色名'}
                       className="w-full h-10 bg-slate-50 hover:bg-slate-100/80 dark:bg-white/[0.06] dark:hover:bg-white/[0.09] border border-slate-200 dark:border-white/15 rounded-xl px-3 text-[13px] text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors"
                     />
                   )}
                 </div>
+                {ttsEngine === 'openai' && (
+                  <p className="text-[11px] text-slate-500 mt-1.5" role={ttsConfigError || ttsCapabilityError ? 'alert' : undefined}>
+                    {ttsConfigError || ttsCapabilityError || (!ttsCapabilities
+                      ? (english ? 'Loading the current speech service capabilities…' : '正在读取当前语音服务能力…')
+                      : ttsCapabilities.voices.length > 0 && ttsVoice && !ttsCapabilities.voices.some(voice => voice.id === ttsVoice)
+                          ? (english ? `The draft or recipe voice “${ttsVoice}” is unavailable. Select a voice again.` : `草稿或配方音色“${ttsVoice}”不可用，请重新选择。`)
+                          : ttsCapabilities.voice_source === 'qwen_builtin'
+                            ? (english ? 'Built-in Qwen voices; the service did not return a voice list.' : 'Qwen 内置音色，服务未返回音色列表。')
+                            : ttsCapabilities.voice_source === 'remote'
+                              ? (english ? 'Choose a voice returned by the current service.' : '请选择当前服务返回的音色。')
+                              : (english ? 'No voice discovery endpoint; enter a supported voice.' : '服务未提供音色查询接口，请填写其支持的音色。'))}
+                  </p>
+                )}
               </div>
 
               {/* 语速倍率 */}

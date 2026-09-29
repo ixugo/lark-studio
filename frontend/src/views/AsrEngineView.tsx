@@ -21,6 +21,7 @@ import { RefreshButton } from '../components/RefreshButton';
 import { ModelDownloadProgress, initialModelDownloadProgress, listenModelDownload } from '../lib/modelDownload';
 import { ConfigDTO, WhisperModelItem, WhisperRuntimeInfo } from '../types';
 import { useTranslation } from '../i18n';
+import { RemoteModelSelect, useRemoteModels } from '../components/RemoteModelSelect';
 
 interface AsrEngineItem {
   id: 'whisper-cpp' | 'openai';
@@ -64,6 +65,8 @@ export const AsrEngineView: React.FC = () => {
   const [downloadProgress, setDownloadProgress] = useState<ModelDownloadProgress | null>(null);
   const [deletingModelName, setDeletingModelName] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const remoteModels = useRemoteModels(config?.pipeline.asr_base_url || '', config?.pipeline.asr_api_key || '',
+    !!config && (activeEngine === 'openai' || config.pipeline.whisper_mode === 'openai'));
 
   // 加载数据
   const loadRuntime = useCallback(async () => {
@@ -262,10 +265,14 @@ export const AsrEngineView: React.FC = () => {
   // 保存全局配置
   const handleSave = async (engineToSet?: string) => {
     if (!config) return;
+    const targetMode = engineToSet || config.pipeline.whisper_mode || activeEngine;
+    if ((activeEngine === 'openai' || targetMode === 'openai') && !remoteModels.hasModel(config.pipeline.asr_model || '')) {
+      setErrorMsg(locale === 'en-US' ? 'Fetch and select a model from the current service first.' : '请先从当前接口获取并选择远程模型。');
+      return;
+    }
     setLoading(true);
     setErrorMsg(null);
     try {
-      const targetMode = engineToSet || config.pipeline.whisper_mode || activeEngine;
       const updatedConfig = {
         ...config,
         pipeline: {
@@ -773,13 +780,9 @@ export const AsrEngineView: React.FC = () => {
                       <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
                         {t('asr.openaiModel')}
                       </label>
-                      <input
-                        type="text"
-                        value={config.pipeline.asr_model || ''}
-                        onChange={(e) => setConfig({ ...config, pipeline: { ...config.pipeline, asr_model: e.target.value } })}
-                        placeholder="whisper-1"
-                        className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 text-xs text-slate-800 dark:text-slate-200 outline-none focus:border-blue-500"
-                      />
+                      <RemoteModelSelect catalog={remoteModels} value={config.pipeline.asr_model || ''}
+                        hasAddress={!!config.pipeline.asr_base_url?.trim()}
+                        onChange={model => setConfig({ ...config, pipeline: { ...config.pipeline, asr_model: model } })} />
                     </div>
                   </div>
                 </div>
