@@ -32,7 +32,7 @@ func ValidateRemoteTask(ctx context.Context, job Job, bc *conf.Bootstrap) error 
 	job.TTSEngine = normalizedRemoteEngine(cmp.Or(job.TTSEngine, bc.TTS.Type))
 	steps := remoteValidationSteps(job, bc)
 	needed := steps[resumeStepIndex(steps, job.ResumeFrom):]
-	if slices.Contains(needed, StepWhisper) && !hasTaskRecognitionSubtitle(job) && normalizedRemoteEngine(bc.Pipeline.WhisperMode) == "openai" {
+	if slices.Contains(needed, StepWhisper) && !hasTaskRecognitionSubtitle(job) && !hasEmbeddedRecognitionSubtitle(job.InputPath, RecognitionMedia{FFmpeg: bc.Pipeline.FFmpegBin, SourceLang: job.SourceLang}) && normalizedRemoteEngine(bc.Pipeline.WhisperMode) == "openai" {
 		if err := remoteapi.ValidateSelection(ctx, bc.Pipeline.ASRBaseURL, bc.Pipeline.ASRAPIKey, bc.Pipeline.ASRModel); err != nil {
 			return fmt.Errorf("语音识别模型校验失败: %w", err)
 		}

@@ -130,10 +130,10 @@ func (a TaskAPI) prepareTaskInput(in *task.CreateTaskInput) error {
 	}
 	p := a.conf.Pipeline
 	config := asradapter.Config{Engine: p.WhisperMode, WhisperModel: p.WhisperModel, BaseURL: p.ASRBaseURL, APIKey: p.ASRAPIKey, Model: p.ASRModel}
-	if err := pipeline.ValidateRecognitionConfig(in.InputPath, in.OutputDir, in.Mode, config); err != nil {
+	if err := pipeline.ValidateRecognitionConfig(in.InputPath, in.OutputDir, in.Mode, config, pipeline.RecognitionMedia{FFmpeg: a.conf.Pipeline.FFmpegBin, SourceLang: in.SourceLang}); err != nil {
 		return reason.ErrBadRequest.SetMsg(err.Error())
 	}
-	if err := pipeline.ValidateRemoteTask(context.Background(), pipeline.Job{InputPath: in.InputPath, OutputDir: in.OutputDir, Mode: in.Mode, Translator: in.Translator, TTSEngine: in.TTSEngine, TTSVoice: in.TTSVoice}, a.conf); err != nil {
+	if err := pipeline.ValidateRemoteTask(context.Background(), pipeline.Job{InputPath: in.InputPath, OutputDir: in.OutputDir, Mode: in.Mode, SourceLang: in.SourceLang, Translator: in.Translator, TTSEngine: in.TTSEngine, TTSVoice: in.TTSVoice}, a.conf); err != nil {
 		return reason.ErrBadRequest.SetMsg(err.Error())
 	}
 	if in.OutputDir == "" {
@@ -477,6 +477,15 @@ func StageSourceFile(in *task.CreateTaskInput) error {
 		if closeErr != nil {
 			return fmt.Errorf("保存源文件副本失败: %w", closeErr)
 		}
+	}
+
+	sourceSubtitle := strings.TrimSuffix(originalPath, filepath.Ext(originalPath)) + ".srt"
+	if data, err := os.ReadFile(sourceSubtitle); err == nil {
+		if err := os.WriteFile(filepath.Join(workDir, "src.srt"), data, 0644); err != nil {
+			return fmt.Errorf("保存源字幕失败: %w", err)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("读取源字幕失败: %w", err)
 	}
 
 	meta := sourceFileMeta{

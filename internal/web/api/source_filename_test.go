@@ -90,3 +90,30 @@ func TestPreparedTaskUsesConfiguredOutputRoot(t *testing.T) {
 		}
 	}
 }
+
+func TestStageSourceFilePreservesSidecarSubtitle(t *testing.T) {
+	dir := t.TempDir()
+	input := filepath.Join(dir, "video.mp4")
+	subtitle := filepath.Join(dir, "video.srt")
+	data := []byte("1\n00:00:00,000 --> 00:00:01,000\nOriginal\n\n")
+	if err := os.WriteFile(input, []byte("video"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(subtitle, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	in := task.CreateTaskInput{InputPath: input, OutputDir: dir}
+	if err := StageSourceFile(&in); err != nil {
+		t.Fatal(err)
+	}
+	actual, err := os.ReadFile(filepath.Join(in.OutputDir, "src.srt"))
+	if err != nil || string(actual) != string(data) {
+		t.Fatalf("subtitle=%s err=%v", actual, err)
+	}
+	if _, err := os.Stat(input); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(subtitle); err != nil {
+		t.Fatal(err)
+	}
+}

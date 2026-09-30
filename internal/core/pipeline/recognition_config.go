@@ -12,7 +12,7 @@ import (
 
 // ValidateRecognitionConfig 在创建任务及暂存源文件前检查识别条件。
 // 纯文本任务与已有字幕的合成任务不需要调用识别引擎。
-func ValidateRecognitionConfig(inputPath, outputDir string, mode int, config asr.Config) error {
+func ValidateRecognitionConfig(inputPath, outputDir string, mode int, config asr.Config, media ...RecognitionMedia) error {
 	if err := ValidateResourceMode(inputPath, mode); err != nil {
 		return err
 	}
@@ -27,6 +27,9 @@ func ValidateRecognitionConfig(inputPath, outputDir string, mode int, config asr
 		if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() && info.Size() > 0 {
 			return nil
 		}
+	}
+	if len(media) > 0 && hasEmbeddedRecognitionSubtitle(inputPath, media[0]) {
+		return nil
 	}
 	if config.Engine == "" {
 		return fmt.Errorf("请选择语音识别引擎")

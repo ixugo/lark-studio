@@ -46,9 +46,11 @@ func RunApp(bc *conf.Bootstrap, assets fs.FS) error {
 	go svc.AutoResumeInterruptedTasks(context.Background())
 
 	wailsApp := application.New(application.Options{
-		Name:        "lark-studio",
-		Description: "Lark Studio Video Translation & Dubbing Desktop Client",
-		Icon:        appIcon,
+		Name:              "lark-studio",
+		Description:       "Lark Studio Video Translation & Dubbing Desktop Client",
+		RawMessageHandler: svc.handleYouTubeMessage,
+		OnShutdown:        svc.CancelYouTubeDownload,
+		Icon:              appIcon,
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},

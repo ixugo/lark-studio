@@ -213,3 +213,6 @@ export interface UpdateStatus {
   message: string;
   percent: number;
 }
+
+export interface YouTubeInfo { url: string; title: string; resolutions: number[]; }
+export interface YouTubeStatus { phase: 'idle' | 'verifying' | 'inspecting' | 'converting' | 'downloading' | 'checking' | 'completed' | 'failed' | 'cancelled'; percent: number; path: string; error: string; directory: string; verified: boolean; bytes: number; total: number; video?: YouTubeInfo; }

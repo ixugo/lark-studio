@@ -9,7 +9,7 @@ import (
 )
 
 // runWhisper 执行语音识别步骤
-// 优先级：输出目录 src.srt > 输入目录同名 .srt > 执行 whisper
+// 优先级：工作字幕 > 同名字幕 > 内嵌文字字幕 > 语音识别
 func (c *Core) runWhisper(ctx context.Context, job Job) error {
 	workSRT := filepath.Join(job.OutputDir, "src.srt")
 	reused, err := c.reuseWhisperSubtitle(job, workSRT)
@@ -17,6 +17,18 @@ func (c *Core) runWhisper(ctx context.Context, job Job) error {
 		return err
 	}
 
+	reused, err = ExtractEmbeddedSubtitle(ctx, c.cfg.FFmpegBin, job.InputPath, sourceLanguage(job), workSRT)
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if reused {
+		c.logEvent(job.TaskID, "info", StepWhisper, "已提取内嵌字幕，跳过语音识别")
+		c.notifier.OnProgress(job.TaskID, StepWhisper, 100)
+		return nil
+	}
+	if err != nil {
+		c.logEvent(job.TaskID, "warn", StepWhisper, "内嵌字幕不可用，改用语音识别：%s", err)
+	}
 	audioPath := filepath.Join(job.OutputDir, "raw.mp3")
 	if err := c.extractAudio(ctx, job, audioPath); err != nil {
 		return fmt.Errorf("提取音频失败: %w", err)

@@ -212,6 +212,31 @@ async function invokeWailsMethod<T>(methodName: string, ...args: unknown[]): Pro
 }
 
 export const api = {
+  async verifyYouTubeDownload(link: string): Promise<void> {
+    const res = await invokeWailsMethod<void>('VerifyYouTubeDownload', link);
+    if (!res.called) throw new Error('请在桌面版使用 YouTube 下载 / Use the desktop app');
+  },
+  async resolveYouTubeVideo(link: string): Promise<import('../types').YouTubeInfo> {
+    const res = await invokeWailsMethod<import('../types').YouTubeInfo>('ResolveYouTubeVideo', link);
+    if (!res.called) throw new Error('请在桌面版使用 YouTube 下载 / Use the desktop app');
+    if (!res.result) throw new Error('下载服务未返回结果');
+    return res.result;
+  },
+  async getYouTubeDownload(): Promise<import('../types').YouTubeStatus> {
+    const res = await invokeWailsMethod<import('../types').YouTubeStatus>('GetYouTubeDownload');
+    if (!res.called) throw new Error('请在桌面版使用 YouTube 下载 / Use the desktop app');
+    if (!res.result) throw new Error('下载服务未返回结果');
+    return res.result;
+  },
+  async startYouTubeDownload(link: string, height: number): Promise<void> {
+    const res = await invokeWailsMethod<void>('StartYouTubeDownload', link, height);
+    if (!res.called) throw new Error('请在桌面版使用 YouTube 下载 / Use the desktop app');
+  },
+  async cancelYouTubeDownload(): Promise<void> {
+    const res = await invokeWailsMethod<void>('CancelYouTubeDownload');
+    if (!res.called) throw new Error('请在桌面版使用 YouTube 下载 / Use the desktop app');
+  },
+
   // ─── 任务操作 ───────────────────────────────────────────
   async listTasks(): Promise<Task[]> {
     const res = await invokeWailsMethod<Task[]>('ListTasks');

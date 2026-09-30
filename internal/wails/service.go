@@ -19,6 +19,7 @@ import (
 	llmadapter "github.com/ixugo/vdub/internal/adapter/llm"
 	ttsadapter "github.com/ixugo/vdub/internal/adapter/tts"
 	whisperadapter "github.com/ixugo/vdub/internal/adapter/whisper"
+	youtubeadapter "github.com/ixugo/vdub/internal/adapter/youtube"
 	"github.com/ixugo/vdub/internal/conf"
 	"github.com/ixugo/vdub/internal/core/pipeline"
 	"github.com/ixugo/vdub/internal/core/recipe"
@@ -31,16 +32,18 @@ import (
 
 // AppService 聚合所有暴露给前端界面的 Go 接口方法。
 type AppService struct {
-	updates    updateSession
-	mu         sync.RWMutex
-	app        *application.App
-	bc         *conf.Bootstrap
-	taskCore   task.Core
-	termCore   term.Core
-	recipeCore recipe.Core
-	scheduler  *pipeline.Scheduler
-	hub        ws.Huber
-	asrRouter  *asradapter.Router
+	updates             updateSession
+	youtube             *youtubeadapter.Manager
+	youtubeVerification youtubeVerification
+	mu                  sync.RWMutex
+	app                 *application.App
+	bc                  *conf.Bootstrap
+	taskCore            task.Core
+	termCore            term.Core
+	recipeCore          recipe.Core
+	scheduler           *pipeline.Scheduler
+	hub                 ws.Huber
+	asrRouter           *asradapter.Router
 }
 
 // SetASRRouter 保存流水线共用的引擎路由器，使配置页保存可影响后续任务。
@@ -289,17 +292,22 @@ func (s *AppService) RerunTaskWithRecipe(id string, opts RerunTaskOptions) error
 	if err := pipeline.ValidateResourceMode(item.InputPath, targetMode); err != nil {
 		return err
 	}
+	effectiveSourceLang := item.SourceLang
+	if opts.SourceLang != "" {
+		effectiveSourceLang = opts.SourceLang
+	}
 	if fromStep == pipeline.StepWhisper {
 		s.mu.RLock()
 		config := asrConfigFromPipeline(s.bc.Pipeline)
 		s.mu.RUnlock()
-		if err := pipeline.ValidateRecognitionConfig(item.InputPath, "", targetMode, config); err != nil {
+		if err := pipeline.ValidateRecognitionConfig(item.InputPath, "", targetMode, config, pipeline.RecognitionMedia{FFmpeg: s.bc.Pipeline.FFmpegBin, SourceLang: effectiveSourceLang}); err != nil {
 			return err
 		}
 	}
 
 	validationJob := taskPipelineJob(item)
 	validationJob.Mode, validationJob.ResumeFrom = targetMode, fromStep
+	validationJob.SourceLang = effectiveSourceLang
 	if fromStep == pipeline.StepWhisper {
 		// 输出字幕将随听写重跑清理，不能用它跳过新模型校验。
 		validationJob.OutputDir = ""
@@ -854,10 +862,10 @@ func (s *AppService) prepareTaskInput(in *task.CreateTaskInput) error {
 	s.mu.RLock()
 	config := asrConfigFromPipeline(s.bc.Pipeline)
 	s.mu.RUnlock()
-	if err := pipeline.ValidateRecognitionConfig(in.InputPath, in.OutputDir, in.Mode, config); err != nil {
+	if err := pipeline.ValidateRecognitionConfig(in.InputPath, in.OutputDir, in.Mode, config, pipeline.RecognitionMedia{FFmpeg: s.bc.Pipeline.FFmpegBin, SourceLang: in.SourceLang}); err != nil {
 		return err
 	}
-	if err := pipeline.ValidateRemoteTask(context.Background(), pipeline.Job{InputPath: in.InputPath, OutputDir: in.OutputDir, Mode: in.Mode, Translator: in.Translator, TTSEngine: in.TTSEngine, TTSVoice: in.TTSVoice}, s.bc); err != nil {
+	if err := pipeline.ValidateRemoteTask(context.Background(), pipeline.Job{InputPath: in.InputPath, OutputDir: in.OutputDir, Mode: in.Mode, SourceLang: in.SourceLang, Translator: in.Translator, TTSEngine: in.TTSEngine, TTSVoice: in.TTSVoice}, s.bc); err != nil {
 		return err
 	}
 	if in.OutputDir == "" {

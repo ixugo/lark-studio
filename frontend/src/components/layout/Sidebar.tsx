@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   LayoutDashboard,
+  Download,
   Kanban,
   Layers,
   BookOpen,
@@ -17,6 +18,7 @@ import { useTranslation } from '../../i18n';
 import { api } from '../../lib/api';
 
 export type TabKey =
+  | 'youtube-download'
   | 'dashboard'
   | 'board'
   | 'merge'
@@ -62,6 +64,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       items: [
         { key: 'dashboard', label: t('sidebar.workbench'), icon: <LayoutDashboard size={17} /> },
         { key: 'board', label: t('sidebar.taskBoard'), icon: <Kanban size={17} />, badge: runningTasksCount > 0 ? runningTasksCount : undefined },
+        { key: 'youtube-download', label: t('sidebar.youtubeDownload'), icon: <Download size={17} /> },
         { key: 'merge', label: t('sidebar.subtitleMerge'), icon: <Layers size={17} /> },
       ],
     },

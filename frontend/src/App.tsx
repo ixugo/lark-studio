@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Sidebar, TabKey } from './components/layout/Sidebar';
+const YouTubeDownloadView = React.lazy(() => import('./views/YouTubeDownloadView').then(module => ({ default: module.YouTubeDownloadView })));
 import { DashboardView } from './views/DashboardView';
 import { TaskBoardView } from './views/TaskBoardView';
 import { SettingsView } from './views/SettingsView';
@@ -97,6 +98,8 @@ export const AppContent: React.FC = () => {
     switch (currentTab) {
       case 'dashboard':
         return null;
+      case 'youtube-download':
+        return <React.Suspense fallback={null}><YouTubeDownloadView onTaskCreated={() => setCurrentTab('board')} /></React.Suspense>;
       case 'board':
         return <TaskBoardView />;
       case 'merge':
