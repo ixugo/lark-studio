@@ -29,7 +29,8 @@ export const zh = {
     actions: '操作',
   },
   youtube: {
-    followUp: '下载后处理', noProcessing: '不做任何处理', process: '按配方创建任务',
+    selectRecipe: '选择配方处理', processing: '正在创建处理任务…',
+    followUp: '下载完成后自动处理为', noProcessing: '不做任何处理', process: '按配方创建任务',
     verifying: '正在自动校验下载服务…',
     verify: '校验下载服务',
     verified: '下载服务已校验',
@@ -48,7 +49,7 @@ export const zh = {
     download: '确认下载',
     cancel: '取消下载',
     directory: '保存目录',
-    open: '在文件管理器中查看',
+    open: '查看',
     idle: '等待下载',
     inspecting: '正在解析',
     downloading: '正在下载音画',
@@ -59,7 +60,7 @@ export const zh = {
     duration: '时长',
   },
   sidebar: {
-    youtubeDownload: 'YouTube 下载',
+    youtubeDownload: 'YouTube',
     creationCenter: '创作中心',
     workbench: '工作台',
     taskBoard: '任务看板',

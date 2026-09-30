@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 type Info struct {
@@ -32,6 +33,7 @@ type Status struct {
 	Directory string  `json:"directory"`
 	Verified  bool    `json:"verified"`
 	Bytes     int64   `json:"bytes"`
+	TaskID    string  `json:"task_id,omitempty"`
 	Total     int64   `json:"total"`
 }
 type Manager struct {
@@ -56,7 +58,7 @@ func NewManager() *Manager {
 	return &Manager{status: Status{Phase: "idle"}, http: client, endpoint: ServiceOrigin}
 }
 func busy(phase string) bool {
-	return slices.Contains([]string{"verifying", "inspecting", "converting", "downloading", "checking"}, phase)
+	return slices.Contains([]string{"verifying", "inspecting", "converting", "downloading", "checking", "processing"}, phase)
 }
 func (m *Manager) Status() Status {
 	m.mu.Lock()
@@ -128,13 +130,28 @@ func (m *Manager) Inspect(raw string) (*Info, error) {
 	if metadata.Title == "" {
 		return nil, errors.New("视频标题为空，请检查链接")
 	}
-	info := &Info{URL: link, Title: metadata.Title, Resolutions: []int{1080, 720, 480, 360, 240, 144}}
+	info := &Info{URL: link, Title: metadata.Title, Resolutions: []int{1080, 720, 480, 360}}
 	m.mu.Lock()
 	m.info = info
 	m.mu.Unlock()
 	return info, nil
 }
-func (m *Manager) Start(raw string, height int, outputDir, ffmpeg string) error {
+
+type DownloadPlan struct {
+	Address    string
+	OnComplete func(string) (string, error)
+}
+
+func (m *Manager) Start(raw string, height int, outputDir, ffmpeg string, plans ...DownloadPlan) error {
+	var plan DownloadPlan
+	if len(plans) > 0 {
+		plan = plans[0]
+		if plan.Address != "" {
+			if err := validateTunnel(plan.Address); err != nil {
+				return err
+			}
+		}
+	}
 	link, err := NormalizeURL(raw)
 	if err != nil {
 		return err
@@ -162,32 +179,43 @@ func (m *Manager) Start(raw string, height int, outputDir, ffmpeg string) error 
 		return err
 	}
 	info, session := *m.info, m.session
-	path := filepath.Join(dir, fmt.Sprintf("%s [%s] [%dp].mp4", safeTitle(info.Title), videoIDFromURL(link), height))
-	if _, err = os.Stat(path); err == nil {
-		return errors.New("该分辨率的视频已存在，不覆盖已有文件")
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
+	path := filepath.Join(dir, safeTitle(info.Title)+".mp4")
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Hour)
 	m.cancel = cancel
 	m.status = Status{Phase: "converting", Directory: dir}
 	go func() {
 		defer cancel()
-		err := m.download(ctx, info, height, session, path, ffmpeg)
-		m.finish(ctx, path, err)
+		saved, err := m.download(ctx, info, height, session, path, ffmpeg, plan.Address)
+		if err != nil || ctx.Err() != nil || plan.OnComplete == nil {
+			m.finish(ctx, saved, err)
+			return
+		}
+		m.set(func(s *Status) { s.Phase = "processing"; s.Path = saved; s.Percent = 100 })
+		id, processingErr := plan.OnComplete(saved)
+		m.mu.Lock()
+		m.cancel = nil
+		m.status.Phase = "completed"
+		m.status.TaskID = id
+		if processingErr != nil {
+			m.status.Error = "视频已保存，但创建处理任务失败：" + processingErr.Error()
+		}
+		m.mu.Unlock()
 	}()
 	return nil
 }
-func (m *Manager) download(ctx context.Context, info Info, height int, session Session, path, ffmpeg string) error {
-	conversionCtx, stop := context.WithTimeout(ctx, 2*time.Minute)
-	address, err := m.convert(conversionCtx, info.URL, height, session)
-	stop()
-	if err != nil {
-		return err
+func (m *Manager) download(ctx context.Context, info Info, height int, session Session, path, ffmpeg, address string) (string, error) {
+	var err error
+	if address == "" {
+		conversionCtx, stop := context.WithTimeout(ctx, 2*time.Minute)
+		address, err = m.convert(conversionCtx, info.URL, height, session)
+		stop()
+		if err != nil {
+			return "", err
+		}
 	}
 	file, err := os.CreateTemp(filepath.Dir(path), ".youtube-*.part")
 	if err != nil {
-		return err
+		return "", err
 	}
 	temp := file.Name()
 	defer func() {
@@ -198,16 +226,13 @@ func (m *Manager) download(ctx context.Context, info Info, height int, session S
 	err = m.saveMedia(ctx, address, session.UserAgent, file)
 	err = errors.Join(err, file.Close())
 	if err != nil {
-		return err
+		return "", err
 	}
 	m.set(func(s *Status) { s.Phase = "checking"; s.Percent = 99 })
 	if err = checkMedia(ctx, ffmpeg, temp, height); err != nil {
-		return err
+		return "", err
 	}
-	if err = os.Link(temp, path); err != nil {
-		return fmt.Errorf("保存视频失败：%w", err)
-	}
-	return nil
+	return publishVideo(temp, path)
 }
 func (m *Manager) saveMedia(ctx context.Context, address, agent string, file *os.File) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
@@ -299,6 +324,10 @@ func findFFmpeg(configured string) (string, error) {
 	}
 	return "", errors.New("请先在设置中配置 FFmpeg 路径")
 }
+
+// 留出扩展名和重名序号的空间，避免超过文件系统的文件名长度限制。
+const maxFilenameTitleBytes = 220
+
 func safeTitle(title string) string {
 	title = strings.Map(func(r rune) rune {
 		if r < 32 || strings.ContainsRune(`/\:*?"<>|`, r) {
@@ -306,14 +335,18 @@ func safeTitle(title string) string {
 		}
 		return r
 	}, title)
-	runes := []rune(strings.Trim(title, " ."))
-	if len(runes) > 60 {
-		runes = runes[:60]
+	title = strings.Trim(title, " .")
+	end := 0
+	for offset, r := range title {
+		if offset+utf8.RuneLen(r) > maxFilenameTitleBytes {
+			break
+		}
+		end = offset + utf8.RuneLen(r)
 	}
-	if len(runes) == 0 {
+	if end == 0 {
 		return "YouTube"
 	}
-	return string(runes)
+	return title[:end]
 }
 
 var videoDimensions = regexp.MustCompile(`Video:.*?\b[0-9]{2,5}x([0-9]{2,5})\b`)
@@ -341,4 +374,22 @@ func checkMedia(ctx context.Context, ffmpeg, path string, height int) error {
 
 func (m *Manager) Fail(err error) {
 	m.set(func(s *Status) { s.Phase = "failed"; s.Error = err.Error() })
+}
+
+// 通过原子硬链接发布文件；存在同名时递增后缀，其他程序的并发写入也不会被覆盖。
+func publishVideo(temp, path string) (string, error) {
+	base := strings.TrimSuffix(path, filepath.Ext(path))
+	for index := 0; ; index++ {
+		candidate := path
+		if index > 0 {
+			candidate = fmt.Sprintf("%s_%d.mp4", base, index)
+		}
+		err := os.Link(temp, candidate)
+		if err == nil {
+			return candidate, nil
+		}
+		if !errors.Is(err, os.ErrExist) {
+			return "", fmt.Errorf("保存视频失败：%w", err)
+		}
+	}
 }

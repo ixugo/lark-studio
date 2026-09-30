@@ -387,7 +387,7 @@ func (c *Core) buildSteps(job Job) []string {
 			subtitleOutput = "burn"
 		}
 	}
-	if mode != ModeDub && subtitleOutput != "burn" {
+	if mode != ModeDub && mode != ModeDirectDub && subtitleOutput != "burn" {
 		filtered := steps[:0]
 		for _, s := range steps {
 			if s != StepBurn {

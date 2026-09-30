@@ -15,7 +15,20 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
+
+func TestSafeTitlePreservesUnicodeWithinFilenameLimit(t *testing.T) {
+	for _, title := range []string{"Your first Claude Code prompt", strings.Repeat("视频", 200), strings.Repeat("a", 300)} {
+		got := safeTitle(title)
+		if !utf8.ValidString(got) || len(got) > maxFilenameTitleBytes || !strings.HasPrefix(title, got) {
+			t.Fatalf("invalid filename title: %q", got)
+		}
+		if len(title) <= maxFilenameTitleBytes && got != title {
+			t.Fatalf("title changed: %q", got)
+		}
+	}
+}
 
 func TestNormalizeURL(t *testing.T) {
 	for _, tc := range []struct {
@@ -230,7 +243,12 @@ func TestStartPublishesMediaInDefaultDirectory(t *testing.T) {
 	m.info = &Info{URL: "https://www.youtube.com/watch?v=0kILa02vKuI", Title: "../Example: video", Resolutions: []int{144}}
 	m.session = Session{Token: "token", UserAgent: "agent", Expires: time.Now().Add(5 * time.Minute)}
 	dir := t.TempDir()
-	if err = m.Start(m.info.URL, 144, dir, ffmpeg); err != nil {
+	if err = m.Start(m.info.URL, 144, dir, ffmpeg, DownloadPlan{Address: "https://yt1s-worker-5.dlsrv.online/tunnel?id=test", OnComplete: func(path string) (string, error) {
+		if _, err := os.Stat(path); err != nil {
+			return "", err
+		}
+		return "created-task", nil
+	}}); err != nil {
 		t.Fatal(err)
 	}
 	if err = m.Start(m.info.URL, 144, dir, ffmpeg); err == nil {
@@ -241,7 +259,10 @@ func TestStartPublishesMediaInDefaultDirectory(t *testing.T) {
 	for time.Now().Before(deadline) {
 		status := m.Status()
 		if status.Phase == "completed" {
-			expected := filepath.Join(dir, "Downloads", "_Example_ video [0kILa02vKuI] [144p].mp4")
+			expected := filepath.Join(dir, "Downloads", "_Example_ video.mp4")
+			if status.TaskID != "created-task" {
+				t.Fatalf("未创建后续任务: %+v", status)
+			}
 			if status.Path != expected {
 				t.Fatalf("unexpected download path: %s", status.Path)
 			}
@@ -251,9 +272,6 @@ func TestStartPublishesMediaInDefaultDirectory(t *testing.T) {
 			}
 			if !bytes.Equal(got, media) {
 				t.Fatal("media bytes differ")
-			}
-			if err = m.Start(m.info.URL, 144, dir, ffmpeg); err == nil {
-				t.Fatal("existing file overwrite accepted")
 			}
 			files, err := filepath.Glob(filepath.Join(dir, "Downloads", ".youtube-*"))
 			if err != nil {
@@ -270,4 +288,28 @@ func TestStartPublishesMediaInDefaultDirectory(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatal("download did not complete")
+}
+
+func TestPublishPreservesTitleAndNeverOverwrites(t *testing.T) {
+	dir := t.TempDir()
+	temp := filepath.Join(dir, "temp.part")
+	if err := os.WriteFile(temp, []byte("new video"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"Your first Claude Code prompt.mp4", "Your first Claude Code prompt_1.mp4"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("existing"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	path, err := publishVideo(temp, filepath.Join(dir, "Your first Claude Code prompt.mp4"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Base(path) != "Your first Claude Code prompt_2.mp4" {
+		t.Fatal(path)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "Your first Claude Code prompt.mp4"))
+	if err != nil || string(data) != "existing" {
+		t.Fatal("原文件被覆盖")
+	}
 }

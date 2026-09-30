@@ -5,12 +5,15 @@ import (
 	_ "embed"
 	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"net/url"
 	"slices"
 	"strings"
 	"time"
 
 	youtubeadapter "github.com/ixugo/vdub/internal/adapter/youtube"
+	"github.com/ixugo/vdub/internal/core/pipeline"
+	"github.com/ixugo/vdub/internal/core/task"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
@@ -29,6 +32,7 @@ type youtubePending struct {
 	link   string
 	height int
 	ffmpeg string
+	recipe *task.CreateTaskInput
 }
 
 func (s *AppService) youtubeManager() *youtubeadapter.Manager {
@@ -54,6 +58,21 @@ func (s *AppService) GetYouTubeDownload() (youtubeadapter.Status, error) {
 	return status, nil
 }
 func (s *AppService) StartYouTubeDownload(link string, height int) error {
+	return s.StartYouTubeDownloadWithRecipe(link, height, nil)
+}
+func (s *AppService) StartYouTubeDownloadWithRecipe(link string, height int, recipe *task.CreateTaskInput) error {
+	if recipe != nil {
+		if recipe.Mode < pipeline.ModeSubtitle || recipe.Mode > pipeline.ModeDirectDub {
+			return errors.New("请选择有效的视频配方")
+		}
+		if err := pipeline.ValidateResourceMode("video.mp4", recipe.Mode); err != nil {
+			return err
+		}
+		copy := *recipe
+		copy.InputPath = ""
+		copy.OutputDir = ""
+		recipe = &copy
+	}
 	normalized, err := youtubeadapter.NormalizeURL(link)
 	if err != nil {
 		return err
@@ -66,10 +85,7 @@ func (s *AppService) StartYouTubeDownload(link string, height int) error {
 	s.mu.RLock()
 	ffmpeg := s.bc.Pipeline.FFmpegBin
 	s.mu.RUnlock()
-	if status.Verified {
-		return manager.Start(normalized, height, "~/Documents/lark-studio", ffmpeg)
-	}
-	return s.openYouTubeVerification(normalized, &youtubePending{link: normalized, height: height, ffmpeg: ffmpeg})
+	return s.openYouTubeVerification(normalized, &youtubePending{link: normalized, height: height, ffmpeg: ffmpeg, recipe: recipe})
 }
 func (s *AppService) CancelYouTubeDownload() {
 	s.closeYouTubeVerification()
@@ -103,10 +119,19 @@ func (s *AppService) openYouTubeVerification(link string, pending *youtubePendin
 		return err
 	}
 	id := strings.TrimPrefix(normalized, "https://www.youtube.com/watch?v=")
+	encodedID, err := json.Marshal(id)
+	if err != nil {
+		return err
+	}
+	quality := 1080
+	if pending != nil {
+		quality = pending.height
+	}
+	script := strings.NewReplacer("__NONCE__", string(encoded), "__VIDEO_ID__", string(encodedID), "__QUALITY__", fmt.Sprint(quality)).Replace(youtubeVerifyJS)
 	window := s.app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title: "下载服务校验 / Download verification", Width: 760, Height: 700, MinWidth: 600, MinHeight: 500,
 		URL:             youtubeadapter.ServiceOrigin + "/v1/full?videoId=" + id,
-		JS:              strings.ReplaceAll(youtubeVerifyJS, "__NONCE__", string(encoded)),
+		JS:              script,
 		InitialPosition: application.WindowCentered,
 	})
 	s.youtubeVerification = youtubeVerification{window: window, nonce: nonce, pending: pending}
@@ -175,17 +200,26 @@ func (s *AppService) handleYouTubeMessage(window application.Window, message str
 		Nonce     string `json:"nonce"`
 		Token     string `json:"token"`
 		UserAgent string `json:"user_agent"`
+		Address   string `json:"address"`
+		Error     string `json:"error"`
 	}
-	if err := json.Unmarshal([]byte(message), &payload); err != nil || payload.Kind != "youtube-session" {
+	if err := json.Unmarshal([]byte(message), &payload); err != nil || (payload.Kind != "youtube-session" && payload.Kind != "youtube-error") {
 		return
 	}
-	session, err := youtubeadapter.ParseSession(payload.Token, payload.UserAgent)
-	if err != nil {
-		return
+	var session youtubeadapter.Session
+	if payload.Kind == "youtube-session" {
+		parsed, err := youtubeadapter.ParseSession(payload.Token, payload.UserAgent)
+		if err != nil {
+			return
+		}
+		session = parsed
+		if err := youtubeadapter.ValidateDownloadAddress(payload.Address); err != nil {
+			return
+		}
 	}
 	s.mu.Lock()
 	v, manager := s.youtubeVerification, s.youtube
-	if v.window == nil || v.window.ID() != window.ID() || payload.Nonce != v.nonce || manager == nil || !manager.AcceptSession(session) {
+	if v.window == nil || v.window.ID() != window.ID() || payload.Nonce != v.nonce || manager == nil {
 		s.mu.Unlock()
 		return
 	}
@@ -193,9 +227,23 @@ func (s *AppService) handleYouTubeMessage(window application.Window, message str
 		v.timer.Stop()
 	}
 	s.youtubeVerification = youtubeVerification{}
-	// 接收会话与启动下载在同一锁内完成，取消不会越过待下载交接。
-	if v.pending != nil {
-		if err := manager.Start(v.pending.link, v.pending.height, "~/Documents/lark-studio", v.pending.ffmpeg); err != nil {
+	if payload.Kind == "youtube-error" {
+		manager.EndVerify()
+		manager.Fail(fmt.Errorf("%.500s", payload.Error))
+	} else if manager.AcceptSession(session) && v.pending != nil {
+		plan := youtubeadapter.DownloadPlan{Address: payload.Address}
+		if v.pending.recipe != nil {
+			recipe := *v.pending.recipe
+			plan.OnComplete = func(path string) (string, error) {
+				recipe.InputPath = path
+				created, err := s.CreateTask(recipe)
+				if err != nil {
+					return "", err
+				}
+				return created.ID, nil
+			}
+		}
+		if err := manager.Start(v.pending.link, v.pending.height, "~/Documents/lark-studio", v.pending.ffmpeg, plan); err != nil {
 			manager.Fail(err)
 		}
 	}

@@ -514,6 +514,9 @@ func (n *dbNotifier) progressWeights(mode int, subtitleOutput, translator string
 		weights[pipeline.StepTranslate] = 20
 		weights[pipeline.StepTTS] = 25
 		weights[pipeline.StepMerge] = 10
+	case pipeline.ModeDirectDub:
+		weights[pipeline.StepTTS] = 40
+		weights[pipeline.StepMerge] = 10
 	case pipeline.ModeDubOnly:
 		weights[pipeline.StepTTS] = 80
 		weights[pipeline.StepMerge] = 20
@@ -521,10 +524,12 @@ func (n *dbNotifier) progressWeights(mode int, subtitleOutput, translator string
 	if n.lipSync && mode == pipeline.ModeDub {
 		weights[pipeline.StepLipSync] = 10
 	}
-	if subtitleOutput == "burn" || mode == pipeline.ModeDub {
+	if subtitleOutput == "burn" || mode == pipeline.ModeDub || mode == pipeline.ModeDirectDub {
 		weights[pipeline.StepBurn] = 35
 		if mode == pipeline.ModeDub {
 			weights[pipeline.StepBurn] = 15
+		} else if mode == pipeline.ModeDirectDub {
+			weights[pipeline.StepBurn] = 25
 		}
 	}
 	return weights

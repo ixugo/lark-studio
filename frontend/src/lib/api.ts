@@ -228,8 +228,8 @@ export const api = {
     if (!res.result) throw new Error('下载服务未返回结果');
     return res.result;
   },
-  async startYouTubeDownload(link: string, height: number): Promise<void> {
-    const res = await invokeWailsMethod<void>('StartYouTubeDownload', link, height);
+  async startYouTubeDownload(link: string, height: number, recipe: CreateTaskInput | null = null): Promise<void> {
+    const res = await invokeWailsMethod<void>('StartYouTubeDownloadWithRecipe', link, height, recipe);
     if (!res.called) throw new Error('请在桌面版使用 YouTube 下载 / Use the desktop app');
   },
   async cancelYouTubeDownload(): Promise<void> {

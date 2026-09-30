@@ -60,7 +60,7 @@ func TestYouTubeStaleWindowDoesNotCloseCurrentVerification(t *testing.T) {
 
 func TestYouTubeLateVerificationIsIgnored(t *testing.T) {
 	token := "e30." + base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf(`{"exp":%d}`, time.Now().Add(time.Minute).Unix()))) + ".sig"
-	message := fmt.Sprintf(`{"kind":"youtube-session","nonce":"old","token":%q,"user_agent":"test"}`, token)
+	message := fmt.Sprintf(`{"kind":"youtube-session","nonce":"old","token":%q,"user_agent":"test","address":"https://yt1s-worker-5.dlsrv.online/tunnel?id=test"}`, token)
 	for _, cancel := range []bool{false, true} {
 		manager := youtubeadapter.NewManager()
 		if err := manager.BeginVerify(); err != nil {

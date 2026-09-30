@@ -136,3 +136,5 @@ func (m *Manager) convert(ctx context.Context, link string, height int, session 
 	}
 	return result.URL, nil
 }
+
+func ValidateDownloadAddress(address string) error { return validateTunnel(address) }

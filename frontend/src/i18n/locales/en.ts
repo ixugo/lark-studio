@@ -31,7 +31,8 @@ export const en: TranslationKeys = {
     actions: 'Actions',
   },
   youtube: {
-    followUp: 'After downloading', noProcessing: 'No processing', process: 'Create task with recipe',
+    selectRecipe: 'Choose a recipe', processing: 'Creating processing task…',
+    followUp: 'Automatically process after download', noProcessing: 'No processing', process: 'Create task with recipe',
     verifying: 'Verifying download service automatically…',
     verify: 'Verify download service',
     verified: 'Download service verified',
@@ -50,7 +51,7 @@ export const en: TranslationKeys = {
     download: 'Confirm download',
     cancel: 'Cancel download',
     directory: 'Save folder',
-    open: 'Show in file manager',
+    open: 'View',
     idle: 'Ready',
     inspecting: 'Analyzing',
     downloading: 'Downloading video and audio',
@@ -61,7 +62,7 @@ export const en: TranslationKeys = {
     duration: 'Duration',
   },
   sidebar: {
-    youtubeDownload: 'YouTube Download',
+    youtubeDownload: 'YouTube',
     creationCenter: 'Creation Studio',
     workbench: 'Workbench',
     taskBoard: 'Task Board',
