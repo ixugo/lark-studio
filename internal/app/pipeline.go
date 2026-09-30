@@ -117,6 +117,13 @@ func NewPipelineSchedulerWithASR(bc *conf.Bootstrap, taskCore task.Core, termCor
 	}
 
 	sched = pipeline.NewScheduler(pipeCore, onDone)
+	workers := bc.Pipeline.Workers
+	if workers == 0 {
+		workers = conf.DefaultConfig().Pipeline.Workers
+	}
+	if err := sched.SetWorkers(workers); err != nil {
+		slog.Error("invalid task concurrency, using default", "err", err)
+	}
 	sched.Start()
 	return sched, asrRouter, sched.Stop
 }

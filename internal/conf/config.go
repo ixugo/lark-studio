@@ -22,7 +22,7 @@ type Bootstrap struct {
 
 // Pipeline 流水线处理配置
 type Pipeline struct {
-	Workers            int     `comment:"并行 worker 数量" json:"workers"`
+	Workers            int     `comment:"并发任务数（1~8，默认 2，保存后即时生效）" json:"workers"`
 	WhisperMode        string  `comment:"ASR 引擎: whisper-cpp / openai" json:"whisper_mode"`
 	WhisperBin         string  `comment:"whisper.cpp 可执行文件路径（留空优先使用应用内嵌运行时）" json:"whisper_bin"`
 	WhisperModel       string  `comment:"whisper ggml 模型文件路径" json:"whisper_model"`

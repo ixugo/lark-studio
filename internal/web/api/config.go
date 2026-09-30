@@ -99,7 +99,13 @@ type ttsInput struct {
 }
 
 func (uc *Usecase) updateConfig(_ *http.Request, in *updateConfigInput) (configOutput, error) {
-	c := uc.Conf
+	next := *uc.Conf
+	c := &next
+	if in.Pipeline != nil && in.Pipeline.Workers != nil {
+		if err := conf.ValidateWorkers(*in.Pipeline.Workers); err != nil {
+			return configOutput{}, reason.ErrBadRequest.Withf("%s", err)
+		}
+	}
 
 	if p := in.Pipeline; p != nil {
 		if p.Workers != nil {
@@ -189,6 +195,12 @@ func (uc *Usecase) updateConfig(_ *http.Request, in *updateConfigInput) (configO
 		return configOutput{}, reason.ErrServer.Withf("保存配置失败: %s", err)
 	}
 
+	*uc.Conf = next
+	if uc.Scheduler != nil && in.Pipeline != nil && in.Pipeline.Workers != nil {
+		if err := uc.Scheduler.SetWorkers(c.Pipeline.Workers); err != nil {
+			return configOutput{}, err
+		}
+	}
 	return configOutput{
 		Pipeline: c.Pipeline,
 		LLM: llmOutput{

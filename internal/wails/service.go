@@ -629,12 +629,18 @@ func (s *AppService) UpdateConfig(updates map[string]any) error {
 
 	next := *s.bc
 	c := &next
+	workersChanged := false
 	if p, ok := updates["pipeline"].(map[string]any); ok {
 		if v, ok := p["whisper_mode"].(string); ok {
 			c.Pipeline.WhisperMode = v
 		}
-		if v, ok := p["workers"].(float64); ok {
+		if value, exists := p["workers"]; exists {
+			v, ok := value.(float64)
+			if !ok || v < 1 || v > conf.MaxTaskWorkers || v != float64(int(v)) {
+				return fmt.Errorf("并发任务数必须为 1~8 的整数")
+			}
 			c.Pipeline.Workers = int(v)
+			workersChanged = true
 		}
 		if v, ok := p["whisper_bin"].(string); ok {
 			c.Pipeline.WhisperBin = v
@@ -774,6 +780,11 @@ func (s *AppService) UpdateConfig(updates map[string]any) error {
 		s.asrRouter.SetConfig(config)
 	}
 	if s.scheduler != nil {
+		if workersChanged {
+			if err := s.scheduler.SetWorkers(c.Pipeline.Workers); err != nil {
+				return err
+			}
+		}
 		s.scheduler.SetTTSConfig(c.TTS.Type, c.TTS.Voice, c.TTS.BaseURL, c.TTS.APIKey, c.TTS.Model, ttsSpeechOptions(c.TTS))
 		client := llmadapter.NewRoutingClient(c.LLM.BaseURL, c.LLM.APIKey, c.LLM.Model, c.LLM.Provider, c.LLM.DeepLXURL)
 		ready := strings.EqualFold(c.LLM.Provider, "openai") && strings.TrimSpace(c.LLM.BaseURL) != "" && strings.TrimSpace(c.LLM.Model) != ""

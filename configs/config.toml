@@ -28,7 +28,7 @@
 
 # 流水线配置
 [Pipeline]
-  # 并行 worker 数量
+  # 并发任务数（1~8，默认 2，保存后即时生效）
   Workers = 2
   # ASR 引擎: whisper-cpp / openai
   WhisperMode = "whisper-cpp"

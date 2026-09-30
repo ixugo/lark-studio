@@ -230,7 +230,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
                 }
                 className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
               />
-              <p className="text-[11px] text-slate-400 mt-1">{english ? 'Recommended: 2–4, depending on your CPU cores.' : '推荐 2~4，根据 CPU 核心数适度调配'}</p>
+              <p className="text-[11px] text-slate-400 mt-1">{english ? '1–8 tasks. Applies after saving; lowering the limit lets running tasks finish.' : '范围 1~8；保存后即时生效，调低时已运行任务继续完成'}</p>
             </div>
 
             <div>
