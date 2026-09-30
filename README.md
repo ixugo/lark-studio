@@ -8,7 +8,11 @@
 
 <p align="center">English | <a href="README_ZH.md">简体中文</a></p>
 
+
 lark-studio brings speech recognition, subtitle translation, speech synthesis, and video composition into one desktop application. Turn video or audio into subtitles, translate existing text, generate narration, or combine these steps into a complete dubbing workflow.
+
+<img src="./docs/wx.webp" alt="wx" height="200">
+
 
 ![demo](./docs/lark.gif)
 
