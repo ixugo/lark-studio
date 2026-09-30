@@ -10,7 +10,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -24,7 +23,7 @@ func testClient(status int, body string) *Client {
 	return c
 }
 
-const releaseJSON = `{"tag_name":"v0.1.0","updated_at":"2020-01-01T00:00:00Z","body":"更新说明","assets":[{"name":"lark-studio_v0.0.127_macos_arm64.dmg","size":3,"browser_download_url":"https://github.com/ixugo/lark-studio/releases/download/v0.1.0/lark-studio_v0.0.127_macos_arm64.dmg"}]}`
+const releaseJSON = `{"tag_name":"v0.1.0","updated_at":"2020-01-01T00:00:00Z","body":"更新说明","assets":[{"name":"lark-studio_v0.0.127_macos_arm64.dmg","state":"uploaded","size":3,"browser_download_url":"https://github.com/ixugo/lark-studio/releases/download/v0.1.0/lark-studio_v0.0.127_macos_arm64.dmg"}]}`
 
 func TestFetchRelease(t *testing.T) {
 	r, err := testClient(200, releaseJSON).Fetch(t.Context(), "darwin", "arm64")
@@ -96,47 +95,20 @@ func TestDownloadChecksSizeAndDigest(t *testing.T) {
 	}
 }
 
-func TestReleaseReadyUsesLatestUpdateAndStrictFiveMinuteBoundary(t *testing.T) {
-	now := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
-	for _, tt := range []struct {
-		name string
-		age  time.Duration
-		want bool
-	}{
-		{"刚发布", 0, false}, {"不到五分钟", 5*time.Minute - time.Nanosecond, false},
-		{"恰好五分钟", 5 * time.Minute, false}, {"超过五分钟", 5*time.Minute + time.Nanosecond, true},
-		{"未来时间", -time.Minute, false},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			r := &Release{updatedAt: now.Add(-tt.age)}
-			if got := r.Ready(now); got != tt.want {
-				t.Fatalf("Ready = %v, want %v", got, tt.want)
-			}
-		})
+func TestReleaseRequiresUploadedPlatformPackage(t *testing.T) {
+	for _, state := range []string{"uploaded", "new", "starter", ""} {
+		data := strings.Replace(releaseJSON, `"state":"uploaded"`, `"state":"`+state+`"`, 1)
+		r, err := parseRelease([]byte(data), "darwin", "arm64")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r.Supported() != (state == "uploaded") {
+			t.Fatalf("state %q: supported=%v", state, r.Supported())
+		}
 	}
-	if (&Release{}).Ready(now) {
-		t.Fatal("缺失时间不能认可")
-	}
-	for _, field := range []string{"updated_at", "published_at", "asset"} {
-		t.Run(field, func(t *testing.T) {
-			data := strings.Replace(releaseJSON, `"body":`, `"published_at":"2020-01-01T00:00:00Z","body":`, 1)
-			stamp := now.Add(-time.Minute).Format(time.RFC3339)
-			if field == "asset" {
-				data = strings.Replace(data, `"size":3`, `"updated_at":"`+stamp+`","size":3`, 1)
-			} else {
-				data = strings.Replace(data, `"`+field+`":"2020-01-01T00:00:00Z"`, `"`+field+`":"`+stamp+`"`, 1)
-			}
-			r, err := parseRelease([]byte(data), "darwin", "arm64")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if r.Ready(now) {
-				t.Fatal("最后一次修改不足五分钟不能认可")
-			}
-			if !r.Ready(now.Add(5 * time.Minute)) {
-				t.Fatal("等待后应认可")
-			}
-		})
+	r, err := parseRelease([]byte(releaseJSON), "windows", "amd64")
+	if err != nil || r.Supported() {
+		t.Fatalf("macOS 包不能用于 Windows: %#v %v", r, err)
 	}
 }
 
@@ -198,5 +170,17 @@ func TestDownloadProgressFollowsReceivedBytesAndStopsBeforeInstallation(t *testi
 				t.Fatalf("corrupt download completed: %v", progress)
 			}
 		})
+	}
+}
+
+func TestPendingOtherPlatformDoesNotBlockUploadedPackage(t *testing.T) {
+	data := strings.Replace(releaseJSON, `"assets":[`, `"assets":[{"name":"lark-studio_v0.1.0_windows_amd64.zip","state":"new","size":0,"updated_at":"2099-01-01T00:00:00Z"},`, 1)
+	r, err := parseRelease([]byte(data), "darwin", "arm64")
+	if err != nil || !r.Supported() {
+		t.Fatalf("Windows 尚在上传不能阻止 macOS 更新: %#v %v", r, err)
+	}
+	r, err = parseRelease([]byte(data), "windows", "amd64")
+	if err != nil || r.Supported() {
+		t.Fatalf("未上传完成的 Windows 包不能提示: %#v %v", r, err)
 	}
 }

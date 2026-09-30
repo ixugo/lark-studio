@@ -74,12 +74,6 @@ func (s *AppService) CheckForUpdates(manual bool) (*UpdateInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("检查更新失败: %w", err)
 	}
-	if !latest.Ready(time.Now()) {
-		s.updates.mu.Lock()
-		s.updates.latest = nil
-		s.updates.mu.Unlock()
-		return &UpdateInfo{Reason: "新版本正在发布，请五分钟后再检查"}, nil
-	}
 	state, err := conf.ReadUpdateState(s.updateStatePath())
 	if err != nil {
 		return nil, fmt.Errorf("读取更新偏好失败: %w", err)
@@ -93,11 +87,18 @@ func (s *AppService) CheckForUpdates(manual bool) (*UpdateInfo, error) {
 		return nil, err
 	}
 	s.updates.mu.Lock()
-	s.updates.latest = latest
+	if latest.Supported() {
+		s.updates.latest = latest
+	} else {
+		s.updates.latest = nil
+	}
 	s.updates.mu.Unlock()
 	reason := ""
 	if available {
 		reason = latest.Reason()
+		if !latest.Supported() {
+			available = false
+		}
 	}
 	return &UpdateInfo{Version: latest.Version, Notes: latest.Notes, Available: available, Supported: latest.Supported(), Reason: reason}, nil
 }

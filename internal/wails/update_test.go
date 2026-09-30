@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -58,9 +59,10 @@ func updateFixtureService(t *testing.T, version string) *AppService {
 
 func updateFixtureServiceAt(t *testing.T, svc *AppService, version string, updated time.Time) *AppService {
 	t.Helper()
+	name := fmt.Sprintf("lark-studio_%s_%s", version, map[string]string{"darwin": "macos_arm64.dmg", "windows": "windows_amd64.zip"}[runtime.GOOS])
 	svc.updates.client = update.NewClient()
 	svc.updates.client.HTTP.Transport = updateTransport(func(r *http.Request) (*http.Response, error) {
-		body, err := json.Marshal(map[string]any{"tag_name": version, "updated_at": updated, "body": "真实发布说明结构\n第二行", "assets": []any{}})
+		body, err := json.Marshal(map[string]any{"tag_name": version, "updated_at": updated, "body": "真实发布说明结构\n第二行", "assets": []any{map[string]any{"name": name, "state": "uploaded", "size": 3, "browser_download_url": "https://github.com/ixugo/lark-studio/releases/download/" + version + "/" + name}}})
 		if err != nil {
 			return nil, err
 		}
@@ -164,25 +166,65 @@ func TestUpdateProtectsDataReferencedThroughLinks(t *testing.T) {
 	}
 }
 
-func TestRecentReleaseIsSuppressedForAutomaticAndManualChecks(t *testing.T) {
+func TestUploadedReleasePromptsImmediatelyForAutomaticAndManualChecks(t *testing.T) {
 	for _, manual := range []bool{false, true} {
-		t.Run(fmt.Sprint(manual), func(t *testing.T) {
-			svc := updateFixtureService(t, "v0.1.0")
-			if _, err := svc.CheckForUpdates(manual); err != nil {
+		svc := updateFixtureService(t, "v0.1.25")
+		updateFixtureServiceAt(t, svc, "v0.1.25", time.Now())
+		info, err := svc.CheckForUpdates(manual)
+		if err != nil || !info.Available || !info.Supported {
+			t.Fatalf("刚上传的当前平台安装包必须立即认可: %#v %v", info, err)
+		}
+	}
+}
+
+func TestReleaseWithoutCurrentPlatformPackageDoesNotPrompt(t *testing.T) {
+	for _, state := range []string{"missing", "new", "uploaded"} {
+		t.Run(state, func(t *testing.T) {
+			svc := updateFixtureService(t, "v0.1.25")
+			if _, err := svc.CheckForUpdates(true); err != nil {
 				t.Fatal(err)
 			}
-			updateFixtureServiceAt(t, svc, "v0.1.0", time.Now().Add(-time.Minute))
-			info, err := svc.CheckForUpdates(manual)
-			if err != nil || info.Available || info.Reason != "新版本正在发布，请五分钟后再检查" {
-				t.Fatalf("五分钟内不能提示更新: %#v %v", info, err)
+			original := svc.updates.client.HTTP.Transport
+			svc.updates.client.HTTP.Transport = updateTransport(func(r *http.Request) (*http.Response, error) {
+				response, err := original.RoundTrip(r)
+				if err != nil {
+					return nil, err
+				}
+				defer response.Body.Close()
+				data, err := io.ReadAll(response.Body)
+				if err != nil {
+					return nil, err
+				}
+				var body map[string]any
+				if err := json.Unmarshal(data, &body); err != nil {
+					return nil, err
+				}
+				assets := body["assets"].([]any)
+				if state == "missing" {
+					body["assets"] = []any{}
+				} else {
+					assets[0].(map[string]any)["state"] = state
+				}
+				data, err = json.Marshal(body)
+				if err != nil {
+					return nil, err
+				}
+				response.Body = io.NopCloser(strings.NewReader(string(data)))
+				return response, nil
+			})
+			for _, manual := range []bool{false, true} {
+				info, err := svc.CheckForUpdates(manual)
+				if err != nil || info.Available != (state == "uploaded") {
+					t.Fatalf("state=%s manual=%v: %#v %v", state, manual, info, err)
+				}
+				if state != "uploaded" && info.Reason == "" {
+					t.Fatal("未完成上传必须明确原因")
+				}
 			}
-			if err := svc.IgnoreUpdate("v0.1.0"); err == nil {
-				t.Fatal("未认可的版本不能成为忽略记录")
-			}
-			updateFixtureServiceAt(t, svc, "v0.1.0", time.Now().Add(-6*time.Minute))
-			info, err = svc.CheckForUpdates(manual)
-			if err != nil || !info.Available {
-				t.Fatalf("超过五分钟应恢复提示: %#v %v", info, err)
+			if state != "uploaded" {
+				if err := svc.IgnoreUpdate("v0.1.25"); err == nil {
+					t.Fatal("未显示的版本不能记录忽略")
+				}
 			}
 		})
 	}
@@ -204,5 +246,28 @@ func TestUpdateStatusExposesProgress(t *testing.T) {
 		if status.Phase != tt.phase || status.Percent != tt.percent {
 			t.Fatalf("状态丢失下载进度: %+v", status)
 		}
+	}
+}
+
+func TestCheckCapturedGitHubRelease(t *testing.T) {
+	path := os.Getenv("LARK_UPDATE_RELEASE_JSON")
+	if path == "" {
+		t.Skip("需要捕获的 GitHub Releases API 响应")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := updateFixtureService(t, "v0.1.25")
+	svc.bc.Runtime.BuildVersion = "v0.1.23"
+	svc.updates.client.HTTP.Transport = updateTransport(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(string(data))), Request: r}, nil
+	})
+	for _, manual := range []bool{false, true} {
+		info, err := svc.CheckForUpdates(manual)
+		if err != nil || !info.Available || !info.Supported {
+			t.Fatalf("真实发布响应未识别为可更新: %#v %v", info, err)
+		}
+		t.Logf("manual=%v version=%s available=%v supported=%v", manual, info.Version, info.Available, info.Supported)
 	}
 }

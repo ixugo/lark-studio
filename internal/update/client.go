@@ -28,26 +28,20 @@ type Client struct {
 }
 
 type asset struct {
-	Name      string    `json:"name"`
-	URL       string    `json:"browser_download_url"`
-	Size      int64     `json:"size"`
-	Digest    string    `json:"digest"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Name   string `json:"name"`
+	URL    string `json:"browser_download_url"`
+	Size   int64  `json:"size"`
+	Digest string `json:"digest"`
+	State  string `json:"state"`
 }
 
 type Release struct {
-	Version   string `json:"version"`
-	Notes     string `json:"notes"`
-	asset     asset
-	goos      string
-	goarch    string
-	reason    string
-	updatedAt time.Time
-}
-
-// Ready 以发布及所有附件的最后更新时间为准，避免打包尚未完成时提示更新。
-func (r *Release) Ready(now time.Time) bool {
-	return r != nil && !r.updatedAt.IsZero() && now.Sub(r.updatedAt) > 5*time.Minute
+	Version string `json:"version"`
+	Notes   string `json:"notes"`
+	asset   asset
+	goos    string
+	goarch  string
+	reason  string
 }
 
 func (r *Release) Supported() bool { return r != nil && r.reason == "" && r.asset.Name != "" }
@@ -98,13 +92,11 @@ func (c *Client) Fetch(ctx context.Context, goos, goarch string) (*Release, erro
 
 func parseRelease(data []byte, goos, goarch string) (*Release, error) {
 	var body struct {
-		Tag         string    `json:"tag_name"`
-		Body        string    `json:"body"`
-		Draft       bool      `json:"draft"`
-		Prerelease  bool      `json:"prerelease"`
-		Assets      []asset   `json:"assets"`
-		UpdatedAt   time.Time `json:"updated_at"`
-		PublishedAt time.Time `json:"published_at"`
+		Tag        string  `json:"tag_name"`
+		Body       string  `json:"body"`
+		Draft      bool    `json:"draft"`
+		Prerelease bool    `json:"prerelease"`
+		Assets     []asset `json:"assets"`
 	}
 	if err := json.Unmarshal(data, &body); err != nil {
 		return nil, fmt.Errorf("更新信息格式错误: %w", err)
@@ -116,15 +108,6 @@ func parseRelease(data []byte, goos, goarch string) (*Release, error) {
 		return nil, errors.New("更新信息不是正式发行版")
 	}
 	r := &Release{Version: body.Tag, Notes: body.Body, goos: goos, goarch: goarch}
-	r.updatedAt = body.UpdatedAt
-	if body.PublishedAt.After(r.updatedAt) {
-		r.updatedAt = body.PublishedAt
-	}
-	for _, a := range body.Assets {
-		if a.UpdatedAt.After(r.updatedAt) {
-			r.updatedAt = a.UpdatedAt
-		}
-	}
 	suffix := ""
 	switch goos + "/" + goarch {
 	case "darwin/arm64":
@@ -138,7 +121,7 @@ func parseRelease(data []byte, goos, goarch string) (*Release, error) {
 	}
 	pattern := regexp.MustCompile(`^lark-studio_v?[0-9]+\.[0-9]+\.[0-9]+` + regexp.QuoteMeta(suffix) + `$`)
 	for _, a := range body.Assets {
-		if !pattern.MatchString(a.Name) {
+		if a.State != "uploaded" || !pattern.MatchString(a.Name) {
 			continue
 		}
 		if r.asset.Name != "" {
@@ -150,7 +133,7 @@ func parseRelease(data []byte, goos, goarch string) (*Release, error) {
 		r.asset = a
 	}
 	if r.asset.Name == "" {
-		r.reason = "最新版本尚未提供当前系统的安装包"
+		r.reason = "最新版本的当前系统安装包尚未上传完成，请稍后再检查"
 	}
 	return r, nil
 }
