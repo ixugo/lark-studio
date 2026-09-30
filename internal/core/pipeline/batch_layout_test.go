@@ -50,8 +50,18 @@ func TestBurnWritesSiblingVideosAndRerunKeepsOtherTask(t *testing.T) {
 		if err := core.runBurn(t.Context(), Job{InputPath: input, OutputDir: work, Mode: ModeSubtitle, SubtitleOutput: "none"}); err != nil {
 			t.Fatal(err)
 		}
+		result, err = taskfile.ResultVideoPath(work)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if filepath.Base(result) != "原视频.mp4" && filepath.Base(result) != "原视频_1.mp4" {
+			t.Fatal(result)
+		}
 		if info, err := os.Stat(result); err != nil || info.Size() == 0 {
 			t.Fatalf("成片未输出到批次目录: %v", err)
+		}
+		if output, err := exec.CommandContext(t.Context(), ffmpeg, "-v", "error", "-i", result, "-f", "null", "-").CombinedOutput(); err != nil {
+			t.Fatalf("成片解码失败: %v %s", err, output)
 		}
 		if other == "" {
 			other = result

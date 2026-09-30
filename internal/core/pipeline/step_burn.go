@@ -63,7 +63,7 @@ func (c *Core) runBurn(ctx context.Context, job Job) error {
 
 	switch job.Mode {
 	case ModeSubtitle:
-		outputVideo, err := taskfile.ResultVideoPath(job.OutputDir)
+		outputVideo, err := taskfile.RenderVideoPath(job.OutputDir)
 		if err != nil {
 			return err
 		}
@@ -83,7 +83,7 @@ func (c *Core) runBurn(ctx context.Context, job Job) error {
 		}
 
 	case ModeTranslate:
-		outputVideo, err := taskfile.ResultVideoPath(job.OutputDir)
+		outputVideo, err := taskfile.RenderVideoPath(job.OutputDir)
 		if err != nil {
 			return err
 		}
@@ -103,7 +103,7 @@ func (c *Core) runBurn(ctx context.Context, job Job) error {
 		}
 
 	case ModeDub, ModeDirectDub:
-		outputVideo, err := taskfile.ResultVideoPath(job.OutputDir)
+		outputVideo, err := taskfile.RenderVideoPath(job.OutputDir)
 		if err != nil {
 			return err
 		}
@@ -125,6 +125,9 @@ func (c *Core) runBurn(ctx context.Context, job Job) error {
 		}
 	}
 
+	if err := taskfile.FinalizeResult(job.OutputDir); err != nil {
+		return fmt.Errorf("成片重命名失败: %w", err)
+	}
 	c.notifier.OnProgress(job.TaskID, StepBurn, 100)
 	return nil
 }

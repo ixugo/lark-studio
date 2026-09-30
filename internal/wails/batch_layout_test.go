@@ -10,6 +10,7 @@ import (
 	"github.com/ixugo/vdub/internal/core/pipeline"
 	"github.com/ixugo/vdub/internal/core/task"
 	"github.com/ixugo/vdub/internal/core/task/store/taskdb"
+	"github.com/ixugo/vdub/internal/taskfile"
 	"gorm.io/gorm"
 )
 
@@ -66,6 +67,20 @@ func TestBatchLayoutNamesAndDeletion(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(item.OutputDir, "arbitrary.intermediate"), []byte("work"), 0600); err != nil {
 			t.Fatal(err)
 		}
+		if err := taskfile.FinalizeResult(item.OutputDir); err != nil {
+			t.Fatal(err)
+		}
+		item.ResultPath, err = taskfile.ResultVideoPath(item.OutputDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expected := "同名 视频.mp4"
+		if i == 1 {
+			expected = "同名 视频_1.mp4"
+		}
+		if filepath.Base(item.ResultPath) != expected {
+			t.Fatal(item.ResultPath)
+		}
 		fetched, err := svc.GetTask(item.ID)
 		if err != nil || fetched.OriginalName != item.OriginalName || fetched.ResultPath != item.ResultPath {
 			t.Fatalf("数据库重读丢失名称: %+v %v", fetched, err)
@@ -114,7 +129,7 @@ func TestSingleSourceLayoutAndDuplicateSubmission(t *testing.T) {
 			t.Fatal(err)
 		}
 		item := items[0]
-		if filepath.Base(item.ResultPath) != "output.mp4" || filepath.Dir(item.ResultPath) != filepath.Dir(item.OutputDir) {
+		if filepath.Base(item.ResultPath) != filepath.Base(item.OutputDir)+".mp4" || filepath.Dir(item.ResultPath) != filepath.Dir(item.OutputDir) {
 			t.Fatalf("单源成片位置错误: %+v", item)
 		}
 		if first != nil && first.BatchDir == item.BatchDir {
@@ -137,7 +152,7 @@ func TestExternalSubtitleStaysInWorkDirectory(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(item.OutputDir, "src.srt")); err != nil {
 		t.Fatal("合成字幕未放在工作目录")
 	}
-	if filepath.Base(item.ResultPath) != "output.mp4" {
+	if filepath.Base(item.ResultPath) != filepath.Base(item.OutputDir)+".mp4" {
 		t.Fatal("字幕合成成片位置错误")
 	}
 }

@@ -446,9 +446,6 @@ func StageSourceFile(in *task.CreateTaskInput) error {
 	destPath := filepath.Join(workDir, stagedName)
 	metaPath = filepath.Join(workDir, "source_meta.json")
 	resultName := id + ".mp4"
-	if in.OutputName == "output.mp4" {
-		resultName = in.OutputName
-	}
 
 	srcFile, err := os.Open(in.InputPath)
 	if err != nil {
