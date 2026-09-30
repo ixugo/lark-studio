@@ -28,6 +28,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
   const [config, setConfig] = useState<ConfigDTO | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [downloads, setDownloads] = useState<{directory: string; bytes: number; files: number} | null>(null);
+  const [clearingDownloads, setClearingDownloads] = useState(false);
+  const [confirmCleanup, setConfirmCleanup] = useState(false);
+  useEffect(() => { void api.getYouTubeStorage().then(setDownloads).catch(e => setErrorMsg(String(e))); }, []);
+  const clearDownloads = async () => {
+    setClearingDownloads(true); setErrorMsg(null);
+    try { await api.clearYouTubeDownloads(); }
+    catch(e) { setErrorMsg(String(e)); }
+    finally {
+      try { setDownloads(await api.getYouTubeStorage()); } catch(e) { setErrorMsg(String(e)); }
+      setClearingDownloads(false); setConfirmCleanup(false);
+    }
+  };
   const { saved, clearSaved, showSaved } = useSaveFeedback();
 
   useEffect(() => {
@@ -326,6 +339,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigate }) => {
                   <span>{english ? 'Choose folder' : '选择目录'}</span>
                 </button>
               </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-50/70 dark:bg-white/[0.03] border border-slate-200/70 dark:border-white/5 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold">{english ? 'YouTube downloads' : 'YouTube 下载视频'}</p>
+                  <p className="text-xs text-slate-500">{downloads ? `${downloads.files} ${english ? 'videos' : '个视频'} · ${(downloads.bytes / 1048576).toFixed(1)} MB` : (english ? 'Calculating…' : '正在统计…')}</p>
+                  <p className="text-[11px] text-slate-400 break-all">{downloads?.directory}</p>
+                </div>
+                <button type="button" disabled={clearingDownloads || !downloads?.files} onClick={() => setConfirmCleanup(true)} className="h-10 px-3.5 rounded-xl border border-rose-200 dark:border-rose-500/30 text-rose-600 text-xs font-semibold disabled:opacity-50 flex items-center gap-1.5"><Trash2 size={14}/>{english ? 'Clear downloaded videos' : '清理下载视频'}</button>
+              </div>
+              {confirmCleanup && <div role="alert" className="space-y-2 text-xs text-rose-600">
+                <p>{english ? 'All downloaded videos in this folder will be permanently deleted. Continue?' : '将永久删除该目录内全部下载视频，无法恢复。确定清理？'}</p>
+                <div className="flex gap-3"><button type="button" disabled={clearingDownloads} onClick={() => void clearDownloads()} className="h-9 px-3 rounded-lg bg-rose-600 text-white disabled:opacity-50">{clearingDownloads ? (english ? 'Clearing…' : '正在清理…') : (english ? 'Confirm cleanup' : '确认清理')}</button><button type="button" disabled={clearingDownloads} onClick={() => setConfirmCleanup(false)}>{english ? 'Cancel' : '取消'}</button></div>
+              </div>}
             </div>
 
             <div className="pt-2">

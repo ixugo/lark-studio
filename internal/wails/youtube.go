@@ -250,3 +250,23 @@ func (s *AppService) handleYouTubeMessage(window application.Window, message str
 	s.mu.Unlock()
 	v.window.Close()
 }
+
+func (s *AppService) ResetYouTubeDownload() error {
+	return s.youtubeManager().Reset()
+}
+
+func (s *AppService) GetYouTubeStorage() (youtubeadapter.Storage, error) {
+	dir, err := youtubeadapter.DownloadDirectory("~/Documents/lark-studio")
+	if err != nil {
+		return youtubeadapter.Storage{}, err
+	}
+	return s.youtubeManager().Storage(dir)
+}
+
+func (s *AppService) ClearYouTubeDownloads() error {
+	dir, err := youtubeadapter.DownloadDirectory("~/Documents/lark-studio")
+	if err != nil {
+		return err
+	}
+	return s.youtubeManager().ClearStorage(dir)
+}

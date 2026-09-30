@@ -20,6 +20,8 @@ export const YouTubeDownloadView: React.FC<{ onTaskCreated: () => void }> = ({ o
   const mounted = useRef(true);
   const restored = useRef(false);
   const navigated = useRef('');
+  const generation = useRef(0);
+  const resetting = useRef(false);
   const busy = pending || ['verifying', 'converting', 'downloading', 'checking', 'inspecting', 'processing'].includes(status?.phase || '');
 
   useEffect(() => {
@@ -27,7 +29,8 @@ export const YouTubeDownloadView: React.FC<{ onTaskCreated: () => void }> = ({ o
     let stopped = false;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
-      try { const next = await api.getYouTubeDownload(); if (!stopped) {
+      const revision = generation.current;
+      try { const next = await api.getYouTubeDownload(); if (!stopped && !resetting.current && revision === generation.current) {
           setStatus(next);
           if (next.task_id) {
             if (restored.current && navigated.current !== next.task_id) onTaskCreated();
@@ -36,7 +39,7 @@ export const YouTubeDownloadView: React.FC<{ onTaskCreated: () => void }> = ({ o
           if (!restored.current && next.video) { setInfo(next.video); setLink(next.video.url); setHeight(next.video.resolutions[0]); }
           restored.current = true;
         } }
-      catch (err) { if (!stopped) setError(String(err)); }
+      catch (err) { if (!stopped && !resetting.current && revision === generation.current) setError(String(err)); }
       if (!stopped) timer = setTimeout(poll, 1500);
     };
     void poll();
@@ -64,6 +67,16 @@ export const YouTubeDownloadView: React.FC<{ onTaskCreated: () => void }> = ({ o
     const next = await api.getYouTubeDownload();
     if (mounted.current) setStatus(next);
   });
+  const changeLink = (value: string) => {
+    setLink(value); setInfo(null); setError('');
+    if (value.trim()) return;
+    generation.current++; resetting.current = true;
+    setStatus(null); setHeight(1080); setRecipeId('none'); navigated.current = '';
+    void run(async () => {
+      try { await api.resetYouTubeDownload(); }
+      finally { generation.current++; resetting.current = false; }
+    });
+  };
   const downloading = ['converting', 'downloading', 'checking'].includes(status?.phase || '');
   const field = 'w-full h-10 min-h-10 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#242427] px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-50';
 
@@ -76,7 +89,7 @@ export const YouTubeDownloadView: React.FC<{ onTaskCreated: () => void }> = ({ o
         </header>
         <section className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white/70 dark:bg-[#18181B] p-6 space-y-5">
           <label className="block space-y-2"><span className="flex items-center gap-2 text-sm font-medium"><Link2 size={16} />{t('youtube.link')}</span>
-            <input type="url" maxLength={2048} disabled={busy} value={link} onChange={e => { setLink(e.target.value); setInfo(null); setError(''); }} placeholder="https://www.youtube.com/watch?v=…" className={field} />
+            <input type="url" maxLength={2048} disabled={busy} value={link} onChange={e => changeLink(e.target.value)} placeholder="https://www.youtube.com/watch?v=…" className={field} />
           </label>
           <button disabled={busy || !link.trim()} onClick={parse} className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50 flex items-center gap-2">{pending && <Loader2 size={16} className="animate-spin" />}{t(status?.phase === 'inspecting' ? 'youtube.parsing' : 'youtube.parse')}</button>
           {info && <div className="border-t border-slate-200 dark:border-white/10 pt-5 space-y-4">
@@ -91,7 +104,7 @@ export const YouTubeDownloadView: React.FC<{ onTaskCreated: () => void }> = ({ o
         </section>
         {status && status.phase !== 'idle' && status.phase !== 'inspecting' && <section className="rounded-2xl border border-slate-200 dark:border-white/10 p-5 space-y-3">
           <div className="flex items-center justify-between gap-3"><span className="text-sm font-medium" role="status">{t(`youtube.${status?.phase || 'idle'}`)}</span>{(downloading || status?.phase === 'verifying') && <button disabled={pending} onClick={() => run(() => api.cancelYouTubeDownload())} className="text-sm text-red-500">{t('youtube.cancel')}</button>}</div>
-          {downloading && <><progress max={100} value={status?.total && status.total > 0 ? status.percent : undefined} className="w-full h-2 accent-blue-600" /><p className="text-xs text-slate-500">{status?.total && status.total > 0 ? `${Math.floor(status.percent)}%` : `${t('youtube.unknownProgress')}: ${((status?.bytes || 0) / 1048576).toFixed(1)} MiB`}</p></>}
+          {downloading && <><div role="progressbar" aria-label={t('youtube.downloading')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={status?.total && status.total > 0 ? Math.floor(status.percent) : undefined} className="w-full h-1.5 bg-slate-100 dark:bg-white/10 rounded-full overflow-hidden"><div className={`h-full rounded-full bg-blue-600 transition-all duration-300 ${status?.total && status.total > 0 ? '' : 'animate-pulse'}`} style={{width: status?.total && status.total > 0 ? `${Math.min(100,Math.max(0,status.percent))}%` : '35%'}} /></div><p className="text-xs text-slate-500">{status?.total && status.total > 0 ? `${Math.floor(status.percent)}%` : `${t('youtube.unknownProgress')}: ${((status?.bytes || 0) / 1048576).toFixed(1)} MiB`}</p></>}
           {status?.phase === 'completed' && <><p className="text-sm break-all select-text">{status.path}</p><button onClick={() => run(() => api.openInFileManager(status.path))} className="flex items-center gap-2 text-sm text-blue-600"><FolderOpen size={16} />{t('youtube.open')}</button>
           </>}
         </section>}

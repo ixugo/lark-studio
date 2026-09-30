@@ -3,7 +3,7 @@ import { Sidebar, TabKey } from './components/layout/Sidebar';
 const YouTubeDownloadView = React.lazy(() => import('./views/YouTubeDownloadView').then(module => ({ default: module.YouTubeDownloadView })));
 import { DashboardView } from './views/DashboardView';
 import { TaskBoardView } from './views/TaskBoardView';
-import { SettingsView } from './views/SettingsView';
+const SettingsView = React.lazy(() => import('./views/SettingsView').then(module => ({ default: module.SettingsView })));
 import { GlossaryView } from './views/GlossaryView';
 import { SubtitleMergeView } from './views/SubtitleMergeView';
 import { TranslationEngineView } from './views/TranslationEngineView';
@@ -113,7 +113,7 @@ export const AppContent: React.FC = () => {
       case 'glossary':
         return <GlossaryView />;
       case 'settings':
-        return <SettingsView onNavigate={(tab) => setCurrentTab(tab as TabKey)} />;
+        return <React.Suspense fallback={null}><SettingsView onNavigate={(tab) => setCurrentTab(tab as TabKey)} /></React.Suspense>;
       case 'about':
         return <AboutView onCheckUpdates={checkUpdates} checkingUpdates={checkingUpdates} updateFeedback={updateFeedback} />;
       default:

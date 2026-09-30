@@ -237,6 +237,20 @@ export const api = {
     if (!res.called) throw new Error('请在桌面版使用 YouTube 下载 / Use the desktop app');
   },
 
+  async resetYouTubeDownload(): Promise<void> {
+    const res = await invokeWailsMethod<void>('ResetYouTubeDownload');
+    if (!res.called) throw new Error('请在桌面版使用 YouTube 下载 / Use the desktop app');
+  },
+  async getYouTubeStorage(): Promise<{ directory: string; bytes: number; files: number }> {
+    const res = await invokeWailsMethod<{ directory: string; bytes: number; files: number }>('GetYouTubeStorage');
+    if (!res.called || !res.result) throw new Error('无法读取下载目录 / Cannot read downloads');
+    return res.result;
+  },
+  async clearYouTubeDownloads(): Promise<void> {
+    const res = await invokeWailsMethod<void>('ClearYouTubeDownloads');
+    if (!res.called) throw new Error('请在桌面版使用 YouTube 下载 / Use the desktop app');
+  },
+
   // ─── 任务操作 ───────────────────────────────────────────
   async listTasks(): Promise<Task[]> {
     const res = await invokeWailsMethod<Task[]>('ListTasks');
